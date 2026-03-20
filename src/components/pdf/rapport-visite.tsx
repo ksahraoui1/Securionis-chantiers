@@ -1,0 +1,310 @@
+import React from "react";
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+} from "@react-pdf/renderer";
+import type { Tables } from "@/types/database";
+import { LABELS_STATUT_ECART } from "@/lib/utils/constants";
+
+const styles = StyleSheet.create({
+  page: {
+    fontFamily: "Helvetica",
+    fontSize: 10,
+    paddingTop: 40,
+    paddingBottom: 60,
+    paddingHorizontal: 40,
+    color: "#1a1a1a",
+  },
+  header: {
+    fontSize: 18,
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 20,
+    textAlign: "center",
+    color: "#1e40af",
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: "Helvetica-Bold",
+    marginTop: 16,
+    marginBottom: 8,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#d1d5db",
+    color: "#111827",
+  },
+  table: {
+    marginBottom: 12,
+  },
+  tableRow: {
+    flexDirection: "row",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#e5e7eb",
+    minHeight: 22,
+    alignItems: "center",
+  },
+  tableRowHeader: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#9ca3af",
+    minHeight: 24,
+    alignItems: "center",
+    backgroundColor: "#f3f4f6",
+  },
+  tableCellLabel: {
+    width: "35%",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+    color: "#6b7280",
+  },
+  tableCellValue: {
+    width: "65%",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    fontSize: 10,
+  },
+  constatation: {
+    marginBottom: 10,
+    padding: 8,
+    backgroundColor: "#fef2f2",
+    borderRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: "#dc2626",
+  },
+  constatationTitle: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  constatationText: {
+    fontSize: 9,
+    color: "#374151",
+    marginBottom: 2,
+  },
+  ecartRow: {
+    flexDirection: "row",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#e5e7eb",
+    minHeight: 20,
+    alignItems: "center",
+  },
+  ecartCell: {
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    fontSize: 9,
+  },
+  ecartCellDesc: {
+    width: "45%",
+  },
+  ecartCellDelai: {
+    width: "25%",
+  },
+  ecartCellStatut: {
+    width: "30%",
+  },
+  delaiItem: {
+    fontSize: 9,
+    marginBottom: 3,
+    paddingLeft: 8,
+  },
+  footer: {
+    position: "absolute",
+    bottom: 30,
+    left: 40,
+    right: 40,
+  },
+  footerLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderTopWidth: 0.5,
+    borderTopColor: "#d1d5db",
+    paddingTop: 6,
+  },
+  footerText: {
+    fontSize: 8,
+    color: "#9ca3af",
+  },
+  pageNumber: {
+    fontSize: 8,
+    color: "#9ca3af",
+  },
+  copieItem: {
+    fontSize: 9,
+    marginBottom: 2,
+    paddingLeft: 8,
+  },
+});
+
+interface RapportVisiteProps {
+  chantier: Tables<"chantiers">;
+  visite: Tables<"visites">;
+  inspecteur: { nom: string; email: string };
+  reponses: (Tables<"reponses"> & {
+    points_controle?: { intitule: string; critere: string | null; objet: string | null } | null;
+  })[];
+  ecarts: Tables<"ecarts">[];
+  destinataires: Tables<"destinataires">[];
+}
+
+export function RapportVisite({
+  chantier,
+  visite,
+  inspecteur,
+  reponses,
+  ecarts,
+  destinataires,
+}: RapportVisiteProps) {
+  const dateFormatted = new Date(visite.date_visite).toLocaleDateString(
+    "fr-CH",
+    { day: "numeric", month: "long", year: "numeric" }
+  );
+
+  const nonConformeReponses = reponses.filter(
+    (r) => r.valeur === "non_conforme"
+  );
+
+  const infoRows: [string, string][] = [
+    ["Inspecteur(s)", inspecteur.nom],
+    ["Date", dateFormatted],
+    ["Adresse", chantier.adresse],
+    ["Nature travaux", chantier.nature_travaux],
+  ];
+
+  if (chantier.numero_camac)
+    infoRows.push(["N. CAMAC", chantier.numero_camac]);
+  if (chantier.numero_parcelle)
+    infoRows.push(["N. parcelle", chantier.numero_parcelle]);
+  if (chantier.numero_eca)
+    infoRows.push(["N. ECA", chantier.numero_eca]);
+  if (chantier.contact_nom)
+    infoRows.push(["Contact", chantier.contact_nom]);
+
+  // Collect delais from NC reponses
+  const delais = ecarts
+    .filter((e) => e.delai)
+    .map((e) => ({ description: e.description, delai: e.delai! }));
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        {/* Header */}
+        <Text style={styles.header}>Rapport de visite</Text>
+
+        {/* Info table */}
+        <View style={styles.table}>
+          {infoRows.map(([label, value], idx) => (
+            <View key={idx} style={styles.tableRow}>
+              <Text style={styles.tableCellLabel}>{label}</Text>
+              <Text style={styles.tableCellValue}>{value}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Constatations */}
+        <Text style={styles.sectionTitle}>Constatations</Text>
+        {nonConformeReponses.length === 0 ? (
+          <Text style={{ fontSize: 10, color: "#16a34a", marginBottom: 8 }}>
+            Aucune non-conformite constatee.
+          </Text>
+        ) : (
+          nonConformeReponses.map((r) => (
+            <View key={r.id} style={styles.constatation}>
+              <Text style={styles.constatationTitle}>
+                {(r.points_controle as { intitule: string } | null)?.intitule ??
+                  "Point de controle"}
+              </Text>
+              {r.remarque && (
+                <Text style={styles.constatationText}>
+                  Remarque : {r.remarque}
+                </Text>
+              )}
+              {r.photos && r.photos.length > 0 && (
+                <Text style={styles.constatationText}>
+                  Photos : {r.photos.length} photo(s) jointe(s)
+                </Text>
+              )}
+            </View>
+          ))
+        )}
+
+        {/* Historique des ecarts */}
+        {ecarts.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Historique des ecarts</Text>
+            <View style={styles.table}>
+              <View style={styles.tableRowHeader}>
+                <Text style={[styles.ecartCell, styles.ecartCellDesc, { fontFamily: "Helvetica-Bold" }]}>
+                  Description
+                </Text>
+                <Text style={[styles.ecartCell, styles.ecartCellDelai, { fontFamily: "Helvetica-Bold" }]}>
+                  Delai
+                </Text>
+                <Text style={[styles.ecartCell, styles.ecartCellStatut, { fontFamily: "Helvetica-Bold" }]}>
+                  Statut
+                </Text>
+              </View>
+              {ecarts.map((ecart) => (
+                <View key={ecart.id} style={styles.ecartRow}>
+                  <Text style={[styles.ecartCell, styles.ecartCellDesc]}>
+                    {ecart.description}
+                  </Text>
+                  <Text style={[styles.ecartCell, styles.ecartCellDelai]}>
+                    {ecart.delai ?? "-"}
+                  </Text>
+                  <Text style={[styles.ecartCell, styles.ecartCellStatut]}>
+                    {LABELS_STATUT_ECART[ecart.statut] ?? ecart.statut}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Delais */}
+        {delais.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Delai(s)</Text>
+            {delais.map((d, idx) => (
+              <Text key={idx} style={styles.delaiItem}>
+                - {d.description} : {d.delai}
+              </Text>
+            ))}
+          </>
+        )}
+
+        {/* Copie(s) */}
+        {destinataires.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Copie(s)</Text>
+            {destinataires.map((dest) => (
+              <Text key={dest.id} style={styles.copieItem}>
+                - {dest.nom}
+                {dest.organisation ? ` (${dest.organisation})` : ""} &mdash;{" "}
+                {dest.email}
+              </Text>
+            ))}
+          </>
+        )}
+
+        {/* Footer with page numbers */}
+        <View style={styles.footer} fixed>
+          <View style={styles.footerLine}>
+            <Text style={styles.footerText}>
+              Securionis SA — Rapport de visite
+            </Text>
+            <Text
+              style={styles.pageNumber}
+              render={({ pageNumber, totalPages }) =>
+                `Page ${pageNumber} / ${totalPages}`
+              }
+            />
+          </View>
+        </View>
+      </Page>
+    </Document>
+  );
+}

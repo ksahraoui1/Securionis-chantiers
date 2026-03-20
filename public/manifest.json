@@ -1,0 +1,11 @@
+{
+  "name": "Securionis Chantiers",
+  "short_name": "Securionis",
+  "description": "Gestion de visites de chantiers SST — Santé et Sécurité au Travail",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e40af",
+  "orientation": "any",
+  "icons": []
+}
