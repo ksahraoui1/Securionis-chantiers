@@ -87,8 +87,8 @@ export function ChecklistItem({
   }
 
   function handlePhotoRemove(url: string) {
-    photoUpload.removePhoto(url);
     const newPhotos = photoUpload.photos.filter((p) => p !== url);
+    photoUpload.removePhoto(url);
     emitChange(valeur, remarque, newPhotos);
   }
 
