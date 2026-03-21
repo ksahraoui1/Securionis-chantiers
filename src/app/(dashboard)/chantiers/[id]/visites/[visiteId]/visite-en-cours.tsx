@@ -39,6 +39,7 @@ export function VisiteEnCours({
   const [ecartDrafts, setEcartDrafts] = useState<EcartDraft[]>([]);
   const [currentEcartIndex, setCurrentEcartIndex] = useState(0);
   const [delaiInput, setDelaiInput] = useState("");
+  const [renseignementsPar, setRenseignementsPar] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleValidate = useCallback(async () => {
@@ -148,10 +149,13 @@ export function VisiteEnCours({
         }
       }
 
-      // Update visite statut to terminee
+      // Update visite statut to terminee + renseignements_par
       const { error: updateError } = await supabase
         .from("visites")
-        .update({ statut: "terminee" })
+        .update({
+          statut: "terminee",
+          renseignements_par: renseignementsPar.trim() || null,
+        })
         .eq("id", visiteId);
 
       if (updateError) {
@@ -171,6 +175,23 @@ export function VisiteEnCours({
 
   return (
     <>
+      <div className="mb-6 bg-white rounded-lg border border-gray-400 p-4">
+        <label
+          htmlFor="renseignements_par"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Sur le chantier, renseignements donnés par
+        </label>
+        <input
+          id="renseignements_par"
+          type="text"
+          value={renseignementsPar}
+          onChange={(e) => setRenseignementsPar(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-[44px] text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+          placeholder="Nom de la personne"
+        />
+      </div>
+
       <ChecklistForm
         visiteId={visiteId}
         chantierId={chantierId}

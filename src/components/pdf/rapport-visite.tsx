@@ -167,21 +167,37 @@ export function RapportVisite({
     (r) => r.valeur === "non_conforme"
   );
 
+  const heureFormatted = visite.heure_visite
+    ? ` – ${visite.heure_visite.slice(0, 5)}`
+    : "";
+
   const infoRows: [string, string][] = [
     ["Inspecteur(s)", inspecteur.nom],
-    ["Date", dateFormatted],
-    ["Adresse", chantier.adresse],
-    ["Nature travaux", chantier.nature_travaux],
+    ["Date de la visite", `${dateFormatted}${heureFormatted}`],
   ];
 
-  if (chantier.numero_camac)
-    infoRows.push(["N. CAMAC", chantier.numero_camac]);
-  if (chantier.numero_parcelle)
-    infoRows.push(["N. parcelle", chantier.numero_parcelle]);
-  if (chantier.numero_eca)
-    infoRows.push(["N. ECA", chantier.numero_eca]);
-  if (chantier.contact_nom)
-    infoRows.push(["Contact", chantier.contact_nom]);
+  // Nom + Adresse du chantier
+  if (chantier.nom) {
+    infoRows.push(["Nom du chantier", chantier.nom]);
+  }
+  infoRows.push(["Adresse du chantier", chantier.adresse]);
+  infoRows.push(["Nature des travaux", chantier.nature_travaux]);
+
+  // Références sur une ligne (comme le PDF FWN)
+  const refs: string[] = [];
+  if (chantier.ref_communale) refs.push(`Réf. communale: ${chantier.ref_communale}`);
+  if (chantier.numero_camac) refs.push(`N° CAMAC: ${chantier.numero_camac}`);
+  if (chantier.numero_parcelle) refs.push(`N° parcelle: ${chantier.numero_parcelle}`);
+  if (chantier.numero_eca) refs.push(`N° ECA: ${chantier.numero_eca}`);
+  if (refs.length > 0) {
+    infoRows.push(["Références", refs.join("  |  ")]);
+  }
+
+  if (visite.renseignements_par) {
+    infoRows.push(["Renseignements donnés par", visite.renseignements_par]);
+  } else if (chantier.contact_nom) {
+    infoRows.push(["Renseignements donnés par", chantier.contact_nom]);
+  }
 
   // Collect delais from NC reponses
   const delais = ecarts

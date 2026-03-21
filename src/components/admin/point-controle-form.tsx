@@ -83,8 +83,7 @@ export function PointControleForm({
             base_legale: baseLegale.trim() || null,
             updated_at: new Date().toISOString(),
           })
-          .eq("id", initialData.id)
-          .eq("is_custom", true);
+          .eq("id", initialData.id);
 
         if (updateError) throw updateError;
       } else {

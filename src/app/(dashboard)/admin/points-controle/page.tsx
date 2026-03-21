@@ -120,22 +120,22 @@ export default function AdminPointsControlePage() {
           {points.map((point) => (
             <div
               key={point.id}
-              className={`bg-white rounded-lg border p-4 ${
+              className={`bg-white rounded-lg border p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
                 !point.actif ? "opacity-60" : ""
               }`}
+              onClick={() => {
+                setEditingPoint(point);
+                setShowForm(true);
+              }}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        point.is_custom
-                          ? "bg-purple-100 text-purple-700"
-                          : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {point.is_custom ? "Personnalisé" : "SUVA"}
+                    {point.is_custom && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
+                      Personnalisé
                     </span>
+                    )}
                     {!point.actif && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                         Désactivé
@@ -143,43 +143,34 @@ export default function AdminPointsControlePage() {
                     )}
                   </div>
                   <p className="font-medium">{point.intitule}</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Phase {point.phases?.numero} — {point.categories?.libelle}
-                  </p>
+                  {point.base_legale && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      {point.base_legale}
+                    </p>
+                  )}
                   {point.critere && (
                     <p className="text-xs text-gray-400 mt-1">
                       Critère : {point.critere}
                     </p>
                   )}
                 </div>
-                {point.is_custom && (
-                  <div className="flex gap-2">
+                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  {point.actif ? (
                     <button
-                      onClick={() => {
-                        setEditingPoint(point);
-                        setShowForm(true);
-                      }}
-                      className="px-3 py-2 min-h-touch text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
+                      onClick={() => handleDesactiver(point.id)}
+                      className="px-3 py-2 min-h-touch text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100"
                     >
-                      Modifier
+                      Désactiver
                     </button>
-                    {point.actif ? (
-                      <button
-                        onClick={() => handleDesactiver(point.id)}
-                        className="px-3 py-2 min-h-touch text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100"
-                      >
-                        Désactiver
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleReactiver(point.id)}
-                        className="px-3 py-2 min-h-touch text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100"
-                      >
-                        Réactiver
-                      </button>
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    <button
+                      onClick={() => handleReactiver(point.id)}
+                      className="px-3 py-2 min-h-touch text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100"
+                    >
+                      Réactiver
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

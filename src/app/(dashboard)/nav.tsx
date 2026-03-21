@@ -40,7 +40,7 @@ export function DashboardNav({ userName, userRole }: DashboardNavProps) {
             </Link>
             <div className="flex gap-1">
               {links.map((link) => (
-                <Link
+                <a
                   key={link.href}
                   href={link.href}
                   className={`px-3 py-2 rounded-lg text-sm font-medium min-h-touch flex items-center ${
@@ -50,12 +50,12 @@ export function DashboardNav({ userName, userRole }: DashboardNavProps) {
                   }`}
                 >
                   {link.label}
-                </Link>
+                </a>
               ))}
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{userName}</span>
+            <a href="/admin/utilisateurs" className="text-sm text-gray-600 hover:text-blue-600 hover:underline">{userName}</a>
             <button
               onClick={handleLogout}
               className="px-3 py-2 min-h-touch text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
