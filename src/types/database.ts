@@ -120,6 +120,7 @@ export type Database = {
       chantiers: {
         Row: {
           id: string;
+          nom: string | null;
           adresse: string;
           nature_travaux: string;
           ref_communale: string | null;
@@ -133,6 +134,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          nom?: string | null;
           adresse: string;
           nature_travaux: string;
           ref_communale?: string | null;
@@ -145,6 +147,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          nom?: string | null;
           adresse?: string;
           nature_travaux?: string;
           ref_communale?: string | null;

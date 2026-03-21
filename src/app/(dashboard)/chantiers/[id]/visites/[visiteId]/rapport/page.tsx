@@ -73,15 +73,15 @@ export default async function RapportPage({
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-white rounded-lg p-4 shadow-sm text-center">
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-400 text-center">
           <p className="text-2xl font-bold text-gray-900">{totalReponses}</p>
           <p className="text-xs text-gray-500">Points</p>
         </div>
-        <div className="bg-white rounded-lg p-4 shadow-sm text-center">
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-400 text-center">
           <p className="text-2xl font-bold text-green-600">{conformeCount}</p>
           <p className="text-xs text-gray-500">Conformes</p>
         </div>
-        <div className="bg-white rounded-lg p-4 shadow-sm text-center">
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-400 text-center">
           <p className="text-2xl font-bold text-red-600">{ncCount}</p>
           <p className="text-xs text-gray-500">Non-conformes</p>
         </div>
@@ -89,8 +89,8 @@ export default async function RapportPage({
 
       {/* Ecarts summary */}
       {ecarts && ecarts.length > 0 && (
-        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
-          <h2 className="text-lg font-semibold mb-3">Ecarts</h2>
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-400 mb-6">
+          <h2 className="text-lg font-semibold mb-3">Non-conformités</h2>
           <ul className="space-y-2">
             {ecarts.map((ecart) => (
               <li
@@ -108,7 +108,7 @@ export default async function RapportPage({
       )}
 
       {/* Status indicators */}
-      <div className="bg-white rounded-lg p-4 shadow-sm mb-6 space-y-2">
+      <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-400 mb-6 space-y-2">
         <div className="flex items-center gap-2 text-sm">
           {visite.rapport_url ? (
             <span className="text-green-600 font-medium">
@@ -143,6 +143,7 @@ export default async function RapportPage({
       <RapportActions
         visiteId={visiteId}
         hasRapportUrl={!!visite.rapport_url}
+        rapportUrl={visite.rapport_url ?? null}
         emailEnvoye={visite.email_envoye}
         hasDestinataires={(destinataires?.length ?? 0) > 0}
       />

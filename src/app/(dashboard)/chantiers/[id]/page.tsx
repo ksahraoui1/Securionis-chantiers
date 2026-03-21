@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { DestinatairesSection } from "@/components/chantier/destinataire-list";
 import { TimelineVisites } from "@/components/chantier/timeline-visites";
-import { EcartList } from "@/components/ecart/ecart-list";
+import { EcartListWithActions } from "./ecart-list-actions";
 
 export default async function ChantierDetailPage({
   params,
@@ -88,8 +88,11 @@ export default async function ChantierDetailPage({
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {chantier.adresse}
+            {chantier.nom || chantier.adresse}
           </h1>
+          {chantier.nom && (
+            <p className="text-sm text-gray-600 mt-0.5">{chantier.adresse}</p>
+          )}
           <p className="text-sm text-gray-500 mt-1">
             {chantier.nature_travaux}
           </p>
@@ -163,10 +166,10 @@ export default async function ChantierDetailPage({
         />
       </div>
 
-      {/* Ecarts */}
+      {/* Non-conformités */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Ecarts</h2>
-        <EcartList ecarts={ecarts ?? []} />
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Non-conformités</h2>
+        <EcartListWithActions ecarts={ecarts ?? []} />
       </div>
     </div>
   );

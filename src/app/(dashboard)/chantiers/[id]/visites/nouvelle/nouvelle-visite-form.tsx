@@ -49,6 +49,7 @@ export function NouvelleVisiteForm({
           chantier_id: chantierId,
           inspecteur_id: inspecteurId,
           statut: "brouillon",
+          categorie_ids: selectedCategoryIds,
         })
         .select("id")
         .single();

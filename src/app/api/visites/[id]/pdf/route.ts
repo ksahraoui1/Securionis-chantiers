@@ -112,8 +112,8 @@ export async function POST(
       data: { publicUrl },
     } = serviceClient.storage.from("rapports").getPublicUrl(storagePath);
 
-    // Update visite with rapport URL
-    await supabase
+    // Update visite with rapport URL (service client to bypass RLS)
+    await serviceClient
       .from("visites")
       .update({ rapport_url: publicUrl })
       .eq("id", visiteId);

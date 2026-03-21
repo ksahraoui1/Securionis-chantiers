@@ -34,6 +34,7 @@ ALTER TABLE chantier_inspecteurs
     FOREIGN KEY (inspecteur_id) REFERENCES profiles(id);
 
 -- Trigger: auto-create a profile row when a new user signs up
+-- Uses SECURITY DEFINER to access auth.users from public schema
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
@@ -52,7 +53,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER on_auth_user_created
+CREATE OR REPLACE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_user();

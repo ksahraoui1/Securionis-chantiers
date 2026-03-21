@@ -18,7 +18,7 @@ export default async function VisitePage({
     redirect("/login");
   }
 
-  // Load visite
+  // Load visite (including categorie_ids)
   const { data: visite } = await supabase
     .from("visites")
     .select("*")
@@ -56,19 +56,8 @@ export default async function VisitePage({
     }
   }
 
-  // Get categories from the visite's reponses -> points_controle -> categorie_id
-  // If no reponses yet (fresh visite), load all active categories for the visite's phase
-  let categorieIds: string[] = [];
-  if (reponses && reponses.length > 0) {
-    const pointIds = reponses.map((r) => r.point_controle_id);
-    const { data: points } = await supabase
-      .from("points_controle")
-      .select("categorie_id")
-      .in("id", pointIds);
-    if (points) {
-      categorieIds = [...new Set(points.map((p) => p.categorie_id))];
-    }
-  }
+  // Get categorieIds from the visite record
+  const categorieIds: string[] = visite.categorie_ids ?? [];
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">

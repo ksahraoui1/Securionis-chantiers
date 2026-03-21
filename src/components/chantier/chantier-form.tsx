@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 
 interface ChantierFormData {
+  nom: string;
   adresse: string;
   nature_travaux: string;
   ref_communale: string;
@@ -23,6 +24,7 @@ interface ChantierFormProps {
 }
 
 const EMPTY_FORM: ChantierFormData = {
+  nom: "",
   adresse: "",
   nature_travaux: "",
   ref_communale: "",
@@ -75,6 +77,7 @@ export function ChantierForm({
       const supabase = createClient();
 
       const payload = {
+        nom: form.nom.trim() || null,
         adresse: form.adresse.trim(),
         nature_travaux: form.nature_travaux.trim(),
         ref_communale: form.ref_communale.trim() || null,
@@ -131,6 +134,12 @@ export function ChantierForm({
     required: boolean;
     placeholder: string;
   }[] = [
+    {
+      key: "nom",
+      label: "Nom du chantier",
+      required: false,
+      placeholder: "Ex: Villa Dupont, Immeuble Les Terrasses...",
+    },
     {
       key: "adresse",
       label: "Adresse",

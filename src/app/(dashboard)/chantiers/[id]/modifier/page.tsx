@@ -76,6 +76,7 @@ export default async function ModifierChantierPage({
         userRole={profile?.role ?? "inspecteur"}
         chantierId={chantierId}
         initialData={{
+          nom: chantier.nom ?? "",
           adresse: chantier.adresse,
           nature_travaux: chantier.nature_travaux,
           ref_communale: chantier.ref_communale ?? "",

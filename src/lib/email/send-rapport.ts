@@ -33,15 +33,20 @@ export async function sendRapport(
       const resend = getResend();
       await resend.emails.send({
         from:
-          process.env.RESEND_FROM_EMAIL ?? "rapports@securionis.ch",
+          process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
         to: dest.email,
         subject,
         html: `
-          <p>Bonjour ${dest.nom},</p>
-          <p>Veuillez trouver ci-joint le rapport de la visite de controle effectuee le ${dateFormatted} sur le chantier situe a l'adresse suivante :</p>
-          <p><strong>${chantierAdresse}</strong></p>
-          <p>Merci de prendre connaissance des eventuels ecarts constates et de proceder aux corrections dans les delais impartis.</p>
-          <p>Cordialement,<br/>Securionis SA</p>
+          <p>Bonjour,</p>
+          <p>Veuillez trouver ci-joint le rapport de visite du ${dateFormatted}</p>
+          <p>Excellente journée<br/>Portez-vous bien<br/>Bien à vous</p>
+          <hr style="border:none;border-top:1px solid #999;margin:20px 0"/>
+          <p style="margin:0"><strong>FWN</strong><br/>
+          Karim Sahraoui<br/>
+          Rue du Pied-de-Ville 15<br/>
+          1896 Vouvry</p>
+          <p style="margin:8px 0 0 0">Mobile 079 596 80 57<br/>
+          ks.aigle@gmail.com</p>
         `,
         attachments: [
           {

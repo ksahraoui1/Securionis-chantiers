@@ -234,7 +234,7 @@ export function RapportVisite({
         {/* Historique des ecarts */}
         {ecarts.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Historique des ecarts</Text>
+            <Text style={styles.sectionTitle}>Historique des non-conformités</Text>
             <View style={styles.table}>
               <View style={styles.tableRowHeader}>
                 <Text style={[styles.ecartCell, styles.ecartCellDesc, { fontFamily: "Helvetica-Bold" }]}>

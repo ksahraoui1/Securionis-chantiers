@@ -189,7 +189,7 @@ export function VisiteEnCours({
       <Modal
         isOpen={showDelaiModal}
         onClose={() => setShowDelaiModal(false)}
-        title={`Ecart ${currentEcartIndex + 1} / ${ecartDrafts.length}`}
+        title={`Non-conformité ${currentEcartIndex + 1} / ${ecartDrafts.length}`}
         footer={
           <div className="flex gap-3">
             <Button

@@ -40,7 +40,7 @@ export function TimelineVisites({
           <Link
             key={visite.id}
             href={href}
-            className="block bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow"
+            className="block bg-white rounded-lg border border-gray-400 p-4 hover:shadow-sm transition-shadow"
           >
             <div className="flex items-start justify-between gap-3">
               <div>

@@ -1,3 +1,216 @@
+-- 001: Create phases and categories tables
+-- Phases represent construction stages; categories group control points within a phase.
+
+CREATE TABLE phases (
+    id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    numero     smallint    NOT NULL UNIQUE,
+    libelle    text        NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE categories (
+    id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    phase_id   uuid        NOT NULL REFERENCES phases(id),
+    libelle    text        NOT NULL,
+    is_custom  boolean     NOT NULL DEFAULT false,
+    actif      boolean     NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+-- 002: Create points_controle table
+-- Each control point belongs to a phase and a category.
+-- created_by FK to profiles is added in migration 010.
+
+CREATE TABLE points_controle (
+    id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    phase_id     uuid        NOT NULL REFERENCES phases(id),
+    categorie_id uuid        NOT NULL REFERENCES categories(id),
+    intitule     text        NOT NULL,
+    critere      text,
+    base_legale  text,
+    objet        text,
+    is_custom    boolean     NOT NULL DEFAULT false,
+    actif        boolean     NOT NULL DEFAULT true,
+    created_by   uuid,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now()
+);
+-- 003: Create chantiers table
+-- Represents a construction site under inspection.
+-- created_by FK to profiles is added in migration 010.
+
+CREATE TABLE chantiers (
+    id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    adresse         text        NOT NULL,
+    nature_travaux  text        NOT NULL,
+    ref_communale   text,
+    numero_camac    text,
+    numero_parcelle text,
+    numero_eca      text,
+    contact_nom     text,
+    created_by      uuid        NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now()
+);
+-- 004: Create destinataires table
+-- Recipients who receive inspection reports for a given chantier.
+
+CREATE TABLE destinataires (
+    id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    chantier_id uuid        NOT NULL REFERENCES chantiers(id) ON DELETE CASCADE,
+    nom         text        NOT NULL,
+    organisation text,
+    email       text        NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
+-- 005: Create visites table
+-- Each visite is an inspection session on a chantier.
+-- inspecteur_id FK to profiles is added in migration 010.
+
+CREATE TABLE visites (
+    id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    chantier_id    uuid        NOT NULL REFERENCES chantiers(id),
+    inspecteur_id  uuid        NOT NULL,
+    date_visite    date        NOT NULL DEFAULT CURRENT_DATE,
+    heure_visite   time,
+    statut         text        NOT NULL DEFAULT 'brouillon'
+                               CHECK (statut IN ('brouillon', 'en_cours', 'terminee')),
+    rapport_url    text,
+    email_envoye   boolean     NOT NULL DEFAULT false,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now()
+);
+-- 006: Create reponses table
+-- Stores the inspector's answer for each control point during a visite.
+
+CREATE TABLE reponses (
+    id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    visite_id         uuid        NOT NULL REFERENCES visites(id) ON DELETE CASCADE,
+    point_controle_id uuid        NOT NULL REFERENCES points_controle(id),
+    valeur            text        NOT NULL
+                                  CHECK (valeur IN ('conforme', 'non_conforme', 'pas_necessaire')),
+    remarque          text,
+    photos            text[]      DEFAULT '{}',
+    created_at        timestamptz NOT NULL DEFAULT now(),
+    updated_at        timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_reponse_visite_point UNIQUE (visite_id, point_controle_id),
+    CONSTRAINT chk_photos_max CHECK (array_length(photos, 1) <= 10 OR photos = '{}')
+);
+-- 007: Create ecarts table
+-- An ecart (non-conformity) is raised when a reponse is 'non_conforme'.
+-- updated_by FK to profiles is added in migration 010.
+
+CREATE TABLE ecarts (
+    id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    chantier_id uuid        NOT NULL REFERENCES chantiers(id),
+    reponse_id  uuid        NOT NULL REFERENCES reponses(id),
+    description text        NOT NULL,
+    delai       text,
+    statut      text        NOT NULL DEFAULT 'ouvert'
+                            CHECK (statut IN ('ouvert', 'en_cours_correction', 'corrige')),
+    updated_by  uuid,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+-- 008: Create chantier_inspecteurs junction table
+-- Links inspectors to the chantiers they are assigned to.
+-- inspecteur_id FK to profiles is added in migration 010.
+
+CREATE TABLE chantier_inspecteurs (
+    id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    chantier_id    uuid        NOT NULL REFERENCES chantiers(id) ON DELETE CASCADE,
+    inspecteur_id  uuid        NOT NULL,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_chantier_inspecteur UNIQUE (chantier_id, inspecteur_id)
+);
+-- 009: Create indexes for query performance
+
+-- chantier_inspecteurs
+CREATE INDEX idx_ci_inspecteur ON chantier_inspecteurs(inspecteur_id);
+CREATE INDEX idx_ci_chantier   ON chantier_inspecteurs(chantier_id);
+
+-- visites
+CREATE INDEX idx_visites_chantier    ON visites(chantier_id);
+CREATE INDEX idx_visites_inspecteur  ON visites(inspecteur_id);
+
+-- Partial unique index: only one non-terminee visite per chantier at a time
+CREATE UNIQUE INDEX uq_visites_active ON visites(chantier_id) WHERE statut != 'terminee';
+
+-- reponses
+CREATE INDEX idx_reponses_visite ON reponses(visite_id);
+CREATE INDEX idx_reponses_point  ON reponses(point_controle_id);
+
+-- ecarts
+CREATE INDEX idx_ecarts_chantier ON ecarts(chantier_id);
+CREATE INDEX idx_ecarts_statut   ON ecarts(chantier_id, statut);
+
+-- points_controle
+CREATE INDEX idx_pc_phase     ON points_controle(phase_id);
+CREATE INDEX idx_pc_categorie ON points_controle(categorie_id);
+CREATE INDEX idx_pc_actif     ON points_controle(actif) WHERE actif = true;
+
+-- destinataires
+CREATE INDEX idx_dest_chantier ON destinataires(chantier_id);
+-- 010: Create profiles table and add deferred FK constraints
+-- Profiles are linked 1:1 with auth.users via the id column.
+
+CREATE TABLE profiles (
+    id         uuid        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    nom        text        NOT NULL,
+    email      text        NOT NULL UNIQUE,
+    role       text        NOT NULL DEFAULT 'inspecteur'
+                           CHECK (role IN ('inspecteur', 'administrateur')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Add deferred FK constraints from other tables to profiles
+
+ALTER TABLE points_controle
+    ADD CONSTRAINT fk_pc_created_by
+    FOREIGN KEY (created_by) REFERENCES profiles(id);
+
+ALTER TABLE chantiers
+    ADD CONSTRAINT fk_chantiers_created_by
+    FOREIGN KEY (created_by) REFERENCES profiles(id);
+
+ALTER TABLE visites
+    ADD CONSTRAINT fk_visites_inspecteur
+    FOREIGN KEY (inspecteur_id) REFERENCES profiles(id);
+
+ALTER TABLE ecarts
+    ADD CONSTRAINT fk_ecarts_updated_by
+    FOREIGN KEY (updated_by) REFERENCES profiles(id);
+
+ALTER TABLE chantier_inspecteurs
+    ADD CONSTRAINT fk_ci_inspecteur
+    FOREIGN KEY (inspecteur_id) REFERENCES profiles(id);
+
+-- Trigger: auto-create a profile row when a new user signs up
+-- Uses SECURITY DEFINER to access auth.users from public schema
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    INSERT INTO public.profiles (id, nom, email)
+    VALUES (
+        NEW.id,
+        COALESCE(NEW.raw_user_meta_data ->> 'nom', NEW.raw_user_meta_data ->> 'full_name', 'Utilisateur'),
+        NEW.email
+    );
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_new_user();
 -- 011: Enable RLS on all tables and create access policies
 
 -- ============================================================

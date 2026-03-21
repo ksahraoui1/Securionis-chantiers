@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { STATUTS_ECART } from "@/lib/utils/constants";
 
-const VALID_TRANSITIONS: Record<string, string> = {
-  [STATUTS_ECART.OUVERT]: STATUTS_ECART.EN_COURS_CORRECTION,
-  [STATUTS_ECART.EN_COURS_CORRECTION]: STATUTS_ECART.CORRIGE,
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  [STATUTS_ECART.OUVERT]: [STATUTS_ECART.EN_COURS_CORRECTION, STATUTS_ECART.CORRIGE],
+  [STATUTS_ECART.EN_COURS_CORRECTION]: [STATUTS_ECART.CORRIGE],
 };
 
 export async function PATCH(
@@ -50,20 +50,20 @@ export async function PATCH(
       );
     }
 
-    // Validate transition: ouvert -> en_cours_correction -> corrige (no going back)
-    const expectedNext = VALID_TRANSITIONS[ecart.statut];
+    // Validate transition: ouvert -> en_cours_correction|corrige, en_cours_correction -> corrige
+    const allowed = VALID_TRANSITIONS[ecart.statut];
 
-    if (!expectedNext) {
+    if (!allowed) {
       return NextResponse.json(
-        { error: "L'ecart est deja au statut final" },
+        { error: "La non-conformité est déjà au statut final" },
         { status: 400 }
       );
     }
 
-    if (newStatut !== expectedNext) {
+    if (!allowed.includes(newStatut)) {
       return NextResponse.json(
         {
-          error: `Transition invalide. Le prochain statut valide est : ${expectedNext}`,
+          error: `Transition invalide. Statuts autorisés : ${allowed.join(", ")}`,
         },
         { status: 400 }
       );
