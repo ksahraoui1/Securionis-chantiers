@@ -73,6 +73,13 @@ export async function POST(
       .select("*")
       .eq("chantier_id", visite.chantier_id);
 
+    // Load entreprise (logo + nom + coordonnées)
+    const { data: entreprise } = await supabase
+      .from("entreprises")
+      .select("nom, logo_url, adresse, npa, ville, telephone, email")
+      .limit(1)
+      .maybeSingle();
+
     // Dynamically import react-pdf to avoid SSR issues
     const { renderToBuffer } = await import("@react-pdf/renderer");
     const { RapportVisite } = await import(
@@ -87,6 +94,15 @@ export async function POST(
         reponses: reponses ?? [],
         ecarts: ecarts ?? [],
         destinataires: destinataires ?? [],
+        entrepriseNom: entreprise?.nom ?? null,
+        entrepriseLogoUrl: entreprise?.logo_url ?? null,
+        entrepriseAdresse: entreprise
+          ? [entreprise.adresse, entreprise.npa, entreprise.ville]
+              .filter(Boolean)
+              .join(", ") || null
+          : null,
+        entrepriseTelephone: entreprise?.telephone ?? null,
+        entrepriseEmail: entreprise?.email ?? null,
       })
     );
 

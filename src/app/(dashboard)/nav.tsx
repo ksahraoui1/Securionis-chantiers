@@ -1,15 +1,21 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface DashboardNavProps {
   userName: string;
   userRole: string;
+  entrepriseNom?: string | null;
+  entrepriseLogoUrl?: string | null;
 }
 
-export function DashboardNav({ userName, userRole }: DashboardNavProps) {
+export function DashboardNav({
+  userName,
+  userRole,
+  entrepriseNom,
+  entrepriseLogoUrl,
+}: DashboardNavProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -26,6 +32,7 @@ export function DashboardNav({ userName, userRole }: DashboardNavProps) {
       ? [
           { href: "/admin/points-controle", label: "Points de contrôle" },
           { href: "/admin/utilisateurs", label: "Utilisateurs" },
+          { href: "/admin/entreprise", label: "Entreprise" },
         ]
       : []),
   ];
@@ -35,9 +42,19 @@ export function DashboardNav({ userName, userRole }: DashboardNavProps) {
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-6">
-            <Link href="/chantiers" className="font-bold text-blue-700">
-              Securionis
-            </Link>
+            <a href="/chantiers" className="flex items-center gap-2">
+              {entrepriseLogoUrl ? (
+                <img
+                  src={entrepriseLogoUrl}
+                  alt={entrepriseNom ?? "Logo"}
+                  className="h-10 max-w-[140px] object-contain"
+                />
+              ) : (
+                <span className="font-bold text-blue-700">
+                  {entrepriseNom ?? "Securionis"}
+                </span>
+              )}
+            </a>
             <div className="flex gap-1">
               {links.map((link) => (
                 <a
@@ -55,7 +72,12 @@ export function DashboardNav({ userName, userRole }: DashboardNavProps) {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <a href="/admin/utilisateurs" className="text-sm text-gray-600 hover:text-blue-600 hover:underline">{userName}</a>
+            <a
+              href="/admin/utilisateurs"
+              className="text-sm text-gray-600 hover:text-blue-600 hover:underline"
+            >
+              {userName}
+            </a>
             <button
               onClick={handleLogout}
               className="px-3 py-2 min-h-touch text-sm text-gray-600 hover:bg-gray-100 rounded-lg"

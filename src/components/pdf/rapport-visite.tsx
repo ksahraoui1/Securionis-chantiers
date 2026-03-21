@@ -4,6 +4,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { Tables } from "@/types/database";
@@ -18,12 +19,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     color: "#1a1a1a",
   },
-  header: {
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  logoImage: {
+    height: 40,
+    maxWidth: 140,
+    objectFit: "contain",
+  },
+  headerTitle: {
     fontSize: 18,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 20,
-    textAlign: "center",
     color: "#1e40af",
+    flex: 1,
+    textAlign: "center",
+  },
+  headerTitleAlone: {
+    fontSize: 18,
+    fontFamily: "Helvetica-Bold",
+    color: "#1e40af",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  logoPlaceholder: {
+    width: 140,
   },
   sectionTitle: {
     fontSize: 13,
@@ -128,6 +150,12 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: "#9ca3af",
   },
+  footerAddress: {
+    fontSize: 7,
+    color: "#9ca3af",
+    marginTop: 3,
+    textAlign: "center",
+  },
   pageNumber: {
     fontSize: 8,
     color: "#9ca3af",
@@ -148,6 +176,11 @@ interface RapportVisiteProps {
   })[];
   ecarts: Tables<"ecarts">[];
   destinataires: Tables<"destinataires">[];
+  entrepriseNom?: string | null;
+  entrepriseLogoUrl?: string | null;
+  entrepriseAdresse?: string | null;
+  entrepriseTelephone?: string | null;
+  entrepriseEmail?: string | null;
 }
 
 export function RapportVisite({
@@ -157,6 +190,11 @@ export function RapportVisite({
   reponses,
   ecarts,
   destinataires,
+  entrepriseNom,
+  entrepriseLogoUrl,
+  entrepriseAdresse,
+  entrepriseTelephone,
+  entrepriseEmail,
 }: RapportVisiteProps) {
   const dateFormatted = new Date(visite.date_visite).toLocaleDateString(
     "fr-CH",
@@ -204,11 +242,22 @@ export function RapportVisite({
     .filter((e) => e.delai)
     .map((e) => ({ description: e.description, delai: e.delai! }));
 
+  const footerLabel = entrepriseNom ?? "Securionis";
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         {/* Header */}
-        <Text style={styles.header}>Rapport de visite</Text>
+        {entrepriseLogoUrl ? (
+          <View style={styles.headerRow}>
+            <Image src={entrepriseLogoUrl} style={styles.logoImage} />
+            <Text style={styles.headerTitle}>Rapport de visite</Text>
+            {/* Spacer to keep title centered */}
+            <View style={styles.logoPlaceholder} />
+          </View>
+        ) : (
+          <Text style={styles.headerTitleAlone}>Rapport de visite</Text>
+        )}
 
         {/* Info table */}
         <View style={styles.table}>
@@ -306,12 +355,20 @@ export function RapportVisite({
           </>
         )}
 
-        {/* Footer with page numbers */}
+        {/* Footer */}
         <View style={styles.footer} fixed>
           <View style={styles.footerLine}>
-            <Text style={styles.footerText}>
-              Securionis SA — Rapport de visite
-            </Text>
+            {/* Gauche : coordonnées entreprise */}
+            <View>
+              <Text style={styles.footerText}>{footerLabel}</Text>
+              {entrepriseAdresse && (
+                <Text style={styles.footerText}>{entrepriseAdresse}</Text>
+              )}
+              {entrepriseEmail && (
+                <Text style={styles.footerText}>{entrepriseEmail}</Text>
+              )}
+            </View>
+            {/* Droite : numéro de page */}
             <Text
               style={styles.pageNumber}
               render={({ pageNumber, totalPages }) =>
