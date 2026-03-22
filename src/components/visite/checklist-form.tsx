@@ -91,6 +91,7 @@ export function ChecklistForm({
         <span className="text-xs text-gray-400">
           {saveStatus === "saving" && "Enregistrement..."}
           {saveStatus === "saved" && "Enregistré"}
+          {saveStatus === "saved-offline" && "Sauvegardé hors-ligne"}
           {saveStatus === "error" && "Erreur de sauvegarde"}
         </span>
       </div>

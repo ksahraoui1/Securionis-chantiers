@@ -101,3 +101,47 @@ Nouvelle page `/dashboard` avec vue d'ensemble personnalisée par inspecteur (fi
 ```
 npm run build  →  ✓ Compiled successfully
 ```
+
+---
+
+## PWA offline — 2026-03-22
+
+### Ajout
+
+Support complet PWA : installation sur écran d'accueil, cache offline, formulaire de visite utilisable sans réseau avec synchronisation au retour.
+
+**Service Worker (`public/sw.js`) :**
+- Cache-first pour assets statiques (CSS, JS, images, fonts)
+- Network-first pour les pages (dashboard, chantiers, visites)
+- Page de fallback offline si aucune version en cache
+- Pré-cache du manifest et de l'icône
+
+**IndexedDB offline store (`src/lib/offline/`) :**
+- `db.ts` — stockage des réponses en attente, photos en attente, et fiches visitées en cache
+- `sync.ts` — synchronisation des données locales vers Supabase au retour du réseau
+
+**Autosave offline (`src/hooks/use-autosave.ts`) :**
+- Écriture IndexedDB en premier (local-first), puis tentative réseau
+- Nouveau statut `saved-offline` affiché dans la checklist
+- Si le réseau échoue, les données restent en local pour sync ultérieure
+
+**Indicateur réseau :**
+- `src/hooks/use-online-status.ts` — détecte online/offline, compteur de pending, auto-sync au retour
+- `src/components/ui/offline-banner.tsx` — bandeau rouge "Hors-ligne" ou ambre "X modifications en attente" avec bouton sync manuel
+
+**PWA manifest :**
+- Icône SVG (bouclier + coche, bleu #1e40af)
+- `start_url: /dashboard`, `display: standalone`
+- Icônes déclarées pour installation (any + maskable)
+
+**Fichiers modifiés :**
+- `src/app/layout.tsx` — enregistrement du service worker via `<SwRegister />`
+- `src/app/(dashboard)/layout.tsx` — bandeau `<OfflineBanner />`
+- `src/components/visite/checklist-form.tsx` — affichage statut "Sauvegardé hors-ligne"
+- `src/middleware.ts` — exclusion de `sw.js` du middleware auth
+
+### Vérification
+
+```
+npm run build  →  ✓ Compiled successfully
+```

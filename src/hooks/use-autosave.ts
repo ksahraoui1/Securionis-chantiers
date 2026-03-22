@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { AUTOSAVE_DEBOUNCE_MS, STATUTS_VISITE } from "@/lib/utils/constants";
+import { savePendingResponse } from "@/lib/offline/db";
 
 interface AutosaveData {
   visite_id: string;
@@ -12,7 +13,7 @@ interface AutosaveData {
   photos?: string[];
 }
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
+type SaveStatus = "idle" | "saving" | "saved" | "saved-offline" | "error";
 
 export function useAutosave(visiteId: string) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -31,25 +32,39 @@ export function useAutosave(visiteId: string) {
 
       timerRef.current = setTimeout(async () => {
         setSaveStatus("saving");
+
+        const payload = {
+          visite_id: data.visite_id,
+          point_controle_id: data.point_controle_id,
+          valeur: data.valeur,
+          remarque: data.remarque ?? null,
+          photos: data.photos ?? [],
+          updated_at: new Date().toISOString(),
+        };
+
+        // Toujours sauvegarder en local d'abord (IndexedDB)
+        try {
+          await savePendingResponse(payload);
+        } catch {
+          // IndexedDB non disponible — on continue avec le réseau seul
+        }
+
+        // Tenter la sync réseau
+        if (!navigator.onLine) {
+          setSaveStatus("saved-offline");
+          return;
+        }
+
         try {
           const supabase = createClient();
 
-          const { error } = await supabase.from("reponses").upsert(
-            {
-              visite_id: data.visite_id,
-              point_controle_id: data.point_controle_id,
-              valeur: data.valeur,
-              remarque: data.remarque ?? null,
-              photos: data.photos ?? [],
-              updated_at: new Date().toISOString(),
-            },
-            {
-              onConflict: "visite_id,point_controle_id",
-            }
-          );
+          const { error } = await supabase.from("reponses").upsert(payload, {
+            onConflict: "visite_id,point_controle_id",
+          });
 
           if (error) {
-            setSaveStatus("error");
+            // Sauvegardé en local, sera synchronisé plus tard
+            setSaveStatus("saved-offline");
             return;
           }
 
@@ -67,7 +82,8 @@ export function useAutosave(visiteId: string) {
 
           setSaveStatus("saved");
         } catch {
-          setSaveStatus("error");
+          // Réseau indisponible, mais sauvegardé localement
+          setSaveStatus("saved-offline");
         }
       }, AUTOSAVE_DEBOUNCE_MS);
     },

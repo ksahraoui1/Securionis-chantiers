@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardNav } from "./nav";
+import { OfflineBanner } from "@/components/ui/offline-banner";
 
 export default async function DashboardLayout({
   children,
@@ -58,6 +59,7 @@ export default async function DashboardLayout({
         entrepriseNom={entrepriseNom}
         entrepriseLogoUrl={entrepriseLogoUrl}
       />
+      <OfflineBanner />
       <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
     </div>
   );
