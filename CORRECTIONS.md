@@ -145,3 +145,40 @@ Support complet PWA : installation sur écran d'accueil, cache offline, formulai
 ```
 npm run build  →  ✓ Compiled successfully
 ```
+
+---
+
+## Relation inspecteur ↔ entreprise — 2026-03-22
+
+### Problème
+
+Le modèle "1 entreprise → N inspecteurs" existait en base (migration 015) mais n'était pas complet :
+- `entreprise_id` absent des types TypeScript `profiles`
+- Table `entreprises` absente des types TypeScript
+- Création d'utilisateur : `entreprise_id` non assigné au nouveau profil
+- Email de rapport : signature FWN/Karim Sahraoui hardcodée
+
+### Corrections
+
+**Types (`src/types/database.ts`) :**
+- Ajout `entreprise_id: string | null` dans Row/Insert/Update de `profiles`
+- Ajout table `entreprises` complète (nom, adresse, npa, ville, telephone, email, logo_url)
+
+**API create-user (`src/app/api/admin/create-user/route.ts`) :**
+- Récupère `entreprise_id` du profil admin créateur
+- Assigne automatiquement cette `entreprise_id` au nouveau profil
+
+**Email dynamique (`src/lib/email/send-rapport.ts`) :**
+- Signature construite dynamiquement depuis les données entreprise + nom inspecteur
+- Fonction `buildEmailHtml()` remplace le bloc HTML hardcodé
+- Paramètres ajoutés : `inspecteurNom`, `entreprise` (nom, adresse, téléphone, email)
+
+**API email (`src/app/api/visites/[id]/email/route.ts`) :**
+- Charge le profil inspecteur et son entreprise associée
+- Passe ces données à `sendRapport()` pour la signature
+
+### Vérification
+
+```
+npm run build  →  ✓ Compiled successfully
+```
