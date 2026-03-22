@@ -1,7 +1,8 @@
 import { Resend } from "resend";
+import { getResendApiKey, getResendFromEmail } from "@/lib/env";
 
 function getResend() {
-  return new Resend(process.env.RESEND_API_KEY);
+  return new Resend(getResendApiKey());
 }
 
 export async function sendRapport(
@@ -33,7 +34,7 @@ export async function sendRapport(
       const resend = getResend();
       await resend.emails.send({
         from:
-          process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
+          getResendFromEmail(),
         to: dest.email,
         subject,
         html: `

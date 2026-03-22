@@ -39,8 +39,33 @@ function handlePhotoRemove(url: string) {
 | Prop `chantierId` inutilisée dans `RapportActions` | `rapport-actions.tsx` / `rapport/page.tsx` | Déjà corrigé |
 | `<li>` sans attribut `key` | `rapport/page.tsx` | Inexistant (faux positif) |
 
+---
+
+## Sécurisation des clés API — 2026-03-22
+
+### Problème
+
+Les variables d'environnement (`SUPABASE_URL`, `ANON_KEY`, `SERVICE_ROLE_KEY`, `RESEND_API_KEY`) étaient accédées via des assertions non-null (`process.env.X!`) sans validation. Aucune protection contre l'exposition accidentelle de clés secrètes côté client.
+
+### Corrections
+
+**Nouveau fichier : `src/lib/env.ts`**
+- Module centralisé de validation des variables d'environnement
+- Fonctions getter paresseuses (compatibles inlining Next.js des `NEXT_PUBLIC_*`)
+- Garde `requireServer()` : empêche l'accès à `SERVICE_ROLE_KEY` et `RESEND_API_KEY` côté client (`typeof window !== "undefined"`)
+- Messages d'erreur explicites si une variable manque
+
+**Fichiers mis à jour :**
+- `src/lib/supabase/server.ts` — utilise `getSupabaseUrl()`, `getSupabaseAnonKey()`, `getServiceRoleKey()`
+- `src/lib/supabase/client.ts` — utilise `getSupabaseUrl()`, `getSupabaseAnonKey()`
+- `src/lib/supabase/middleware.ts` — utilise `getSupabaseUrl()`, `getSupabaseAnonKey()`
+- `src/lib/email/send-rapport.ts` — utilise `getResendApiKey()`, `getResendFromEmail()`
+
+**Fix complémentaire : `src/types/database.ts`**
+- Ajout des champs `categorie_ids` et `renseignements_par` dans le type `visites` (manquants depuis les migrations 012 et 014)
+
 ### Vérification
 
 ```
-npx tsc --noEmit  →  0 erreur
+npm run build  →  ✓ Compiled successfully
 ```
