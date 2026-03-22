@@ -5,11 +5,22 @@ function getResend() {
   return new Resend(getResendApiKey());
 }
 
+interface EntrepriseInfo {
+  nom: string;
+  adresse?: string | null;
+  npa?: string | null;
+  ville?: string | null;
+  telephone?: string | null;
+  email?: string | null;
+}
+
 export async function sendRapport(
   rapportUrl: string,
   destinataires: { nom: string; email: string }[],
   chantierAdresse: string,
-  dateVisite: string
+  dateVisite: string,
+  inspecteurNom?: string,
+  entreprise?: EntrepriseInfo | null
 ): Promise<string[]> {
   // Download PDF from Storage URL
   const pdfResponse = await fetch(rapportUrl);
@@ -37,18 +48,7 @@ export async function sendRapport(
           getResendFromEmail(),
         to: dest.email,
         subject,
-        html: `
-          <p>Bonjour,</p>
-          <p>Veuillez trouver ci-joint le rapport de visite du ${dateFormatted}</p>
-          <p>Excellente journée<br/>Portez-vous bien<br/>Bien à vous</p>
-          <hr style="border:none;border-top:1px solid #999;margin:20px 0"/>
-          <p style="margin:0"><strong>FWN</strong><br/>
-          Karim Sahraoui<br/>
-          Rue du Pied-de-Ville 15<br/>
-          1896 Vouvry</p>
-          <p style="margin:8px 0 0 0">Mobile 079 596 80 57<br/>
-          ks.aigle@gmail.com</p>
-        `,
+        html: buildEmailHtml(dateFormatted, inspecteurNom, entreprise),
         attachments: [
           {
             filename,
@@ -68,4 +68,41 @@ export async function sendRapport(
   }
 
   return sentTo;
+}
+
+function buildEmailHtml(
+  dateFormatted: string,
+  inspecteurNom?: string,
+  entreprise?: EntrepriseInfo | null
+): string {
+  let signature = "";
+
+  if (entreprise) {
+    const lines: string[] = [];
+    lines.push(`<strong>${entreprise.nom}</strong>`);
+    if (inspecteurNom) lines.push(inspecteurNom);
+    if (entreprise.adresse) {
+      const adresseLine = [entreprise.adresse, entreprise.npa, entreprise.ville]
+        .filter(Boolean)
+        .join(" ");
+      lines.push(adresseLine);
+    }
+    if (entreprise.telephone) lines.push(entreprise.telephone);
+    if (entreprise.email) lines.push(entreprise.email);
+
+    signature = `
+      <hr style="border:none;border-top:1px solid #999;margin:20px 0"/>
+      <p style="margin:0">${lines.join("<br/>")}</p>`;
+  } else if (inspecteurNom) {
+    signature = `
+      <hr style="border:none;border-top:1px solid #999;margin:20px 0"/>
+      <p style="margin:0">${inspecteurNom}</p>`;
+  }
+
+  return `
+    <p>Bonjour,</p>
+    <p>Veuillez trouver ci-joint le rapport de visite du ${dateFormatted}.</p>
+    <p>Excellente journée<br/>Portez-vous bien<br/>Bien à vous</p>
+    ${signature}
+  `;
 }

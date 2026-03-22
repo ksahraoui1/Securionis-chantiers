@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, entreprise_id")
     .eq("id", user.id)
     .single();
 
@@ -52,6 +52,7 @@ export async function POST(request: Request) {
       nom,
       email,
       role,
+      entreprise_id: profile.entreprise_id,
     });
   }
 

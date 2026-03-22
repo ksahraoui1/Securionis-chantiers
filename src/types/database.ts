@@ -15,6 +15,7 @@ export type Database = {
           nom: string;
           email: string;
           role: "inspecteur" | "administrateur";
+          entreprise_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -23,6 +24,7 @@ export type Database = {
           nom: string;
           email: string;
           role?: "inspecteur" | "administrateur";
+          entreprise_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -31,6 +33,43 @@ export type Database = {
           nom?: string;
           email?: string;
           role?: "inspecteur" | "administrateur";
+          entreprise_id?: string | null;
+          updated_at?: string;
+        };
+      };
+      entreprises: {
+        Row: {
+          id: string;
+          nom: string;
+          adresse: string | null;
+          npa: string | null;
+          ville: string | null;
+          telephone: string | null;
+          email: string | null;
+          logo_url: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nom: string;
+          adresse?: string | null;
+          npa?: string | null;
+          ville?: string | null;
+          telephone?: string | null;
+          email?: string | null;
+          logo_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          nom?: string;
+          adresse?: string | null;
+          npa?: string | null;
+          ville?: string | null;
+          telephone?: string | null;
+          email?: string | null;
+          logo_url?: string | null;
           updated_at?: string;
         };
       };

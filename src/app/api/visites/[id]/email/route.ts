@@ -61,11 +61,30 @@ export async function POST(
       );
     }
 
+    // Load inspecteur profile + entreprise
+    const { data: inspecteur } = await supabase
+      .from("profiles")
+      .select("nom, entreprise_id")
+      .eq("id", visite.inspecteur_id)
+      .single();
+
+    let entreprise = null;
+    if (inspecteur?.entreprise_id) {
+      const { data } = await supabase
+        .from("entreprises")
+        .select("nom, adresse, npa, ville, telephone, email")
+        .eq("id", inspecteur.entreprise_id)
+        .single();
+      entreprise = data;
+    }
+
     const sentTo = await sendRapport(
       visite.rapport_url,
       destinataires,
       chantier?.adresse ?? "Chantier",
-      visite.date_visite
+      visite.date_visite,
+      inspecteur?.nom,
+      entreprise
     );
 
     // Update visite
