@@ -27,6 +27,7 @@ export function DashboardNav({
   }
 
   const links = [
+    { href: "/dashboard", label: "Dashboard" },
     { href: "/chantiers", label: "Chantiers" },
     ...(userRole === "administrateur"
       ? [
@@ -42,7 +43,7 @@ export function DashboardNav({
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-6">
-            <a href="/chantiers" className="flex items-center gap-2">
+            <a href="/dashboard" className="flex items-center gap-2">
               {entrepriseLogoUrl ? (
                 <img
                   src={entrepriseLogoUrl}

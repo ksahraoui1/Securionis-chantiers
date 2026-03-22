@@ -69,3 +69,35 @@ Les variables d'environnement (`SUPABASE_URL`, `ANON_KEY`, `SERVICE_ROLE_KEY`, `
 ```
 npm run build  →  ✓ Compiled successfully
 ```
+
+---
+
+## Dashboard inspecteur — 2026-03-22
+
+### Ajout
+
+Nouvelle page `/dashboard` avec vue d'ensemble personnalisée par inspecteur (filtrée par RLS).
+
+**Indicateurs KPI :**
+- Chantiers actifs — nombre de chantiers de l'inspecteur
+- NC ouvertes — non-conformités non résolues
+- Visites ce mois — nombre de visites réalisées dans le mois en cours
+- Taux de conformité — % moyen sur les 3 derniers mois
+
+**Graphique :** Évolution des NC sur 6 mois (barres empilées ouvertes/corrigées, CSS pur sans lib externe)
+
+**Liste :** Chantiers avec NC urgentes en attente (délai dépassé trié en priorité)
+
+**Fichiers créés :**
+- `src/app/(dashboard)/dashboard/page.tsx` — Server Component, requêtes Supabase
+- `src/app/(dashboard)/dashboard/nc-chart.tsx` — Client Component, graphique barres
+
+**Fichiers modifiés :**
+- `src/app/(dashboard)/nav.tsx` — lien Dashboard ajouté, logo pointe vers `/dashboard`
+- `src/app/page.tsx` — redirection `/` → `/dashboard` au lieu de `/chantiers`
+
+### Vérification
+
+```
+npm run build  →  ✓ Compiled successfully
+```
