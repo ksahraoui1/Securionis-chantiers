@@ -82,6 +82,47 @@ export function usePhotoUpload({
     []
   );
 
+  const replacePhoto = useCallback(
+    async (oldUrl: string, blob: Blob): Promise<string | null> => {
+      setError(null);
+      setUploading(true);
+      try {
+        // Remove old file from storage
+        const oldPath = oldUrl.split("/visite-photos/")[1];
+        const supabase = createClient();
+        if (oldPath) {
+          await supabase.storage.from("visite-photos").remove([oldPath]);
+        }
+
+        // Upload annotated version
+        const filename = `annotated-${crypto.randomUUID()}.jpg`;
+        const path = `${chantierId}/${visiteId}/${reponseId}/${filename}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("visite-photos")
+          .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+
+        if (uploadError) {
+          setError("Erreur lors de l'upload de la photo annotée.");
+          return null;
+        }
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("visite-photos").getPublicUrl(path);
+
+        setPhotos((prev) => prev.map((p) => (p === oldUrl ? publicUrl : p)));
+        return publicUrl;
+      } catch {
+        setError("Erreur lors du remplacement de la photo.");
+        return null;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [chantierId, visiteId, reponseId]
+  );
+
   const initPhotos = useCallback((existingPhotos: string[]) => {
     setPhotos(existingPhotos);
   }, []);
@@ -92,6 +133,7 @@ export function usePhotoUpload({
     error,
     uploadPhoto,
     removePhoto,
+    replacePhoto,
     initPhotos,
     canAddMore: photos.length < MAX_PHOTOS,
     photoCount: photos.length,

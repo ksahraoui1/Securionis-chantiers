@@ -56,3 +56,7 @@ export function getResendApiKey(): string {
 export function getResendFromEmail(): string {
   return process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
 }
+
+export function getAnthropicApiKey(): string {
+  return requireServer("ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY);
+}

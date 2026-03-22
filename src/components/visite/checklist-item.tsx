@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { PhotoCapture } from "./photo-capture";
+import { PhotoAiAnalysis } from "./photo-ai-analysis";
 import { usePhotoUpload } from "@/hooks/use-photo-upload";
 import { VALEURS_REPONSE, LABELS_REPONSE } from "@/lib/utils/constants";
 import type { Tables } from "@/types/database";
@@ -92,6 +93,27 @@ export function ChecklistItem({
     emitChange(valeur, remarque, newPhotos);
   }
 
+  async function handleReplaceAnnotated(oldUrl: string, blob: Blob) {
+    const newUrl = await photoUpload.replacePhoto(oldUrl, blob);
+    if (newUrl) {
+      const newPhotos = photoUpload.photos.map((p) => (p === oldUrl ? newUrl : p));
+      emitChange(valeur, remarque, newPhotos);
+    }
+  }
+
+  function handleAiRemarque(suggested: string) {
+    const newRemarque = remarque
+      ? `${remarque}\n${suggested}`
+      : suggested;
+    setRemarque(newRemarque);
+    emitChange(valeur, newRemarque, photoUpload.photos);
+  }
+
+  function handleAiConformite(suggested: string) {
+    setValeur(suggested);
+    emitChange(suggested, remarque, photoUpload.photos);
+  }
+
   return (
     <div className="bg-white rounded-lg border border-gray-400 p-4 space-y-4">
       <div>
@@ -131,9 +153,17 @@ export function ChecklistItem({
         </label>
         <textarea
           value={remarque}
-          onChange={(e) => handleRemarqueChange(e.target.value)}
+          onChange={(e) => {
+            handleRemarqueChange(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
+          onFocus={(e) => {
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
           rows={2}
-          className="w-full rounded-lg border border-gray-400 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          className="w-full rounded-lg border border-gray-400 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none overflow-hidden"
           placeholder="Remarque optionnelle..."
         />
       </div>
@@ -145,7 +175,19 @@ export function ChecklistItem({
         canAddMore={photoUpload.canAddMore}
         onCapture={handlePhotoCapture}
         onRemove={handlePhotoRemove}
+        onReplaceAnnotated={handleReplaceAnnotated}
       />
+
+      {/* Analyse IA — visible quand au moins 1 photo est uploadée */}
+      {photoUpload.photos.length > 0 && (
+        <PhotoAiAnalysis
+          photoUrl={photoUpload.photos[photoUpload.photos.length - 1]}
+          pointControle={pointControle.intitule}
+          critere={pointControle.critere ?? undefined}
+          onApplyRemarque={handleAiRemarque}
+          onApplyConformite={handleAiConformite}
+        />
+      )}
     </div>
   );
 }

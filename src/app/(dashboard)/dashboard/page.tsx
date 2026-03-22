@@ -144,7 +144,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Tableau de bord</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Tableau de bord</h1>
+        <a
+          href="/api/export/xlsx?scope=all"
+          download
+          className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm"
+        >
+          <span className="material-symbols-outlined text-lg">download</span>
+          Export Excel
+        </a>
+      </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

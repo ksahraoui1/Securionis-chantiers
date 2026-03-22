@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { DestinatairesSection } from "@/components/chantier/destinataire-list";
 import { TimelineVisites } from "@/components/chantier/timeline-visites";
+import { VisiteCompare } from "@/components/visite/visite-compare";
 import { EcartListWithActions } from "./ecart-list-actions";
 
 export default async function ChantierDetailPage({
@@ -97,12 +98,22 @@ export default async function ChantierDetailPage({
             {chantier.nature_travaux}
           </p>
         </div>
-        <Link
-          href={`/chantiers/${chantierId}/modifier`}
-          className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-        >
-          Modifier
-        </Link>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/export/xlsx?scope=chantier&chantierId=${chantierId}`}
+            download
+            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            title="Export Excel"
+          >
+            <span className="material-symbols-outlined text-lg">download</span>
+          </a>
+          <Link
+            href={`/chantiers/${chantierId}/modifier`}
+            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+          >
+            Modifier
+          </Link>
+        </div>
       </div>
 
       {/* Info chantier */}
@@ -165,6 +176,13 @@ export default async function ChantierDetailPage({
           chantierId={chantierId}
         />
       </div>
+
+      {/* Comparaison visites */}
+      {visitesForTimeline.length >= 2 && (
+        <div>
+          <VisiteCompare visites={visitesForTimeline} />
+        </div>
+      )}
 
       {/* Non-conformités */}
       <div>
