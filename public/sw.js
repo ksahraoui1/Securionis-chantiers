@@ -1,7 +1,7 @@
 // Service Worker — Securionis Chantiers
 // Stratégie : Network-first pour les pages, Cache-first pour les assets statiques.
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const STATIC_CACHE = `securionis-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `securionis-pages-${CACHE_VERSION}`;
 
@@ -51,8 +51,9 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Ignorer les requêtes non-GET et les API Supabase
+  // Ignorer les requêtes non-GET, non-http(s), et les API Supabase
   if (request.method !== "GET") return;
+  if (!url.protocol.startsWith("http")) return;
   if (url.hostname.includes("supabase")) return;
   if (url.pathname.startsWith("/api/")) return;
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -72,12 +72,13 @@ export default function LoginPage() {
             >
               Mot de passe
             </label>
-            <Link
-              href="/forgot-password"
+            <button
+              type="button"
+              onClick={() => { window.location.href = "/forgot-password"; }}
               className="text-xs text-blue-600 hover:underline"
             >
               Mot de passe oublié ?
-            </Link>
+            </button>
           </div>
           <input
             id="password"
@@ -107,9 +108,13 @@ export default function LoginPage() {
 
       <p className="text-center text-sm text-gray-500 mt-6">
         Pas encore de compte ?{" "}
-        <Link href="/register" className="text-blue-600 hover:underline font-medium">
+        <button
+          type="button"
+          onClick={() => { window.location.href = "/register"; }}
+          className="text-blue-600 hover:underline font-medium"
+        >
           Créer un compte
-        </Link>
+        </button>
       </p>
     </div>
   );
