@@ -62,13 +62,14 @@ export default async function ChantiersPage() {
     })) ?? [];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Chantiers</h1>
+    <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Chantiers</h1>
         <Link
           href="/chantiers/nouveau"
-          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto"
         >
+          <span className="material-symbols-outlined text-lg">add</span>
           Nouveau chantier
         </Link>
       </div>

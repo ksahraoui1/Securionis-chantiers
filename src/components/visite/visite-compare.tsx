@@ -214,7 +214,7 @@ export function VisiteCompare({ visites }: VisiteCompareProps) {
           {data && (
             <div className="space-y-4">
               {/* Summary cards */}
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                 <SummaryCard
                   label="Corrigées"
                   count={data.summary.corrigees}

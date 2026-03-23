@@ -103,7 +103,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-5 sm:p-8">
       <div className="text-center mb-8">
         <h1 className="text-2xl font-bold text-gray-900">
           Créer un compte

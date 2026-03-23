@@ -93,25 +93,25 @@ export default async function ChantierDetailPage({
     })) ?? [];
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-2xl mx-auto px-4 py-4 sm:py-6 space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words">
             {chantier.nom || chantier.adresse}
           </h1>
           {chantier.nom && (
-            <p className="text-sm text-gray-600 mt-0.5">{chantier.adresse}</p>
+            <p className="text-sm text-gray-600 mt-0.5 break-words">{chantier.adresse}</p>
           )}
           <p className="text-sm text-gray-500 mt-1">
             {chantier.nature_travaux}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <a
             href={`/api/export/xlsx?scope=chantier&chantierId=${chantierId}`}
             download
-            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             title="Export Excel"
           >
             <span className="material-symbols-outlined text-lg">download</span>
@@ -127,7 +127,7 @@ export default async function ChantierDetailPage({
 
       {/* Info chantier */}
       <Card title="Informations">
-        <dl className="grid grid-cols-2 gap-3 text-sm">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           {chantier.ref_communale && (
             <>
               <dt className="text-gray-500">Ref. communale</dt>
@@ -179,12 +179,13 @@ export default async function ChantierDetailPage({
 
       {/* Visites */}
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <h2 className="text-lg font-semibold text-gray-900">Visites</h2>
           <Link
             href={`/chantiers/${chantierId}/visites/nouvelle`}
-            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto"
           >
+            <span className="material-symbols-outlined text-lg">add</span>
             Nouvelle visite
           </Link>
         </div>
