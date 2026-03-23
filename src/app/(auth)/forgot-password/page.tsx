@@ -1,16 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -18,39 +16,64 @@ export default function LoginPage() {
     setLoading(true);
 
     const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
 
-    if (authError) {
-      setError("Email ou mot de passe incorrect.");
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      email,
+      {
+        redirectTo: `${window.location.origin}/reset-password`,
+      }
+    );
+
+    if (resetError) {
+      setError(resetError.message);
       setLoading(false);
       return;
     }
 
-    router.push("/dashboard");
-    router.refresh();
+    setSuccess(true);
+    setLoading(false);
+  }
+
+  if (success) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
+        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-blue-600 text-3xl">forward_to_inbox</span>
+        </div>
+        <h1 className="text-xl font-bold text-gray-900 mb-2">
+          Email envoyé
+        </h1>
+        <p className="text-sm text-gray-600 mb-6">
+          Si un compte existe pour <strong>{email}</strong>, vous recevrez un lien de réinitialisation dans quelques minutes.
+        </p>
+        <p className="text-xs text-gray-400 mb-6">
+          Vérifiez aussi votre dossier spam.
+        </p>
+        <Link
+          href="/login"
+          className="text-sm text-blue-600 hover:underline font-medium"
+        >
+          Retour à la connexion
+        </Link>
+      </div>
+    );
   }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8">
       <div className="text-center mb-8">
         <h1 className="text-2xl font-bold text-gray-900">
-          Securionis Chantiers
+          Mot de passe oublié
         </h1>
         <p className="text-sm text-gray-500 mt-2">
-          Santé et Sécurité au Travail
+          Entrez votre email pour recevoir un lien de réinitialisation.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Email
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            Adresse email
           </label>
           <input
             id="email"
@@ -61,32 +84,6 @@ export default function LoginPage() {
             autoComplete="email"
             className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             placeholder="votre@email.ch"
-          />
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Mot de passe
-            </label>
-            <Link
-              href="/forgot-password"
-              className="text-xs text-blue-600 hover:underline"
-            >
-              Mot de passe oublié ?
-            </Link>
-          </div>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
@@ -101,14 +98,13 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full py-4 min-h-touch bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-lg"
         >
-          {loading ? "Connexion..." : "Se connecter"}
+          {loading ? "Envoi..." : "Envoyer le lien"}
         </button>
       </form>
 
       <p className="text-center text-sm text-gray-500 mt-6">
-        Pas encore de compte ?{" "}
-        <Link href="/register" className="text-blue-600 hover:underline font-medium">
-          Créer un compte
+        <Link href="/login" className="text-blue-600 hover:underline font-medium">
+          Retour à la connexion
         </Link>
       </p>
     </div>
