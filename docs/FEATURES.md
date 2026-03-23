@@ -126,7 +126,83 @@ Centralisation de tous les documents liés à un chantier.
 ### Intégration
 - Section "Documents" sur la page détail chantier, entre les informations et les destinataires
 
-## 7. Améliorations UX
+## 7. Inscription et gestion des mots de passe
+
+**Fichiers** : `src/app/(auth)/register/page.tsx`, `forgot-password/page.tsx`, `reset-password/page.tsx`
+
+### Inscription (`/register`)
+- Champs : Nom complet, Email, Mot de passe, Confirmation mot de passe
+- Validation : min 6 caractères, mots de passe identiques, email unique
+- Crée l'utilisateur dans Supabase Auth + profil avec rôle `inspecteur`
+- Si confirmation email requise → écran "Vérifiez votre email"
+- Sinon → redirection directe vers le dashboard
+
+### Mot de passe oublié (`/forgot-password`)
+- Saisie de l'email
+- Envoi d'un lien de réinitialisation via Supabase Auth
+- Écran de confirmation avec instructions (vérifier spam)
+
+### Réinitialisation (`/reset-password`)
+- S'ouvre automatiquement via le lien reçu par email
+- Détection de la session `PASSWORD_RECOVERY` de Supabase
+- Formulaire : nouveau mot de passe + confirmation
+- Redirection vers le dashboard après changement
+- Gestion lien expiré avec proposition de renvoyer
+
+### Liens sur la page login
+- "Mot de passe oublié ?" à côté du label mot de passe
+- "Créer un compte" en bas du formulaire
+
+## 8. Design responsive
+
+**Fichiers** : navigation, dashboard, chantiers, pages auth, comparaison visites
+
+### Navigation (`nav.tsx`)
+- **Mobile** : menu hamburger avec icônes Material Symbols, liens empilés, section utilisateur séparée
+- **Desktop** : navigation horizontale classique
+- Breakpoint : `md:` (768px)
+
+### Dashboard
+- KPI : grille 1 colonne (mobile) → 2 colonnes (sm) → 4 colonnes (lg)
+- Boutons : full-width sur mobile, auto-width sur desktop
+- Headers : empilés verticalement sur mobile
+
+### Pages chantiers
+- Header : flex-col mobile, flex-row desktop
+- Grille infos : 1 colonne mobile → 2 colonnes desktop
+- Boutons "Nouveau" / "Nouvelle visite" : full-width mobile
+
+### Pages authentification
+- Padding adaptatif : `p-5` mobile, `p-8` desktop
+- Formulaires full-width avec max-w-md centré
+
+### Comparaison visites
+- Grille résumé : 2 → 3 → 5 colonnes selon la taille
+- Tableau : stack vertical mobile, grille desktop
+
+## 9. Améliorations UX
 
 - Champ remarque auto-extensible (s'agrandit avec le contenu)
 - Fonts Google (Inter + Material Symbols) restaurées dans le layout
+- Touch targets min 44x44px sur tous les boutons et liens
+
+## Déploiement
+
+### Production
+- **URL** : https://chantiers.securionis.com
+- **Infrastructure** : Docker sur VPS Hostinger (72.61.187.90)
+- **SSL** : Let's Encrypt avec renouvellement automatique
+- **Reverse proxy** : Nginx (HTTP→HTTPS redirect)
+- **Process** : Docker Compose (securionis + nginx)
+
+### Mise à jour
+```bash
+cd /app/securionis && git pull && docker compose down && docker compose build --no-cache && docker compose up -d
+```
+
+### Variables d'environnement (`.env.local`)
+- `NEXT_PUBLIC_SUPABASE_URL` — URL du projet Supabase
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Clé publique Supabase
+- `SUPABASE_SERVICE_ROLE_KEY` — Clé service (serveur uniquement)
+- `RESEND_API_KEY` — Envoi d'emails
+- `ANTHROPIC_API_KEY` — Analyse IA photos + Assistant juridique
