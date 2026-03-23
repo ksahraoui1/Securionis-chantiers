@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { PhotoCapture } from "./photo-capture";
 import { PhotoAiAnalysis } from "./photo-ai-analysis";
+import { LegalAssistant } from "./legal-assistant";
 import { usePhotoUpload } from "@/hooks/use-photo-upload";
 import { VALEURS_REPONSE, LABELS_REPONSE } from "@/lib/utils/constants";
 import type { Tables } from "@/types/database";
@@ -188,6 +189,17 @@ export function ChecklistItem({
           onApplyConformite={handleAiConformite}
         />
       )}
+
+      {/* Assistant juridique */}
+      <LegalAssistant
+        context={{
+          intitule: pointControle.intitule,
+          critere: pointControle.critere,
+          baseLegale: pointControle.base_legale,
+          objet: pointControle.objet,
+        }}
+        onInsertRemarque={handleAiRemarque}
+      />
     </div>
   );
 }

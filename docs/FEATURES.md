@@ -1,4 +1,6 @@
-# Fonctionnalités ajoutées — 2026-03-22
+# Fonctionnalités — Securionis Chantiers
+
+> Dernière mise à jour : 2026-03-23
 
 ## 1. Annotation des photos
 
@@ -70,6 +72,61 @@ Détection automatique de dangers via Claude Sonnet (vision).
 - Clé API dans `.env.local` (gitignored), accès serveur uniquement via `requireServer()`
 - Authentification vérifiée avant chaque appel
 
-## 5. Améliorations UX
+## 5. Assistant IA juridique
+
+**Fichiers** : `src/app/api/assistant/legal/route.ts`, `src/components/visite/legal-assistant.tsx`
+
+Copilote de terrain pour les questions juridiques pendant l'inspection.
+
+### Expertise
+- Ordonnance sur les travaux de construction (OTConst, RS 832.311.141)
+- Ordonnance sur la prévention des accidents (OPA, RS 832.30)
+- Loi sur le travail (LTr, RS 822.11)
+- Directives SUVA (feuillets, listes de contrôle)
+- Normes SIA (SIA 118, SIA 260, etc.)
+- RPAC et réglementations cantonales
+- Code des obligations (CO)
+- Ordonnance sur les installations électriques à basse tension (OIBT)
+
+### Interface
+- Bouton "Assistant juridique" sur chaque point de contrôle
+- **4 questions rapides** pré-définies (réglementation, critères, formulation NC, délais)
+- Interface chat avec historique de conversation
+- Rendu markdown (références légales en gras)
+- Bouton **"Copier dans la remarque"** sur chaque réponse
+- Contexte automatique : point de contrôle, critère et base légale envoyés à l'IA
+
+## 6. Gestion documentaire par chantier
+
+**Fichiers** : `supabase/migrations/016_create_documents.sql`, `src/components/chantier/document-manager.tsx`
+
+Centralisation de tous les documents liés à un chantier.
+
+### Catégories
+- Permis de construire
+- Plans
+- Rapport ECA
+- Autorisation travaux dangereux
+- Certificat entreprise
+- Autre
+
+### Fonctionnalités
+- **Upload** : formulaire avec nom, catégorie, description, sélection fichier (PDF, Word, Excel, Image, DWG)
+- **Versionnement** : bouton "Nouvelle version" → remplace le fichier, incrémente le numéro (badge v2, v3...)
+- **Filtres** par catégorie avec compteur
+- **Téléchargement** direct
+- **Suppression** avec confirmation
+- Affichage : icône par catégorie, taille fichier, date, badge version
+
+### Base de données
+- Table `documents` : id, chantier_id (FK CASCADE), nom, categorie, description, fichier_url, fichier_nom, fichier_taille, version, uploaded_by
+- Index sur chantier_id et categorie
+- RLS activé
+
+### Intégration
+- Section "Documents" sur la page détail chantier, entre les informations et les destinataires
+
+## 7. Améliorations UX
+
 - Champ remarque auto-extensible (s'agrandit avec le contenu)
 - Fonts Google (Inter + Material Symbols) restaurées dans le layout

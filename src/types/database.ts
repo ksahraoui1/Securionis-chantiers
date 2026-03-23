@@ -337,6 +337,46 @@ export type Database = {
           inspecteur_id?: string;
         };
       };
+      documents: {
+        Row: {
+          id: string;
+          chantier_id: string;
+          nom: string;
+          categorie: string;
+          description: string | null;
+          fichier_url: string;
+          fichier_nom: string;
+          fichier_taille: number | null;
+          version: number;
+          uploaded_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          chantier_id: string;
+          nom: string;
+          categorie?: string;
+          description?: string | null;
+          fichier_url: string;
+          fichier_nom: string;
+          fichier_taille?: number | null;
+          version?: number;
+          uploaded_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          nom?: string;
+          categorie?: string;
+          description?: string | null;
+          fichier_url?: string;
+          fichier_nom?: string;
+          fichier_taille?: number | null;
+          version?: number;
+          updated_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

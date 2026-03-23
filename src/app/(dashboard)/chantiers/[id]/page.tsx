@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { DestinatairesSection } from "@/components/chantier/destinataire-list";
+import { DocumentManager } from "@/components/chantier/document-manager";
 import { TimelineVisites } from "@/components/chantier/timeline-visites";
 import { VisiteCompare } from "@/components/visite/visite-compare";
 import { EcartListWithActions } from "./ecart-list-actions";
@@ -52,6 +53,14 @@ export default async function ChantierDetailPage({
     .select("*")
     .eq("chantier_id", chantierId)
     .order("created_at", { ascending: false });
+
+  // Load documents
+  const { data: documents } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("chantier_id", chantierId)
+    .order("categorie")
+    .order("nom");
 
   // Count NC per visite for timeline
   const visiteIds = visites?.map((v) => v.id) ?? [];
@@ -150,6 +159,14 @@ export default async function ChantierDetailPage({
             </>
           )}
         </dl>
+      </Card>
+
+      {/* Documents */}
+      <Card title="Documents">
+        <DocumentManager
+          chantierId={chantierId}
+          initialDocuments={documents ?? []}
+        />
       </Card>
 
       {/* Destinataires */}
