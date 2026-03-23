@@ -72,6 +72,62 @@ npm run build  →  ✓ Compiled successfully
 
 ---
 
+## Fix routes auth publiques + Service Worker + migration documents — 2026-03-23
+
+### Problème 1 : Routes d'inscription inaccessibles
+
+Le middleware (`src/lib/supabase/middleware.ts`) redirigeait vers `/login` toute URL non authentifiée sauf `/login` et `/auth`. Les routes `/register`, `/forgot-password` et `/reset-password` étaient donc bloquées — la page d'inscription ne s'affichait jamais.
+
+**Correction :**
+```ts
+// ❌ Avant
+if (!user && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth"))
+
+// ✅ Après
+const publicPaths = ["/login", "/register", "/forgot-password", "/reset-password", "/auth"];
+const isPublic = publicPaths.some((p) => request.nextUrl.pathname.startsWith(p));
+if (!user && !isPublic)
+```
+
+**Fix complémentaire (`src/app/(auth)/login/page.tsx`) :**
+- Les liens `<Link>` vers `/register` et `/forgot-password` remplacés par des `<button>` avec `window.location.href` pour forcer une navigation complète (la navigation côté client Next.js échouait silencieusement)
+
+### Problème 2 : Table `documents` inexistante en production
+
+La migration `016_create_documents.sql` n'avait pas été appliquée sur la base Supabase distante. Erreur : `Could not find the table 'public.documents' in the schema cache`.
+
+**Correction :**
+- Migration appliquée via `npx supabase db query --linked`
+- Les migrations 001-015 avaient été exécutées manuellement, hors du tracking CLI
+
+### Problème 3 : Service Worker — erreur `cache.put` sur scheme non-http
+
+Le SW tentait de mettre en cache des requêtes avec un scheme `chrome-extension://`, ce qui provoquait une `TypeError`.
+
+**Correction (`public/sw.js`) :**
+```js
+// Ajout du filtre de protocole
+if (!url.protocol.startsWith("http")) return;
+```
+- Cache incrémenté de v1 à v2 pour forcer le renouvellement
+
+### Problème 4 : Config Supabase CLI obsolète
+
+`supabase/config.toml` contenait une section `[project]` non supportée par Supabase CLI v2.83+, et `major_version` était à 15 au lieu de 17.
+
+**Correction :**
+- Section `[project]` supprimée
+- `major_version` passé de 15 à 17
+
+### Vérification
+
+```
+npm run build  →  ✓ Compiled successfully
+docker compose build + deploy → ✓ chantiers.securionis.com opérationnel
+```
+
+---
+
 ## Dashboard inspecteur — 2026-03-22
 
 ### Ajout

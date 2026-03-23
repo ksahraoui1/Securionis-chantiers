@@ -153,6 +153,10 @@ Centralisation de tous les documents liés à un chantier.
 - "Mot de passe oublié ?" à côté du label mot de passe
 - "Créer un compte" en bas du formulaire
 
+### Middleware auth
+- Routes publiques autorisées : `/login`, `/register`, `/forgot-password`, `/reset-password`, `/auth`
+- Navigation via `window.location.href` (navigation complète, pas de SPA routing)
+
 ## 8. Design responsive
 
 **Fichiers** : navigation, dashboard, chantiers, pages auth, comparaison visites
@@ -197,7 +201,7 @@ Centralisation de tous les documents liés à un chantier.
 
 ### Mise à jour
 ```bash
-cd /app/securionis && git pull && docker compose down && docker compose build --no-cache && docker compose up -d
+cd /app/securionis && git pull origin main && docker compose down && docker compose up -d --build
 ```
 
 ### Variables d'environnement (`.env.local`)
