@@ -180,6 +180,56 @@ const styles = StyleSheet.create({
   },
 });
 
+// Convertit un texte potentiellement markdown en éléments PDF
+function RemarqueText({ text }: { text: string }) {
+  const lines = text.split("\n").filter((l) => l.trim() !== "");
+
+  return (
+    <View style={{ marginTop: 2 }}>
+      {lines.map((line, i) => {
+        const trimmed = line.trim();
+
+        // Puce : - texte ou * texte
+        if (/^[-*•]\s/.test(trimmed)) {
+          const content = trimmed.replace(/^[-*•]\s+/, "");
+          return (
+            <View key={i} style={{ flexDirection: "row", paddingLeft: 8, marginBottom: 1 }}>
+              <Text style={{ fontSize: 9, color: "#374151", marginRight: 4 }}>•</Text>
+              <Text style={{ fontSize: 9, color: "#374151", flex: 1 }}>
+                {renderInlineText(content)}
+              </Text>
+            </View>
+          );
+        }
+
+        // Ligne normale
+        return (
+          <Text key={i} style={{ fontSize: 9, color: "#374151", marginBottom: 1 }}>
+            {renderInlineText(trimmed)}
+          </Text>
+        );
+      })}
+    </View>
+  );
+}
+
+// Rend le texte inline en gérant le **gras**
+function renderInlineText(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  if (parts.length === 1) return text;
+
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <Text key={i} style={{ fontFamily: "Helvetica-Bold" }}>
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    return <Text key={i}>{part}</Text>;
+  });
+}
+
 interface RapportVisiteProps {
   chantier: Tables<"chantiers">;
   visite: Tables<"visites">;
@@ -296,9 +346,7 @@ export function RapportVisite({
                   "Point de controle"}
               </Text>
               {r.remarque && (
-                <Text style={styles.constatationText}>
-                  Remarque : {r.remarque}
-                </Text>
+                <RemarqueText text={r.remarque} />
               )}
               {r.photos && r.photos.length > 0 && (
                 <View style={styles.photosRow}>
