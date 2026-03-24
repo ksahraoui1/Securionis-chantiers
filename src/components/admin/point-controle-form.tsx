@@ -19,6 +19,8 @@ export function PointControleForm({
   const [themes, setThemes] = useState<Tables<"themes">[]>([]);
   const [categorieId, setCategorieId] = useState(initialData?.categorie_id ?? "");
   const [themeId, setThemeId] = useState(initialData?.theme_id ?? "");
+  const [newTheme, setNewTheme] = useState("");
+  const [showNewTheme, setShowNewTheme] = useState(false);
   const [intitule, setIntitule] = useState(initialData?.intitule ?? "");
   const [critere, setCritere] = useState(initialData?.critere ?? "");
   const [baseLegale, setBaseLegale] = useState(initialData?.base_legale ?? "");
@@ -28,6 +30,7 @@ export function PointControleForm({
 
   // Documents PDF
   const [docs, setDocs] = useState<Tables<"point_controle_documents">[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -63,6 +66,8 @@ export function PointControleForm({
       if (data) setThemes(data);
     }
     load();
+    setShowNewTheme(false);
+    setNewTheme("");
   }, [categorieId]);
 
   // Load existing documents
@@ -81,38 +86,48 @@ export function PointControleForm({
     loadDocs();
   }, [loadDocs]);
 
+  // Upload a PDF to a point
+  async function uploadDocToPoint(pointId: string, file: File, ordre: number) {
+    const supabase = createClient();
+    const ext = file.name.split(".").pop() ?? "pdf";
+    const path = `points-controle/${pointId}/${crypto.randomUUID()}.${ext}`;
+
+    const { error: storageError } = await supabase.storage
+      .from("rapports")
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (storageError) throw new Error(storageError.message);
+
+    const { data: { publicUrl } } = supabase.storage.from("rapports").getPublicUrl(path);
+
+    const { error: dbError } = await supabase.from("point_controle_documents").insert({
+      point_controle_id: pointId,
+      nom: file.name.replace(/\.[^/.]+$/, ""),
+      fichier_url: publicUrl,
+      fichier_nom: file.name,
+      fichier_taille: file.size,
+      ordre,
+    });
+    if (dbError) throw new Error(dbError.message);
+  }
+
   async function handleUploadDoc(file: File) {
-    if (!initialData?.id) return;
+    if (!initialData?.id) {
+      // Nouveau point : stocker en attente
+      if (pendingFiles.length + docs.length >= 5) {
+        setError("Maximum 5 documents par point de contrôle.");
+        return;
+      }
+      setPendingFiles((prev) => [...prev, file]);
+      return;
+    }
     if (docs.length >= 5) {
       setError("Maximum 5 documents par point de contrôle.");
       return;
     }
     setUploading(true);
     setError(null);
-
     try {
-      const supabase = createClient();
-      const ext = file.name.split(".").pop() ?? "pdf";
-      const path = `points-controle/${initialData.id}/${crypto.randomUUID()}.${ext}`;
-
-      const { error: storageError } = await supabase.storage
-        .from("rapports")
-        .upload(path, file, { contentType: file.type, upsert: false });
-
-      if (storageError) throw new Error(storageError.message);
-
-      const { data: { publicUrl } } = supabase.storage.from("rapports").getPublicUrl(path);
-
-      const { error: dbError } = await supabase.from("point_controle_documents").insert({
-        point_controle_id: initialData.id,
-        nom: file.name.replace(/\.[^/.]+$/, ""),
-        fichier_url: publicUrl,
-        fichier_nom: file.name,
-        fichier_taille: file.size,
-        ordre: docs.length + 1,
-      });
-
-      if (dbError) throw new Error(dbError.message);
+      await uploadDocToPoint(initialData.id, file, docs.length + 1);
       await loadDocs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur upload");
@@ -135,6 +150,10 @@ export function PointControleForm({
     await loadDocs();
   }
 
+  function removePendingFile(index: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -147,16 +166,34 @@ export function PointControleForm({
     setSaving(true);
     try {
       const supabase = createClient();
+
+      // Créer un nouveau thème si nécessaire
+      let finalThemeId = themeId || null;
+      if (showNewTheme && newTheme.trim()) {
+        const { data: newThemeData, error: themeError } = await supabase
+          .from("themes")
+          .insert({
+            categorie_id: categorieId,
+            libelle: newTheme.trim(),
+          })
+          .select("id")
+          .single();
+        if (themeError) throw themeError;
+        finalThemeId = newThemeData.id;
+      }
+
       const payload = {
         phase_id: null,
         categorie_id: categorieId,
-        theme_id: themeId || null,
+        theme_id: finalThemeId,
         intitule: intitule.trim(),
         critere: critere.trim() || null,
         base_legale: baseLegale.trim() || null,
         explications: explications.trim() || null,
         updated_at: new Date().toISOString(),
       };
+
+      let pointId = initialData?.id;
 
       if (initialData) {
         const { error: updateError } = await supabase
@@ -165,10 +202,20 @@ export function PointControleForm({
           .eq("id", initialData.id);
         if (updateError) throw updateError;
       } else {
-        const { error: insertError } = await supabase
+        const { data: newPoint, error: insertError } = await supabase
           .from("points_controle")
-          .insert({ ...payload, is_custom: true });
+          .insert({ ...payload, is_custom: true })
+          .select("id")
+          .single();
         if (insertError) throw insertError;
+        pointId = newPoint.id;
+      }
+
+      // Upload pending files pour le nouveau point
+      if (pointId && pendingFiles.length > 0) {
+        for (let i = 0; i < pendingFiles.length; i++) {
+          await uploadDocToPoint(pointId, pendingFiles[i], docs.length + i + 1);
+        }
       }
 
       onSaved();
@@ -178,6 +225,8 @@ export function PointControleForm({
       setSaving(false);
     }
   }
+
+  const totalDocs = docs.length + pendingFiles.length;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -204,22 +253,47 @@ export function PointControleForm({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">
-            Thème
-          </label>
-          <select
-            value={themeId}
-            onChange={(e) => setThemeId(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
-            disabled={!categorieId}
-          >
-            <option value="">Aucun thème</option>
-            {themes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.libelle}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-500">
+              Thème
+            </label>
+            {categorieId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewTheme(!showNewTheme);
+                  if (!showNewTheme) setThemeId("");
+                  else setNewTheme("");
+                }}
+                className="text-[10px] text-blue-600 hover:underline"
+              >
+                {showNewTheme ? "Choisir existant" : "+ Nouveau thème"}
+              </button>
+            )}
+          </div>
+          {showNewTheme ? (
+            <input
+              type="text"
+              value={newTheme}
+              onChange={(e) => setNewTheme(e.target.value)}
+              className="w-full rounded-lg border border-blue-300 px-3 py-3 min-h-touch text-sm bg-blue-50"
+              placeholder="Nom du nouveau thème"
+            />
+          ) : (
+            <select
+              value={themeId}
+              onChange={(e) => setThemeId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
+              disabled={!categorieId}
+            >
+              <option value="">Aucun thème</option>
+              {themes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.libelle}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -277,66 +351,87 @@ export function PointControleForm({
         </div>
       </div>
 
-      {/* Documents PDF — only for existing points */}
-      {initialData?.id && (
-        <div className="border-t pt-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-medium text-gray-500">
-              Documents PDF ({docs.length}/5)
-            </label>
-            {docs.length < 5 && (
-              <>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleUploadDoc(file);
-                    e.target.value = "";
-                  }}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="text-xs px-3 py-1.5 min-h-touch bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50"
-                >
-                  {uploading ? "Upload..." : "+ Ajouter PDF"}
-                </button>
-              </>
-            )}
-          </div>
-          {docs.length > 0 && (
-            <div className="space-y-1">
-              {docs.map((doc) => (
-                <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                  <span className="material-symbols-outlined text-red-500 text-sm">picture_as_pdf</span>
-                  <a
-                    href={doc.fichier_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-600 hover:underline flex-1 truncate"
-                  >
-                    {doc.nom}
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteDoc(doc.id)}
-                    className="text-red-500 hover:text-red-700 p-1"
-                  >
-                    <span className="material-symbols-outlined text-sm">close</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {docs.length === 0 && (
-            <p className="text-xs text-gray-400">Aucun document. Ajoutez des PDF réglementaires.</p>
+      {/* Documents PDF — disponible à la création ET à l'édition */}
+      <div className="border-t pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-medium text-gray-500">
+            Documents PDF ({totalDocs}/5)
+          </label>
+          {totalDocs < 5 && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleUploadDoc(file);
+                  e.target.value = "";
+                }}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="text-xs px-3 py-1.5 min-h-touch bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+              >
+                {uploading ? "Upload..." : "+ Ajouter PDF"}
+              </button>
+            </>
           )}
         </div>
-      )}
+
+        {/* Documents déjà enregistrés */}
+        {docs.length > 0 && (
+          <div className="space-y-1">
+            {docs.map((doc) => (
+              <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                <span className="material-symbols-outlined text-red-500 text-sm">picture_as_pdf</span>
+                <a
+                  href={doc.fichier_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex-1 truncate"
+                >
+                  {doc.nom}
+                </a>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteDoc(doc.id)}
+                  className="text-red-500 hover:text-red-700 p-1"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Fichiers en attente (nouveau point) */}
+        {pendingFiles.length > 0 && (
+          <div className="space-y-1 mt-1">
+            {pendingFiles.map((file, i) => (
+              <div key={i} className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2">
+                <span className="material-symbols-outlined text-blue-500 text-sm">upload_file</span>
+                <span className="text-xs text-blue-700 flex-1 truncate">{file.name}</span>
+                <span className="text-[10px] text-blue-400">En attente</span>
+                <button
+                  type="button"
+                  onClick={() => removePendingFile(i)}
+                  className="text-red-500 hover:text-red-700 p-1"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {totalDocs === 0 && (
+          <p className="text-xs text-gray-400">Aucun document. Ajoutez des PDF réglementaires.</p>
+        )}
+      </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
