@@ -107,6 +107,19 @@ const styles = StyleSheet.create({
     color: "#374151",
     marginBottom: 2,
   },
+  photosRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+  },
+  photoImage: {
+    width: 120,
+    height: 90,
+    objectFit: "cover",
+    borderRadius: 3,
+    border: "0.5px solid #d1d5db",
+  },
   ecartRow: {
     flexDirection: "row",
     borderBottomWidth: 0.5,
@@ -288,9 +301,11 @@ export function RapportVisite({
                 </Text>
               )}
               {r.photos && r.photos.length > 0 && (
-                <Text style={styles.constatationText}>
-                  Photos : {r.photos.length} photo(s) jointe(s)
-                </Text>
+                <View style={styles.photosRow}>
+                  {r.photos.map((photoUrl, i) => (
+                    <Image key={i} src={photoUrl} style={styles.photoImage} />
+                  ))}
+                </View>
               )}
             </View>
           ))
