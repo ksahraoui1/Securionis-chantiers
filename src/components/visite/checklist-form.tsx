@@ -6,6 +6,10 @@ import { ChecklistItem } from "./checklist-item";
 import { useAutosave } from "@/hooks/use-autosave";
 import type { Tables } from "@/types/database";
 
+type PointWithDocs = Tables<"points_controle"> & {
+  point_controle_documents?: Tables<"point_controle_documents">[];
+};
+
 interface ChecklistFormProps {
   visiteId: string;
   chantierId: string;
@@ -26,25 +30,39 @@ export function ChecklistForm({
   onValidate,
   validating,
 }: ChecklistFormProps) {
-  const [points, setPoints] = useState<Tables<"points_controle">[]>([]);
+  const [points, setPoints] = useState<PointWithDocs[]>([]);
   const [loading, setLoading] = useState(true);
   const { save, saveStatus } = useAutosave(visiteId);
 
   useEffect(() => {
     async function loadPoints() {
       const supabase = createClient();
-      const { data } = await supabase
+
+      // Try to load theme_ids from localStorage (new visits)
+      const storedThemes = localStorage.getItem(`visite-themes-${visiteId}`);
+      const themeIds: string[] | null = storedThemes ? JSON.parse(storedThemes) : null;
+
+      let query = supabase
         .from("points_controle")
-        .select("*")
-        .in("categorie_id", categorieIds)
+        .select("*, point_controle_documents(*)")
         .eq("actif", true)
         .order("objet")
         .order("intitule");
-      if (data) setPoints(data);
+
+      if (themeIds && themeIds.length > 0) {
+        // New flow: filter by themes
+        query = query.in("theme_id", themeIds);
+      } else if (categorieIds.length > 0) {
+        // Legacy flow: filter by categories
+        query = query.in("categorie_id", categorieIds);
+      }
+
+      const { data } = await query;
+      if (data) setPoints(data as PointWithDocs[]);
       setLoading(false);
     }
     if (categorieIds.length > 0) loadPoints();
-  }, [categorieIds]);
+  }, [categorieIds, visiteId]);
 
   const handleChange = useCallback(
     (data: {
@@ -77,7 +95,7 @@ export function ChecklistForm({
   if (points.length === 0) {
     return (
       <div className="text-center py-12 text-gray-500">
-        Aucun point de contrôle pour les catégories sélectionnées.
+        Aucun point de contrôle pour les thèmes sélectionnés.
       </div>
     );
   }
@@ -109,6 +127,7 @@ export function ChecklistForm({
             initialRemarque={existing?.remarque}
             initialPhotos={existing?.photos ?? []}
             onChange={handleChange}
+            documents={point.point_controle_documents ?? []}
           />
         );
       })}

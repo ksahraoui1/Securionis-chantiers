@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/types/database";
 
@@ -15,89 +15,159 @@ export function PointControleForm({
   onSaved,
   onCancel,
 }: PointControleFormProps) {
-  const [phases, setPhases] = useState<Tables<"phases">[]>([]);
   const [categories, setCategories] = useState<Tables<"categories">[]>([]);
-  const [phaseId, setPhaseId] = useState(initialData?.phase_id ?? "");
-  const [categorieId, setCategorieId] = useState(
-    initialData?.categorie_id ?? ""
-  );
+  const [themes, setThemes] = useState<Tables<"themes">[]>([]);
+  const [categorieId, setCategorieId] = useState(initialData?.categorie_id ?? "");
+  const [themeId, setThemeId] = useState(initialData?.theme_id ?? "");
   const [intitule, setIntitule] = useState(initialData?.intitule ?? "");
   const [critere, setCritere] = useState(initialData?.critere ?? "");
-  const [baseLegale, setBaseLegale] = useState(
-    initialData?.base_legale ?? ""
-  );
+  const [baseLegale, setBaseLegale] = useState(initialData?.base_legale ?? "");
+  const [explications, setExplications] = useState(initialData?.explications ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadPhases() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("phases")
-        .select("*")
-        .order("numero");
-      if (data) setPhases(data);
-    }
-    loadPhases();
-  }, []);
+  // Documents PDF
+  const [docs, setDocs] = useState<Tables<"point_controle_documents">[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
+  // Load categories (new ones: phase_id IS NULL)
   useEffect(() => {
-    async function loadCategories() {
-      if (!phaseId) {
-        setCategories([]);
-        return;
-      }
+    async function load() {
       const supabase = createClient();
       const { data } = await supabase
         .from("categories")
         .select("*")
-        .eq("phase_id", phaseId)
+        .is("phase_id", null)
         .eq("actif", true)
         .order("libelle");
       if (data) setCategories(data);
     }
-    loadCategories();
-  }, [phaseId]);
+    load();
+  }, []);
+
+  // Load themes for selected category
+  useEffect(() => {
+    async function load() {
+      if (!categorieId) {
+        setThemes([]);
+        return;
+      }
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("themes")
+        .select("*")
+        .eq("categorie_id", categorieId)
+        .eq("actif", true)
+        .order("libelle");
+      if (data) setThemes(data);
+    }
+    load();
+  }, [categorieId]);
+
+  // Load existing documents
+  const loadDocs = useCallback(async () => {
+    if (!initialData?.id) return;
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("point_controle_documents")
+      .select("*")
+      .eq("point_controle_id", initialData.id)
+      .order("ordre");
+    if (data) setDocs(data);
+  }, [initialData?.id]);
+
+  useEffect(() => {
+    loadDocs();
+  }, [loadDocs]);
+
+  async function handleUploadDoc(file: File) {
+    if (!initialData?.id) return;
+    if (docs.length >= 5) {
+      setError("Maximum 5 documents par point de contrôle.");
+      return;
+    }
+    setUploading(true);
+    setError(null);
+
+    try {
+      const supabase = createClient();
+      const ext = file.name.split(".").pop() ?? "pdf";
+      const path = `points-controle/${initialData.id}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: storageError } = await supabase.storage
+        .from("rapports")
+        .upload(path, file, { contentType: file.type, upsert: false });
+
+      if (storageError) throw new Error(storageError.message);
+
+      const { data: { publicUrl } } = supabase.storage.from("rapports").getPublicUrl(path);
+
+      const { error: dbError } = await supabase.from("point_controle_documents").insert({
+        point_controle_id: initialData.id,
+        nom: file.name.replace(/\.[^/.]+$/, ""),
+        fichier_url: publicUrl,
+        fichier_nom: file.name,
+        fichier_taille: file.size,
+        ordre: docs.length + 1,
+      });
+
+      if (dbError) throw new Error(dbError.message);
+      await loadDocs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur upload");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDeleteDoc(docId: string) {
+    if (!confirm("Supprimer ce document ?")) return;
+    const supabase = createClient();
+    const doc = docs.find((d) => d.id === docId);
+    if (doc) {
+      const storagePath = doc.fichier_url.split("/rapports/")[1];
+      if (storagePath) {
+        await supabase.storage.from("rapports").remove([storagePath]);
+      }
+    }
+    await supabase.from("point_controle_documents").delete().eq("id", docId);
+    await loadDocs();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!phaseId || !categorieId || !intitule.trim()) {
-      setError("Phase, catégorie et intitulé sont obligatoires.");
+    if (!categorieId || !intitule.trim()) {
+      setError("Catégorie et intitulé sont obligatoires.");
       return;
     }
 
     setSaving(true);
     try {
       const supabase = createClient();
+      const payload = {
+        phase_id: null,
+        categorie_id: categorieId,
+        theme_id: themeId || null,
+        intitule: intitule.trim(),
+        critere: critere.trim() || null,
+        base_legale: baseLegale.trim() || null,
+        explications: explications.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
 
       if (initialData) {
         const { error: updateError } = await supabase
           .from("points_controle")
-          .update({
-            phase_id: phaseId,
-            categorie_id: categorieId,
-            intitule: intitule.trim(),
-            critere: critere.trim() || null,
-            base_legale: baseLegale.trim() || null,
-            updated_at: new Date().toISOString(),
-          })
+          .update(payload)
           .eq("id", initialData.id);
-
         if (updateError) throw updateError;
       } else {
         const { error: insertError } = await supabase
           .from("points_controle")
-          .insert({
-            phase_id: phaseId,
-            categorie_id: categorieId,
-            intitule: intitule.trim(),
-            critere: critere.trim() || null,
-            base_legale: baseLegale.trim() || null,
-            is_custom: true,
-          });
-
+          .insert({ ...payload, is_custom: true });
         if (insertError) throw insertError;
       }
 
@@ -111,87 +181,162 @@ export function PointControleForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Phase *
-        </label>
-        <select
-          value={phaseId}
-          onChange={(e) => {
-            setPhaseId(e.target.value);
-            setCategorieId("");
-          }}
-          className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch"
-          required
-        >
-          <option value="">Sélectionner une phase</option>
-          {phases.map((p) => (
-            <option key={p.id} value={p.id}>
-              Phase {p.numero} — {p.libelle}
-            </option>
-          ))}
-        </select>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            Catégorie *
+          </label>
+          <select
+            value={categorieId}
+            onChange={(e) => {
+              setCategorieId(e.target.value);
+              setThemeId("");
+            }}
+            className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
+            required
+          >
+            <option value="">Sélectionner</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.libelle}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            Thème
+          </label>
+          <select
+            value={themeId}
+            onChange={(e) => setThemeId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
+            disabled={!categorieId}
+          >
+            <option value="">Aucun thème</option>
+            {themes.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.libelle}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Catégorie *
-        </label>
-        <select
-          value={categorieId}
-          onChange={(e) => setCategorieId(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch"
-          required
-          disabled={!phaseId}
-        >
-          <option value="">Sélectionner une catégorie</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.libelle}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Intitulé de la question *
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Point de contrôle (action à vérifier) *
         </label>
         <textarea
           value={intitule}
           onChange={(e) => setIntitule(e.target.value)}
-          rows={3}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          placeholder="Ex: Les garde-corps provisoires sont-ils en place ?"
+          rows={2}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          placeholder="Ex: Vérifier la présence de garde-corps périphériques"
           required
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Critère d'acceptation
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Explications
         </label>
         <textarea
-          value={critere}
-          onChange={(e) => setCritere(e.target.value)}
+          value={explications}
+          onChange={(e) => setExplications(e.target.value)}
           rows={2}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          placeholder="Ex: Hauteur min 1m, plinthe 15cm"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          placeholder="Détails complémentaires..."
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Base légale (optionnel)
-        </label>
-        <input
-          type="text"
-          value={baseLegale}
-          onChange={(e) => setBaseLegale(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch"
-          placeholder="Ex: OTConst Art. 22"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            Base légale
+          </label>
+          <input
+            type="text"
+            value={baseLegale}
+            onChange={(e) => setBaseLegale(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
+            placeholder="Ex: OTConst — Art. 22"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            Critère d'acceptation
+          </label>
+          <input
+            type="text"
+            value={critere}
+            onChange={(e) => setCritere(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
+            placeholder="Ex: Hauteur min 1m"
+          />
+        </div>
       </div>
+
+      {/* Documents PDF — only for existing points */}
+      {initialData?.id && (
+        <div className="border-t pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-gray-500">
+              Documents PDF ({docs.length}/5)
+            </label>
+            {docs.length < 5 && (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleUploadDoc(file);
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="text-xs px-3 py-1.5 min-h-touch bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                >
+                  {uploading ? "Upload..." : "+ Ajouter PDF"}
+                </button>
+              </>
+            )}
+          </div>
+          {docs.length > 0 && (
+            <div className="space-y-1">
+              {docs.map((doc) => (
+                <div key={doc.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                  <span className="material-symbols-outlined text-red-500 text-sm">picture_as_pdf</span>
+                  <a
+                    href={doc.fichier_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:underline flex-1 truncate"
+                  >
+                    {doc.nom}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDoc(doc.id)}
+                    className="text-red-500 hover:text-red-700 p-1"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {docs.length === 0 && (
+            <p className="text-xs text-gray-400">Aucun document. Ajoutez des PDF réglementaires.</p>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -199,18 +344,14 @@ export function PointControleForm({
         <button
           type="submit"
           disabled={saving}
-          className="flex-1 py-3 min-h-touch bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="flex-1 py-3 min-h-touch bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
         >
-          {saving
-            ? "Enregistrement..."
-            : initialData
-              ? "Modifier"
-              : "Créer le point de contrôle"}
+          {saving ? "Enregistrement..." : initialData ? "Modifier" : "Créer"}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-6 py-3 min-h-touch bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+          className="px-6 py-3 min-h-touch bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
         >
           Annuler
         </button>

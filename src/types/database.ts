@@ -94,7 +94,7 @@ export type Database = {
       categories: {
         Row: {
           id: string;
-          phase_id: string;
+          phase_id: string | null;
           libelle: string;
           is_custom: boolean;
           actif: boolean;
@@ -102,28 +102,51 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          phase_id: string;
+          phase_id?: string | null;
           libelle: string;
           is_custom?: boolean;
           actif?: boolean;
           created_at?: string;
         };
         Update: {
-          phase_id?: string;
+          phase_id?: string | null;
           libelle?: string;
           is_custom?: boolean;
+          actif?: boolean;
+        };
+      };
+      themes: {
+        Row: {
+          id: string;
+          categorie_id: string;
+          libelle: string;
+          actif: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          categorie_id: string;
+          libelle: string;
+          actif?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          categorie_id?: string;
+          libelle?: string;
           actif?: boolean;
         };
       };
       points_controle: {
         Row: {
           id: string;
-          phase_id: string;
-          categorie_id: string;
+          phase_id: string | null;
+          categorie_id: string | null;
+          theme_id: string | null;
           intitule: string;
           critere: string | null;
           base_legale: string | null;
           objet: string | null;
+          explications: string | null;
           is_custom: boolean;
           actif: boolean;
           created_by: string | null;
@@ -132,12 +155,14 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          phase_id: string;
-          categorie_id: string;
+          phase_id?: string | null;
+          categorie_id?: string | null;
+          theme_id?: string | null;
           intitule: string;
           critere?: string | null;
           base_legale?: string | null;
           objet?: string | null;
+          explications?: string | null;
           is_custom?: boolean;
           actif?: boolean;
           created_by?: string | null;
@@ -145,15 +170,46 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          phase_id?: string;
-          categorie_id?: string;
+          phase_id?: string | null;
+          categorie_id?: string | null;
+          theme_id?: string | null;
           intitule?: string;
           critere?: string | null;
           base_legale?: string | null;
           objet?: string | null;
+          explications?: string | null;
           is_custom?: boolean;
           actif?: boolean;
           updated_at?: string;
+        };
+      };
+      point_controle_documents: {
+        Row: {
+          id: string;
+          point_controle_id: string;
+          nom: string;
+          fichier_url: string;
+          fichier_nom: string;
+          fichier_taille: number | null;
+          ordre: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          point_controle_id: string;
+          nom: string;
+          fichier_url: string;
+          fichier_nom: string;
+          fichier_taille?: number | null;
+          ordre?: number;
+          created_at?: string;
+        };
+        Update: {
+          nom?: string;
+          fichier_url?: string;
+          fichier_nom?: string;
+          fichier_taille?: number | null;
+          ordre?: number;
         };
       };
       chantiers: {

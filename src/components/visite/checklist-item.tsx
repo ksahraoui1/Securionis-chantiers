@@ -22,6 +22,7 @@ interface ChecklistItemProps {
     remarque: string | null;
     photos: string[];
   }) => void;
+  documents?: Tables<"point_controle_documents">[];
 }
 
 const VALEUR_OPTIONS = [
@@ -39,6 +40,7 @@ export function ChecklistItem({
   initialRemarque,
   initialPhotos = [],
   onChange,
+  documents = [],
 }: ChecklistItemProps) {
   const [valeur, setValeur] = useState(initialValeur ?? "");
   const [remarque, setRemarque] = useState(initialRemarque ?? "");
@@ -128,6 +130,27 @@ export function ChecklistItem({
           <p className="text-xs text-gray-400 mt-1">
             {pointControle.base_legale}
           </p>
+        )}
+        {pointControle.explications && (
+          <p className="text-xs text-gray-500 mt-1 italic">
+            {pointControle.explications}
+          </p>
+        )}
+        {documents.length > 0 && (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            {documents.map((doc) => (
+              <a
+                key={doc.id}
+                href={doc.fichier_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors"
+              >
+                <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
+                {doc.nom}
+              </a>
+            ))}
+          </div>
         )}
       </div>
 
