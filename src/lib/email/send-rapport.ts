@@ -22,8 +22,13 @@ export async function sendRapport(
   inspecteurNom?: string,
   entreprise?: EntrepriseInfo | null
 ): Promise<string[]> {
-  // Download PDF from Storage URL
-  const pdfResponse = await fetch(rapportUrl);
+  // SSRF protection: only allow Supabase storage URLs
+  const parsedUrl = new URL(rapportUrl);
+  if (!parsedUrl.hostname.endsWith("supabase.co") && !parsedUrl.hostname.endsWith("supabase.in")) {
+    throw new Error("URL de rapport non autorisée");
+  }
+
+  const pdfResponse = await fetch(rapportUrl, { signal: AbortSignal.timeout(30000) });
   if (!pdfResponse.ok) {
     throw new Error("Impossible de telecharger le PDF depuis le stockage");
   }

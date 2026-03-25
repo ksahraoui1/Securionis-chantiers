@@ -1,7 +1,7 @@
 // Service Worker — Securionis Chantiers
 // Stratégie : Network-first pour les pages, Cache-first pour les assets statiques.
 
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const STATIC_CACHE = `securionis-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `securionis-pages-${CACHE_VERSION}`;
 
@@ -61,6 +61,12 @@ self.addEventListener("fetch", (event) => {
   if (STATIC_PATTERNS.some((p) => p.test(url.pathname))) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
     return;
+  }
+
+  // Exclure les pages auth du cache (sécurité)
+  const AUTH_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/auth"];
+  if (AUTH_PATHS.some((p) => url.pathname.startsWith(p))) {
+    return; // Toujours fetch, jamais cache
   }
 
   // Pages : network-first (cache si offline)

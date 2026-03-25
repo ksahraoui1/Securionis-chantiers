@@ -24,8 +24,13 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("Le mot de passe doit contenir au moins 6 caractères.");
+    if (password.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Le mot de passe doit contenir au moins une majuscule, une minuscule et un chiffre.");
       return;
     }
 

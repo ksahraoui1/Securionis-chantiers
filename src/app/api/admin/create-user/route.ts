@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+const VALID_ROLES = ["inspecteur", "administrateur"];
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -21,7 +24,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
   }
 
+  // Rate limit: 10 créations par heure
+  if (!checkRateLimit(`create-user:${user.id}`, 10, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
+  }
+
   const { nom, email, password, role } = await request.json();
+
+  // Validation du rôle
+  if (!VALID_ROLES.includes(role)) {
+    return NextResponse.json({ error: "Rôle invalide" }, { status: 400 });
+  }
 
   if (!nom || !email || !password || !role) {
     return NextResponse.json(

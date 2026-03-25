@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicApiKey } from "@/lib/env";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/assistant/legal
@@ -21,12 +22,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
+  // Rate limit: 30 requêtes par heure par utilisateur
+  if (!checkRateLimit(`legal-assist:${user.id}`, 30, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
+  }
+
   let apiKey: string;
   try {
     apiKey = getAnthropicApiKey();
   } catch {
     return NextResponse.json(
-      { error: "Assistant IA non configuré. Ajoutez ANTHROPIC_API_KEY dans .env.local." },
+      { error: "Le service d'assistance IA n'est pas disponible." },
       { status: 503 }
     );
   }
