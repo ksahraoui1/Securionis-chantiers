@@ -26,8 +26,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logoImage: {
-    height: 40,
-    maxWidth: 140,
+    height: 60,
+    maxWidth: 210,
     objectFit: "contain",
   },
   headerTitle: {
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logoPlaceholder: {
-    width: 140,
+    width: 210,
   },
   sectionTitle: {
     fontSize: 13,
