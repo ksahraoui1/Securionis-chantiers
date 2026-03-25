@@ -162,22 +162,29 @@ export default async function DashboardPage() {
           label="Chantiers actifs"
           value={chantiersActifs}
           href="/chantiers"
+          icon="domain"
           color="blue"
         />
         <KpiCard
           label="NC ouvertes"
           value={ncOuvertes}
+          href="/chantiers"
+          icon="warning"
           color={ncOuvertes > 0 ? "red" : "green"}
         />
         <KpiCard
           label="Visites ce mois"
           value={visitesCeMois}
+          href="/chantiers"
+          icon="checklist"
           color="indigo"
         />
         <KpiCard
           label="Taux de conformité"
           value={tauxConformite !== null ? `${tauxConformite}%` : "—"}
           subtitle="3 derniers mois"
+          href="/chantiers"
+          icon="verified"
           color={
             tauxConformite === null
               ? "gray"
@@ -243,41 +250,54 @@ function KpiCard({
   value,
   subtitle,
   href,
+  icon,
   color,
 }: {
   label: string;
   value: number | string;
   subtitle?: string;
   href?: string;
+  icon?: string;
   color: string;
 }) {
-  const colorMap: Record<string, string> = {
-    blue: "text-blue-700 bg-blue-50 border-blue-200",
-    red: "text-red-700 bg-red-50 border-red-200",
-    green: "text-green-700 bg-green-50 border-green-200",
-    amber: "text-amber-700 bg-amber-50 border-amber-200",
-    indigo: "text-indigo-700 bg-indigo-50 border-indigo-200",
-    gray: "text-gray-700 bg-gray-50 border-gray-200",
+  const colorMap: Record<string, { card: string; icon: string }> = {
+    blue: { card: "text-blue-700 bg-blue-50 border-blue-200", icon: "bg-blue-100 text-blue-600" },
+    red: { card: "text-red-700 bg-red-50 border-red-200", icon: "bg-red-100 text-red-600" },
+    green: { card: "text-green-700 bg-green-50 border-green-200", icon: "bg-green-100 text-green-600" },
+    amber: { card: "text-amber-700 bg-amber-50 border-amber-200", icon: "bg-amber-100 text-amber-600" },
+    indigo: { card: "text-indigo-700 bg-indigo-50 border-indigo-200", icon: "bg-indigo-100 text-indigo-600" },
+    gray: { card: "text-gray-700 bg-gray-50 border-gray-200", icon: "bg-gray-100 text-gray-600" },
   };
 
+  const colors = colorMap[color] ?? colorMap.gray;
+
   const content = (
-    <div
-      className={`rounded-lg border p-4 ${colorMap[color] ?? colorMap.gray}`}
-    >
-      <p className="text-sm font-medium opacity-75">{label}</p>
-      <p className="text-3xl font-bold mt-1">{value}</p>
-      {subtitle && (
-        <p className="text-xs opacity-60 mt-1">{subtitle}</p>
+    <div className={`rounded-xl border p-4 ${colors.card} ${href ? "hover:shadow-md hover:scale-[1.02] cursor-pointer" : ""} transition-all`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium opacity-75">{label}</p>
+          <p className="text-3xl font-bold mt-1">{value}</p>
+          {subtitle && (
+            <p className="text-xs opacity-60 mt-1">{subtitle}</p>
+          )}
+        </div>
+        {icon && (
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colors.icon}`}>
+            <span className="material-symbols-outlined text-xl">{icon}</span>
+          </div>
+        )}
+      </div>
+      {href && (
+        <p className="text-[10px] opacity-50 mt-2 flex items-center gap-0.5">
+          Voir le détail
+          <span className="material-symbols-outlined text-xs">arrow_forward</span>
+        </p>
       )}
     </div>
   );
 
   if (href) {
-    return (
-      <Link href={href} className="block hover:opacity-80 transition-opacity">
-        {content}
-      </Link>
-    );
+    return <Link href={href} className="block">{content}</Link>;
   }
 
   return content;
