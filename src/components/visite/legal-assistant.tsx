@@ -30,6 +30,7 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [summarizing, setSummarizing] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -83,6 +84,38 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
       setError(err instanceof Error ? err.message : "Erreur de connexion");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCopyAsRemarque(msgIndex: number, content: string) {
+    if (!onInsertRemarque || summarizing !== null) return;
+    setSummarizing(msgIndex);
+
+    try {
+      const res = await fetch("/api/assistant/legal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: `Résume le texte suivant en 2 à 3 phrases maximum, directement utilisables comme remarque dans un rapport d'inspection SST. Pas de titre, pas de liste, juste du texte brut concis :\n\n${content}`,
+          context: {
+            intitule: context.intitule,
+            critere: context.critere ?? undefined,
+            baseLegale: context.baseLegale ?? undefined,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erreur");
+
+      onInsertRemarque(stripMarkdown(data.answer));
+    } catch {
+      // En cas d'erreur, copier le texte brut tronqué
+      const lines = content.split("\n").filter((l) => l.trim());
+      const short = lines.slice(0, 3).join(" ").slice(0, 300);
+      onInsertRemarque(short);
+    } finally {
+      setSummarizing(null);
     }
   }
 
@@ -170,11 +203,14 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
                       {onInsertRemarque && (
                         <button
                           type="button"
-                          onClick={() => onInsertRemarque(msg.content)}
-                          className="flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 mt-2"
+                          onClick={() => handleCopyAsRemarque(i, msg.content)}
+                          disabled={summarizing !== null}
+                          className="flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 mt-2 disabled:opacity-50"
                         >
-                          <span className="material-symbols-outlined text-sm">content_paste</span>
-                          Copier dans la remarque
+                          <span className="material-symbols-outlined text-sm">
+                            {summarizing === i ? "hourglass_top" : "content_paste"}
+                          </span>
+                          {summarizing === i ? "Résumé en cours..." : "Copier dans la remarque"}
                         </button>
                       )}
                     </div>
