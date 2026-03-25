@@ -5,7 +5,7 @@ import { PhotoCapture } from "./photo-capture";
 import { PhotoAiAnalysis } from "./photo-ai-analysis";
 import { LegalAssistant } from "./legal-assistant";
 import { usePhotoUpload } from "@/hooks/use-photo-upload";
-import { VALEURS_REPONSE, LABELS_REPONSE } from "@/lib/utils/constants";
+import { VALEURS_REPONSE, LABELS_REPONSE, stripMarkdown } from "@/lib/utils/constants";
 import type { Tables } from "@/types/database";
 
 interface ChecklistItemProps {
@@ -105,9 +105,10 @@ export function ChecklistItem({
   }
 
   function handleAiRemarque(suggested: string) {
+    const cleaned = stripMarkdown(suggested);
     const newRemarque = remarque
-      ? `${remarque}\n${suggested}`
-      : suggested;
+      ? `${remarque}\n${cleaned}`
+      : cleaned;
     setRemarque(newRemarque);
     emitChange(valeur, newRemarque, photoUpload.photos);
   }

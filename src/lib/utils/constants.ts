@@ -44,3 +44,33 @@ export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/heic"];
 export const AUTOSAVE_DEBOUNCE_MS = 2000;
 
 export const SESSION_DURATION_DAYS = 7;
+
+/**
+ * Nettoie le formatage markdown d'un texte pour obtenir du texte brut lisible.
+ * Supprime : **gras**, *italique*, ##titres, ```blocs```, `code`, - puces md
+ */
+export function stripMarkdown(text: string): string {
+  if (!text) return text;
+  return text
+    // Blocs de code
+    .replace(/```[\s\S]*?```/g, "")
+    // Titres ### ## #
+    .replace(/^#{1,6}\s+/gm, "")
+    // Gras **texte** ou __texte__
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    // Italique *texte* ou _texte_
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "$1")
+    // Code inline `texte`
+    .replace(/`([^`]+)`/g, "$1")
+    // Puces markdown "- texte" → "- texte" (garder le tiret simple)
+    .replace(/^\*\s+/gm, "- ")
+    // Liens [texte](url) → texte
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    // Lignes horizontales ---
+    .replace(/^-{3,}$/gm, "")
+    // Espaces multiples
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

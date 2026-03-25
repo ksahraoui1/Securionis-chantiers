@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { stripMarkdown } from "@/lib/utils/constants";
 
 interface Danger {
   type: "equipement_manquant" | "zone_risque" | "non_conformite";
@@ -70,6 +71,14 @@ export function PhotoAiAnalysis({
         throw new Error(data.error ?? "Erreur d'analyse");
       }
 
+      // Nettoyer le markdown des textes IA
+      if (data.remarqueSuggeree) data.remarqueSuggeree = stripMarkdown(data.remarqueSuggeree);
+      if (data.dangers) {
+        data.dangers = data.dangers.map((d: Danger) => ({
+          ...d,
+          description: stripMarkdown(d.description),
+        }));
+      }
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'analyse");

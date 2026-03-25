@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { stripMarkdown } from "@/lib/utils/constants";
 
 interface Message {
   role: "user" | "assistant";
@@ -77,7 +78,7 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
         throw new Error(data.error ?? "Erreur");
       }
 
-      setMessages([...newMessages, { role: "assistant", content: data.answer }]);
+      setMessages([...newMessages, { role: "assistant", content: stripMarkdown(data.answer) }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur de connexion");
     } finally {
@@ -234,23 +235,10 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
   );
 }
 
-/** Renders assistant markdown-like content with bold references */
 function AssistantMessage({ content }: { content: string }) {
-  // Simple markdown: **bold**, line breaks
-  const parts = content.split(/(\*\*[^*]+\*\*)/g);
-
   return (
     <div className="whitespace-pre-wrap leading-relaxed">
-      {parts.map((part, i) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return (
-            <strong key={i} className="font-bold text-indigo-900">
-              {part.slice(2, -2)}
-            </strong>
-          );
-        }
-        return <span key={i}>{part}</span>;
-      })}
+      {content}
     </div>
   );
 }

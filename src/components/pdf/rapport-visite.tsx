@@ -8,7 +8,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { Tables } from "@/types/database";
-import { LABELS_STATUT_ECART } from "@/lib/utils/constants";
+import { LABELS_STATUT_ECART, stripMarkdown } from "@/lib/utils/constants";
 
 const styles = StyleSheet.create({
   page: {
@@ -180,54 +180,44 @@ const styles = StyleSheet.create({
   },
 });
 
-// Convertit un texte potentiellement markdown en éléments PDF
+// Affiche une remarque en texte brut dans le PDF (sans markdown)
 function RemarqueText({ text }: { text: string }) {
-  const lines = text.split("\n").filter((l) => l.trim() !== "");
+  const cleaned = stripMarkdown(text);
+  const lines = cleaned.split("\n").filter((l) => l.trim() !== "");
 
   return (
     <View style={{ marginTop: 2 }}>
       {lines.map((line, i) => {
         const trimmed = line.trim();
 
-        // Puce : - texte ou * texte
-        if (/^[-*•]\s/.test(trimmed)) {
-          const content = trimmed.replace(/^[-*•]\s+/, "");
+        // Puce : - texte
+        if (/^[-•]\s/.test(trimmed)) {
+          const content = trimmed.replace(/^[-•]\s+/, "");
           return (
             <View key={i} style={{ flexDirection: "row", paddingLeft: 8, marginBottom: 1 }}>
-              <Text style={{ fontSize: 9, color: "#374151", marginRight: 4 }}>•</Text>
-              <Text style={{ fontSize: 9, color: "#374151", flex: 1 }}>
-                {renderInlineText(content)}
-              </Text>
+              <Text style={{ fontSize: 9, color: "#374151", marginRight: 4 }}>-</Text>
+              <Text style={{ fontSize: 9, color: "#374151", flex: 1 }}>{content}</Text>
             </View>
           );
         }
 
-        // Ligne normale
+        // Ligne numérotée : 1. texte
+        if (/^\d+\.\s/.test(trimmed)) {
+          return (
+            <Text key={i} style={{ fontSize: 9, color: "#374151", marginBottom: 1, paddingLeft: 8 }}>
+              {trimmed}
+            </Text>
+          );
+        }
+
         return (
           <Text key={i} style={{ fontSize: 9, color: "#374151", marginBottom: 1 }}>
-            {renderInlineText(trimmed)}
+            {trimmed}
           </Text>
         );
       })}
     </View>
   );
-}
-
-// Rend le texte inline en gérant le **gras**
-function renderInlineText(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  if (parts.length === 1) return text;
-
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <Text key={i} style={{ fontFamily: "Helvetica-Bold" }}>
-          {part.slice(2, -2)}
-        </Text>
-      );
-    }
-    return <Text key={i}>{part}</Text>;
-  });
 }
 
 interface RapportVisiteProps {

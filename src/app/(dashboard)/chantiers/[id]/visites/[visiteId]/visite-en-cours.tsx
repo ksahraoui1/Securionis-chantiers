@@ -6,7 +6,7 @@ import { ChecklistForm } from "@/components/visite/checklist-form";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { VALEURS_REPONSE } from "@/lib/utils/constants";
+import { VALEURS_REPONSE, stripMarkdown } from "@/lib/utils/constants";
 
 interface VisiteEnCoursProps {
   visiteId: string;
@@ -76,10 +76,11 @@ export function VisiteEnCours({
 
         const ncWithDesc = ncReponses.map((r) => ({
           id: r.id,
-          description:
+          description: stripMarkdown(
             r.remarque ||
             pointMap.get(r.point_controle_id) ||
-            "Non-conformite",
+            "Non-conformité"
+          ),
         }));
 
         setNonConformeReponses(ncWithDesc);
