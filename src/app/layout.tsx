@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Securionis Chantiers",
-  description: "Application de controle de chantiers",
+  description: "Application de contrôle de chantiers",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

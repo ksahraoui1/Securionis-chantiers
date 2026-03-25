@@ -232,7 +232,7 @@ export function VisiteEnCours({
           <div className="space-y-4">
             <div>
               <p className="text-sm font-medium text-gray-700">
-                Non-conformite :
+                Non-conformité :
               </p>
               <p className="text-sm text-gray-900 mt-1">
                 {currentDraft.description}
@@ -243,14 +243,14 @@ export function VisiteEnCours({
                 htmlFor="delai"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Delai de correction
+                Délai de correction
               </label>
               <input
                 id="delai"
                 type="text"
                 value={delaiInput}
                 onChange={(e) => setDelaiInput(e.target.value)}
-                placeholder="Ex: 7 jours, 30.04.2026, immediat..."
+                placeholder="Ex: 7 jours, 30.04.2026, immédiat..."
                 className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-[44px] text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
               />
             </div>

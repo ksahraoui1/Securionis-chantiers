@@ -99,7 +99,7 @@ export default async function RapportPage({
               >
                 <span className="text-gray-700">{ecart.description}</span>
                 <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-                  {ecart.delai ?? "Pas de delai"}
+                  {ecart.delai ?? "Pas de délai"}
                 </span>
               </li>
             ))}
@@ -112,10 +112,10 @@ export default async function RapportPage({
         <div className="flex items-center gap-2 text-sm">
           {visite.rapport_url ? (
             <span className="text-green-600 font-medium">
-              PDF genere
+              PDF généré
             </span>
           ) : (
-            <span className="text-gray-400">PDF non genere</span>
+            <span className="text-gray-400">PDF non généré</span>
           )}
         </div>
         <div className="flex items-center gap-2 text-sm">

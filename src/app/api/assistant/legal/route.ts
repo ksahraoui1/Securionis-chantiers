@@ -79,7 +79,7 @@ Règles :
 4. Si tu n'es pas sûr d'une référence précise, indique-le clairement
 5. Propose des formulations utilisables directement dans un rapport d'inspection
 6. Si la question sort du domaine construction/sécurité, indique poliment que tu ne peux aider que sur ces sujets
-7. IMPORTANT : Reponds en texte brut uniquement. N'utilise JAMAIS de formatage markdown (pas d'etoiles, de dieses, d'accents graves). Utilise des retours a la ligne et des espaces pour structurer ta reponse. Pour les listes, utilise des numeros (1. 2. 3.) ou des tirets simples suivis d'un espace${contextBlock}`;
+7. IMPORTANT : Réponds en texte brut uniquement. N'utilise JAMAIS de formatage markdown (pas d'étoiles, de dièses, d'accents graves). Utilise des retours à la ligne et des espaces pour structurer ta réponse. Pour les listes, utilise des numeros (1. 2. 3.) ou des tirets simples suivis d'un espace${contextBlock}`;
 
   const anthropic = new Anthropic({ apiKey });
 

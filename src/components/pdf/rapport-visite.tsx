@@ -326,14 +326,14 @@ export function RapportVisite({
         <Text style={styles.sectionTitle}>Constatations</Text>
         {nonConformeReponses.length === 0 ? (
           <Text style={{ fontSize: 10, color: "#16a34a", marginBottom: 8 }}>
-            Aucune non-conformite constatee.
+            Aucune non-conformité constatée.
           </Text>
         ) : (
           nonConformeReponses.map((r) => (
             <View key={r.id} style={styles.constatation}>
               <Text style={styles.constatationTitle}>
                 {(r.points_controle as { intitule: string } | null)?.intitule ??
-                  "Point de controle"}
+                  "Point de contrôle"}
               </Text>
               {r.remarque && (
                 <RemarqueText text={r.remarque} />
@@ -359,7 +359,7 @@ export function RapportVisite({
                   Description
                 </Text>
                 <Text style={[styles.ecartCell, styles.ecartCellDelai, { fontFamily: "Helvetica-Bold" }]}>
-                  Delai
+                  Délai
                 </Text>
                 <Text style={[styles.ecartCell, styles.ecartCellStatut, { fontFamily: "Helvetica-Bold" }]}>
                   Statut
@@ -385,7 +385,7 @@ export function RapportVisite({
         {/* Delais */}
         {delais.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Delai(s)</Text>
+            <Text style={styles.sectionTitle}>Délai(s)</Text>
             {delais.map((d, idx) => (
               <Text key={idx} style={styles.delaiItem}>
                 - {d.description} : {d.delai}

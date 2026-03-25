@@ -226,7 +226,7 @@ export function ChantierForm({
           loading={saving}
           className="w-full"
         >
-          {isEdit ? "Enregistrer les modifications" : "Creer le chantier"}
+          {isEdit ? "Enregistrer les modifications" : "Créer le chantier"}
         </Button>
       </div>
     </form>
