@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ChecklistItem } from "./checklist-item";
+import { ThemeAdder } from "./theme-adder";
 import { useAutosave } from "@/hooks/use-autosave";
 import type { Tables } from "@/types/database";
 
@@ -32,37 +33,52 @@ export function ChecklistForm({
 }: ChecklistFormProps) {
   const [points, setPoints] = useState<PointWithDocs[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showThemeAdder, setShowThemeAdder] = useState(false);
+  const [themeIds, setThemeIds] = useState<string[]>([]);
   const { save, saveStatus } = useAutosave(visiteId);
 
-  useEffect(() => {
-    async function loadPoints() {
-      const supabase = createClient();
+  // Load points based on current themeIds
+  const loadPoints = useCallback(async (currentThemeIds: string[]) => {
+    const supabase = createClient();
 
-      // Try to load theme_ids from localStorage (new visits)
-      const storedThemes = localStorage.getItem(`visite-themes-${visiteId}`);
-      const themeIds: string[] | null = storedThemes ? JSON.parse(storedThemes) : null;
+    let query = supabase
+      .from("points_controle")
+      .select("*, point_controle_documents(*)")
+      .eq("actif", true)
+      .order("objet")
+      .order("intitule");
 
-      let query = supabase
-        .from("points_controle")
-        .select("*, point_controle_documents(*)")
-        .eq("actif", true)
-        .order("objet")
-        .order("intitule");
-
-      if (themeIds && themeIds.length > 0) {
-        // New flow: filter by themes
-        query = query.in("theme_id", themeIds);
-      } else if (categorieIds.length > 0) {
-        // Legacy flow: filter by categories
-        query = query.in("categorie_id", categorieIds);
-      }
-
-      const { data } = await query;
-      if (data) setPoints(data as PointWithDocs[]);
-      setLoading(false);
+    if (currentThemeIds.length > 0) {
+      query = query.in("theme_id", currentThemeIds);
+    } else if (categorieIds.length > 0) {
+      query = query.in("categorie_id", categorieIds);
     }
-    if (categorieIds.length > 0) loadPoints();
-  }, [categorieIds, visiteId]);
+
+    const { data } = await query;
+    if (data) setPoints(data as PointWithDocs[]);
+    setLoading(false);
+  }, [categorieIds]);
+
+  // Initial load
+  useEffect(() => {
+    const storedThemes = localStorage.getItem(`visite-themes-${visiteId}`);
+    const initialThemeIds: string[] = storedThemes ? JSON.parse(storedThemes) : [];
+    setThemeIds(initialThemeIds);
+
+    if (initialThemeIds.length > 0 || categorieIds.length > 0) {
+      loadPoints(initialThemeIds);
+    }
+  }, [categorieIds, visiteId, loadPoints]);
+
+  // Handle adding new themes
+  function handleThemesAdded(newThemeIds: string[]) {
+    const merged = [...new Set([...themeIds, ...newThemeIds])];
+    setThemeIds(merged);
+    localStorage.setItem(`visite-themes-${visiteId}`, JSON.stringify(merged));
+    setShowThemeAdder(false);
+    setLoading(true);
+    loadPoints(merged);
+  }
 
   const handleChange = useCallback(
     (data: {
@@ -92,45 +108,60 @@ export function ChecklistForm({
     );
   }
 
-  if (points.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-500">
-        Aucun point de contrôle pour les thèmes sélectionnés.
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between sticky top-0 bg-gray-50 py-2 z-10">
         <span className="text-sm text-gray-500">
           {points.length} point{points.length > 1 ? "s" : ""} de contrôle
         </span>
-        <span className="text-xs text-gray-400">
-          {saveStatus === "saving" && "Enregistrement..."}
-          {saveStatus === "saved" && "Enregistré"}
-          {saveStatus === "saved-offline" && "Sauvegardé hors-ligne"}
-          {saveStatus === "error" && "Erreur de sauvegarde"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">
+            {saveStatus === "saving" && "Enregistrement..."}
+            {saveStatus === "saved" && "Enregistré"}
+            {saveStatus === "saved-offline" && "Sauvegardé hors-ligne"}
+            {saveStatus === "error" && "Erreur de sauvegarde"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowThemeAdder(true)}
+            className="px-3 py-1.5 min-h-touch text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            + Catégories / Thèmes
+          </button>
+        </div>
       </div>
 
-      {points.map((point) => {
-        const existing = existingReponses[point.id];
-        return (
-          <ChecklistItem
-            key={point.id}
-            pointControle={point}
-            chantierId={chantierId}
-            visiteId={visiteId}
-            reponseId={existing?.id ?? point.id}
-            initialValeur={existing?.valeur}
-            initialRemarque={existing?.remarque}
-            initialPhotos={existing?.photos ?? []}
-            onChange={handleChange}
-            documents={point.point_controle_documents ?? []}
-          />
-        );
-      })}
+      {showThemeAdder && (
+        <ThemeAdder
+          existingThemeIds={themeIds}
+          onAdd={handleThemesAdded}
+          onCancel={() => setShowThemeAdder(false)}
+        />
+      )}
+
+      {points.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          Aucun point de contrôle pour les thèmes sélectionnés.
+        </div>
+      ) : (
+        points.map((point) => {
+          const existing = existingReponses[point.id];
+          return (
+            <ChecklistItem
+              key={point.id}
+              pointControle={point}
+              chantierId={chantierId}
+              visiteId={visiteId}
+              reponseId={existing?.id ?? point.id}
+              initialValeur={existing?.valeur}
+              initialRemarque={existing?.remarque}
+              initialPhotos={existing?.photos ?? []}
+              onChange={handleChange}
+              documents={point.point_controle_documents ?? []}
+            />
+          );
+        })
+      )}
 
       <div className="sticky bottom-0 bg-gray-50 pt-4 pb-6 border-t">
         <button
