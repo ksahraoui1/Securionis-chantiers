@@ -103,18 +103,20 @@ export async function POST(request: Request) {
               type: "text",
               text: `Tu es un expert en sécurité sur les chantiers de construction en Suisse (normes SUVA, OTConst, SIA).
 
+IMPORTANT : Tu DOIS écrire en français correct avec TOUS les accents (é, è, ê, à, ù, ô, î, ç, etc.). Ne jamais omettre les accents. Par exemple : "sécurité", "échafaudage", "conformité", "contrôlé", "détecté", "protégé", "éclairage", "général".
+
 Analyse cette photo de chantier et identifie :
-1. **Équipements de protection manquants** (casques, harnais, garde-corps, filets, balisage, etc.)
-2. **Zones à risque** visibles (travail en hauteur sans protection, échafaudage instable, câbles exposés, etc.)
-3. **Non-conformités visuelles** par rapport aux normes de construction suisses
+1. Les équipements de protection manquants (casques, harnais, garde-corps, filets, balisage, etc.)
+2. Les zones à risque visibles (travail en hauteur sans protection, échafaudage instable, câbles exposés, etc.)
+3. Les non-conformités visuelles par rapport aux normes de construction suisses
 ${context}
 
 Réponds en JSON avec cette structure exacte :
 {
   "dangers": [
-    { "type": "equipement_manquant" | "zone_risque" | "non_conformite", "description": "description courte", "severite": "critique" | "majeur" | "mineur" }
+    { "type": "equipement_manquant" | "zone_risque" | "non_conformite", "description": "description courte en français avec accents", "severite": "critique" | "majeur" | "mineur" }
   ],
-  "remarqueSuggeree": "Une remarque concise (1-3 phrases) que l'inspecteur peut utiliser dans son rapport, en français, en texte brut sans aucun formatage markdown (pas d'étoiles, de dièses, d'accents graves, ni listes à puces)",
+  "remarqueSuggeree": "Une remarque concise (1-3 phrases) en français correct avec tous les accents, utilisable dans un rapport d'inspection. Texte brut uniquement, sans formatage.",
   "conformite": "conforme" | "non_conforme" | "indetermine",
   "confiance": 0.0-1.0
 }
