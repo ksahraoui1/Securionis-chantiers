@@ -184,11 +184,82 @@ Centralisation de tous les documents liés à un chantier.
 - Grille résumé : 2 → 3 → 5 colonnes selon la taille
 - Tableau : stack vertical mobile, grille desktop
 
-## 9. Améliorations UX
+## 9. Refonte points de contrôle — Catégories / Thèmes (2026-03-24)
+
+**Fichiers** : migrations 017-018, `src/app/(dashboard)/admin/points-controle/page.tsx`, `src/components/admin/point-controle-form.tsx`, `nouvelle-visite-form.tsx`, `checklist-form.tsx`, `checklist-item.tsx`, `theme-adder.tsx`
+
+### Nouvelle hiérarchie
+- **128 catégories** (Accès & Sols, Échafaudages, Électricité, Fouilles, Toitures, etc.)
+- **530 thèmes** par catégorie
+- **568 points de contrôle** importés depuis Excel SUVA
+
+### Flux nouvelle visite
+1. Sélection de **catégories** (cases à cocher multiples + recherche)
+2. Sélection de **thèmes** (filtrés par catégories + tout cocher/décocher)
+3. Démarrage de la visite avec les thèmes sélectionnés
+
+### Ajout en cours de visite
+- Bouton **"+ Catégories / Thèmes"** dans la barre sticky de la checklist
+- Panneau intégré pour ajouter des catégories/thèmes supplémentaires
+- Les nouveaux points sont chargés sans perdre les réponses déjà saisies
+
+### Administration
+- Navigation par catégorie → thème → statut + recherche texte
+- Activer/désactiver tout point de contrôle
+- Modifier les points existants (intitulé, explications, base légale, critère)
+- Créer un **nouveau thème** directement dans le formulaire
+- Upload jusqu'à **5 documents PDF** réglementaires par point (disponible dès la création)
+
+### Base de données
+- Table `themes` (id, categorie_id, libelle, actif)
+- Table `point_controle_documents` (id, point_controle_id, nom, fichier_url, fichier_nom, fichier_taille, ordre)
+- Colonnes ajoutées sur `points_controle` : theme_id, explications
+
+### Pendant la visite
+- Points filtrés par thèmes sélectionnés
+- Affichage des explications sur chaque point
+- Liens vers les documents PDF réglementaires attachés
+- Flux de vérification inchangé (conforme / non-conforme / pas nécessaire)
+
+## 10. Archivage des chantiers (2026-03-25)
+
+**Fichiers** : migration 019, `src/components/chantier/archive-toggle-button.tsx`, `src/app/(dashboard)/chantiers/archives/page.tsx`
+
+### Fonctionnement
+- Badge **"Actif"** (vert) ou **"Archivé"** (ambre) sur la fiche chantier
+- Bouton **Archiver** / **Restaurer** sur la fiche chantier (avec confirmation)
+- Chantiers archivés exclus de la liste active et du dashboard
+- Bouton "Nouvelle visite" masqué sur les chantiers archivés
+
+### Page archives (`/chantiers/archives`)
+- Liste des chantiers archivés avec date d'archivage
+- Consultation des visites et rapports toujours possible
+- Accessible depuis le dashboard et la page chantiers
+
+### Base de données
+- Colonnes ajoutées : `archived boolean DEFAULT false`, `archived_at timestamptz`
+
+## 11. Améliorations PDF et IA (2026-03-25)
+
+### Rapport PDF
+- Photos affichées en images (120x90px) au lieu de texte
+- Remarques formatées : retours à la ligne, puces, texte brut (pas de markdown)
+- Logo agrandi (60px hauteur, 210px max largeur)
+- Délai et statut affichés directement sous chaque constatation
+- Suppression du tableau "Historique des non-conformités" et section "Délai(s)"
+
+### IA — Texte en français accentué
+- Prompts de l'analyse photo et de l'assistant juridique imposent le français avec accents
+- Fonction `stripMarkdown()` nettoie tout formatage markdown des réponses IA
+- Le bouton "Copier dans la remarque" de l'assistant juridique résume le texte en 2-3 phrases via l'IA
+
+## 12. Améliorations UX
 
 - Champ remarque auto-extensible (s'agrandit avec le contenu)
 - Fonts Google (Inter + Material Symbols) restaurées dans le layout
 - Touch targets min 44x44px sur tous les boutons et liens
+- KPI du dashboard cliquables avec icônes et effet hover
+- Accentuation complète de tous les textes français de l'interface
 
 ## Déploiement
 

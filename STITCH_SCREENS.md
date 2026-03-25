@@ -1,6 +1,6 @@
 # Écrans & Architecture — Securionis Chantiers
 
-> Dernière mise à jour : 2026-03-23
+> Dernière mise à jour : 2026-03-25
 
 ---
 
@@ -12,15 +12,16 @@
 | 2 | `/register` | Inscription | Création de compte (nom, email, mot de passe) |
 | 3 | `/forgot-password` | Mot de passe oublié | Envoi lien de réinitialisation par email |
 | 4 | `/reset-password` | Nouveau mot de passe | Formulaire reset via lien email |
-| 5 | `/dashboard` | Tableau de bord | KPIs, graphique NC 6 mois, chantiers urgents, export Excel |
-| 6 | `/chantiers` | Liste chantiers | Recherche, badges NC, stats par chantier |
+| 5 | `/dashboard` | Tableau de bord | KPIs cliquables, graphique NC 6 mois, chantiers urgents, export Excel, accès archives |
+| 6 | `/chantiers` | Liste chantiers | Recherche, badges NC, stats, lien archives |
+| 6b | `/chantiers/archives` | Chantiers archivés | Liste des chantiers archivés, consultation visites/rapports |
 | 7 | `/chantiers/nouveau` | Nouveau chantier | Formulaire création avec icônes par champ |
-| 8 | `/chantiers/[id]` | Détail chantier | Infos, documents, destinataires, visites, comparaison N/N-1, NC |
+| 8 | `/chantiers/[id]` | Détail chantier | Badge actif/archivé, archiver/restaurer, infos, documents, destinataires, visites, comparaison N/N-1, NC |
 | 9 | `/chantiers/[id]/modifier` | Modifier chantier | Édition des informations |
-| 10 | `/chantiers/[id]/visites/nouvelle` | Nouvelle visite | Configuration : date, catégories, phases |
-| 11 | `/chantiers/[id]/visites/[id]` | Visite en cours | Checklist + photos + annotation + analyse IA + assistant juridique |
-| 12 | `/chantiers/[id]/visites/[id]/rapport` | Rapport | Visualisation + envoi PDF par email |
-| 13 | `/admin/points-controle` | Points de contrôle | CRUD, filtres par phase, badges personnalisé/désactivé |
+| 10 | `/chantiers/[id]/visites/nouvelle` | Nouvelle visite | Sélection catégories → thèmes (multi-select + recherche) |
+| 11 | `/chantiers/[id]/visites/[id]` | Visite en cours | Checklist + ajout catégories/thèmes en cours + photos + annotation + analyse IA + assistant juridique |
+| 12 | `/chantiers/[id]/visites/[id]/rapport` | Rapport | PDF avec photos, délai/statut sous constatations, envoi email |
+| 13 | `/admin/points-controle` | Points de contrôle | Filtres catégorie/thème/statut, activer/désactiver, modifier, créer thèmes, upload PDF |
 | 14 | `/admin/utilisateurs` | Utilisateurs | Liste, changement de rôle, création |
 | 15 | `/admin/entreprise` | Entreprise | Logo, coordonnées, configuration |
 
@@ -30,26 +31,30 @@
 
 ### Visite en cours (écran 11)
 - Checklist par point de contrôle (conforme / non-conforme / pas nécessaire)
+- **Ajout catégories/thèmes en cours de visite** (bouton "+ Catégories / Thèmes")
 - Champ remarque auto-extensible
+- Explications et documents PDF réglementaires par point
 - Capture photo (appareil / galerie)
 - **Annotation photo** : éditeur Canvas plein écran (flèche, cercle, texte, dessin libre)
-- **Analyse IA** : détection dangers via Claude Vision, suggestion remarque + conformité
-- **Assistant juridique** : chat IA expert droit suisse (OTConst, SUVA, SIA)
+- **Analyse IA** : détection dangers via Claude Vision, suggestion remarque + conformité (français accentué)
+- **Assistant juridique** : chat IA expert droit suisse, résumé auto lors de la copie en remarque
 
 ### Détail chantier (écran 8)
+- **Badge actif/archivé** + bouton archiver/restaurer
 - Informations du chantier (grille responsive 1→2 colonnes)
 - **Gestion documentaire** : upload, versionnement, 6 catégories, filtres
 - Destinataires (email rapport)
-- Timeline des visites
+- Timeline des visites (masquée si archivé : pas de nouvelle visite)
 - **Comparaison visite N vs N-1** : corrigées, persistantes, nouvelles NC
 - Liste des écarts NC avec filtres et actions
 - **Export Excel** par chantier
 
 ### Dashboard (écran 5)
-- KPIs : chantiers actifs, NC ouvertes, visites ce mois, taux conformité
+- KPIs cliquables avec icônes : chantiers actifs, NC ouvertes, visites ce mois, taux conformité
 - Graphique NC 6 mois (barres empilées)
 - Chantiers avec NC urgentes
-- **Export Excel** global
+- **Export Excel** global + **accès archives**
+- Exclut les chantiers archivés des calculs
 
 ---
 
@@ -77,14 +82,17 @@
 Login ──→ Dashboard
   │         │
   │         ├──→ Mes Chantiers ──→ Détail Chantier ──→ Nouvelle Visite ──→ Checklist
-  │         │                       │                                        │
-  │         │                       ├── Documents                            ├── Photos + Annotation
-  │         │                       ├── Comparaison N/N-1                    ├── Analyse IA
-  │         │                       ├── Export Excel                         ├── Assistant Juridique
-  │         │                       └── Écarts NC                            └── Résumé → Rapport PDF
+  │         │       │               │   (actif/archivé)   (catégories→thèmes)   │
+  │         │       │               ├── Documents                               ├── + Catégories/Thèmes
+  │         │       │               ├── Comparaison N/N-1                       ├── Photos + Annotation
+  │         │       │               ├── Export Excel                            ├── Analyse IA
+  │         │       │               ├── Archiver/Restaurer                      ├── Assistant Juridique
+  │         │       │               └── Écarts NC                               └── Résumé → Rapport PDF
+  │         │       │
+  │         │       └──→ Archives (chantiers archivés — consultation seule)
   │         │
   │         └──→ Administration (admin)
-  │               ├── Points de contrôle
+  │               ├── Points de contrôle (catégories/thèmes, PDFs)
   │               ├── Utilisateurs
   │               └── Entreprise
   │

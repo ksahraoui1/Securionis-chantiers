@@ -128,6 +128,54 @@ docker compose build + deploy → ✓ chantiers.securionis.com opérationnel
 
 ---
 
+## Refonte points de contrôle + améliorations PDF/IA — 2026-03-24/25
+
+### Refonte points de contrôle
+
+Remplacement de la hiérarchie phases → catégories (144 points) par catégories → thèmes (568 points SUVA) :
+- Migration 017 : tables `themes`, `point_controle_documents`, alter `points_controle` et `categories`
+- Migration 018 : import 128 catégories, 530 thèmes, 568 points depuis Excel SUVA
+- Suppression des anciennes données (phases, catégories, points SUVA)
+- Nouveau flux visite : catégories (checkboxes) → thèmes (filtrés) → démarrer
+- Ajout catégories/thèmes en cours de visite (bouton "+ Catégories / Thèmes")
+- Admin : filtres catégorie/thème/statut, créer un nouveau thème, upload PDF (max 5)
+
+### Rapport PDF
+
+- Photos en images (120x90px) au lieu de texte "X photo(s) jointe(s)"
+- Remarques formatées en texte brut (plus de markdown brut affiché)
+- Logo agrandi (40→60px hauteur)
+- Suppression tableau "Historique des non-conformités" et section "Délai(s)"
+- Délai + statut affichés directement sous chaque constatation
+
+### IA — Français accentué
+
+- Prompts analyse photo et assistant juridique imposent le français avec accents
+- Fonction `stripMarkdown()` nettoie les réponses IA partout (assistant, analyse, checklist, PDF, modal NC)
+- "Copier dans la remarque" résume le texte en 2-3 phrases via l'IA
+
+### Archivage des chantiers
+
+- Migration 019 : colonnes `archived` + `archived_at`, policy UPDATE inspecteur
+- Badge "Actif"/"Archivé" + bouton archiver/restaurer sur la fiche chantier
+- Chantiers archivés exclus du dashboard et de la liste active
+- Page `/chantiers/archives` pour consultation
+- Accès archives depuis le dashboard et la page chantiers
+
+### Accentuation complète
+
+Correction de tous les textes français sans accents dans l'interface :
+"Créer", "généré", "immédiat", "contrôle", "délai", "non-conformité", "constatée", "trouvé"
+
+### Vérification
+
+```
+npm run build  →  ✓ Compiled successfully
+Migrations 017-019 appliquées sur Supabase distant
+```
+
+---
+
 ## Dashboard inspecteur — 2026-03-22
 
 ### Ajout
