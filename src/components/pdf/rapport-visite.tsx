@@ -258,6 +258,11 @@ export function RapportVisite({
     (r) => r.valeur === "non_conforme"
   );
 
+  // Map reponse_id → ecart pour afficher délai/statut sous chaque NC
+  const ecartByReponseId = new Map(
+    ecarts.map((e) => [e.reponse_id, e])
+  );
+
   const heureFormatted = visite.heure_visite
     ? ` – ${visite.heure_visite.slice(0, 5)}`
     : "";
@@ -345,53 +350,25 @@ export function RapportVisite({
                   ))}
                 </View>
               )}
+              {/* Délai et statut sous la constatation */}
+              {(() => {
+                const ecart = ecartByReponseId.get(r.id);
+                if (!ecart) return null;
+                return (
+                  <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
+                    {ecart.delai && (
+                      <Text style={{ fontSize: 8, color: "#b91c1c", fontFamily: "Helvetica-Bold" }}>
+                        Délai : {ecart.delai}
+                      </Text>
+                    )}
+                    <Text style={{ fontSize: 8, color: "#6b7280" }}>
+                      Statut : {LABELS_STATUT_ECART[ecart.statut] ?? ecart.statut}
+                    </Text>
+                  </View>
+                );
+              })()}
             </View>
           ))
-        )}
-
-        {/* Historique des ecarts */}
-        {ecarts.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>Historique des non-conformités</Text>
-            <View style={styles.table}>
-              <View style={styles.tableRowHeader}>
-                <Text style={[styles.ecartCell, styles.ecartCellDesc, { fontFamily: "Helvetica-Bold" }]}>
-                  Description
-                </Text>
-                <Text style={[styles.ecartCell, styles.ecartCellDelai, { fontFamily: "Helvetica-Bold" }]}>
-                  Délai
-                </Text>
-                <Text style={[styles.ecartCell, styles.ecartCellStatut, { fontFamily: "Helvetica-Bold" }]}>
-                  Statut
-                </Text>
-              </View>
-              {ecarts.map((ecart) => (
-                <View key={ecart.id} style={styles.ecartRow}>
-                  <Text style={[styles.ecartCell, styles.ecartCellDesc]}>
-                    {ecart.description}
-                  </Text>
-                  <Text style={[styles.ecartCell, styles.ecartCellDelai]}>
-                    {ecart.delai ?? "-"}
-                  </Text>
-                  <Text style={[styles.ecartCell, styles.ecartCellStatut]}>
-                    {LABELS_STATUT_ECART[ecart.statut] ?? ecart.statut}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </>
-        )}
-
-        {/* Delais */}
-        {delais.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>Délai(s)</Text>
-            {delais.map((d, idx) => (
-              <Text key={idx} style={styles.delaiItem}>
-                - {d.description} : {d.delai}
-              </Text>
-            ))}
-          </>
         )}
 
         {/* Copie(s) */}

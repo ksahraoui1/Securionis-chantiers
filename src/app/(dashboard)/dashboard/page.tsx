@@ -147,14 +147,23 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Tableau de bord</h1>
-        <a
-          href="/api/export/xlsx?scope=all"
-          download
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm w-full sm:w-auto"
-        >
-          <span className="material-symbols-outlined text-lg">download</span>
-          Export Excel
-        </a>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Link
+            href="/chantiers/archives"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-sm"
+          >
+            <span className="material-symbols-outlined text-lg">inventory_2</span>
+            Archives
+          </Link>
+          <a
+            href="/api/export/xlsx?scope=all"
+            download
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm flex-1 sm:flex-initial"
+          >
+            <span className="material-symbols-outlined text-lg">download</span>
+            Export Excel
+          </a>
+        </div>
       </div>
 
       {/* KPI Cards */}
