@@ -20,6 +20,7 @@ export default async function DashboardPage() {
   const { data: chantiers } = await supabase
     .from("chantiers")
     .select("id, nom, adresse, nature_travaux, updated_at")
+    .eq("archived", false)
     .order("updated_at", { ascending: false });
 
   const chantierIds = chantiers?.map((c) => c.id) ?? [];

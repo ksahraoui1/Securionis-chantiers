@@ -7,6 +7,7 @@ import { DocumentManager } from "@/components/chantier/document-manager";
 import { TimelineVisites } from "@/components/chantier/timeline-visites";
 import { VisiteCompare } from "@/components/visite/visite-compare";
 import { EcartListWithActions } from "./ecart-list-actions";
+import { ArchiveToggleButton } from "@/components/chantier/archive-toggle-button";
 
 export default async function ChantierDetailPage({
   params,
@@ -97,9 +98,22 @@ export default async function ChantierDetailPage({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words">
-            {chantier.nom || chantier.adresse}
-          </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words">
+              {chantier.nom || chantier.adresse}
+            </h1>
+            {chantier.archived ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                <span className="material-symbols-outlined text-xs">inventory_2</span>
+                Archivé
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <span className="material-symbols-outlined text-xs">check_circle</span>
+                Actif
+              </span>
+            )}
+          </div>
           {chantier.nom && (
             <p className="text-sm text-gray-600 mt-0.5 break-words">{chantier.adresse}</p>
           )}
@@ -116,6 +130,7 @@ export default async function ChantierDetailPage({
           >
             <span className="material-symbols-outlined text-lg">download</span>
           </a>
+          <ArchiveToggleButton chantierId={chantierId} archived={chantier.archived} />
           <Link
             href={`/chantiers/${chantierId}/modifier`}
             className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
@@ -181,13 +196,15 @@ export default async function ChantierDetailPage({
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <h2 className="text-lg font-semibold text-gray-900">Visites</h2>
-          <Link
-            href={`/chantiers/${chantierId}/visites/nouvelle`}
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto"
-          >
-            <span className="material-symbols-outlined text-lg">add</span>
-            Nouvelle visite
-          </Link>
+          {!chantier.archived && (
+            <Link
+              href={`/chantiers/${chantierId}/visites/nouvelle`}
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto"
+            >
+              <span className="material-symbols-outlined text-lg">add</span>
+              Nouvelle visite
+            </Link>
+          )}
         </div>
         <TimelineVisites
           visites={visitesForTimeline}

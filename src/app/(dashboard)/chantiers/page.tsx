@@ -19,6 +19,7 @@ export default async function ChantiersPage() {
   const { data: chantiers } = await supabase
     .from("chantiers")
     .select("*")
+    .eq("archived", false)
     .order("updated_at", { ascending: false });
 
   // Load stats for each chantier
@@ -65,13 +66,22 @@ export default async function ChantiersPage() {
     <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Chantiers</h1>
-        <Link
-          href="/chantiers/nouveau"
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto"
-        >
-          <span className="material-symbols-outlined text-lg">add</span>
-          Nouveau chantier
-        </Link>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Link
+            href="/chantiers/archives"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-sm"
+          >
+            <span className="material-symbols-outlined text-lg">inventory_2</span>
+            Archives
+          </Link>
+          <Link
+            href="/chantiers/nouveau"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex-1 sm:flex-initial"
+          >
+            <span className="material-symbols-outlined text-lg">add</span>
+            Nouveau chantier
+          </Link>
+        </div>
       </div>
 
       <ChantierSearch chantiersWithStats={chantiersWithStats} />

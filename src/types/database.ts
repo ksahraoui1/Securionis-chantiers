@@ -223,6 +223,8 @@ export type Database = {
           numero_parcelle: string | null;
           numero_eca: string | null;
           contact_nom: string | null;
+          archived: boolean;
+          archived_at: string | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -237,6 +239,8 @@ export type Database = {
           numero_parcelle?: string | null;
           numero_eca?: string | null;
           contact_nom?: string | null;
+          archived?: boolean;
+          archived_at?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -250,6 +254,8 @@ export type Database = {
           numero_parcelle?: string | null;
           numero_eca?: string | null;
           contact_nom?: string | null;
+          archived?: boolean;
+          archived_at?: string | null;
           updated_at?: string;
         };
       };
