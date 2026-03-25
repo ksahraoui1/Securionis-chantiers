@@ -114,7 +114,7 @@ Réponds en JSON avec cette structure exacte :
   "dangers": [
     { "type": "equipement_manquant" | "zone_risque" | "non_conformite", "description": "description courte", "severite": "critique" | "majeur" | "mineur" }
   ],
-  "remarqueSuggeree": "Une remarque concise (1-3 phrases) que l'inspecteur peut utiliser dans son rapport, en français",
+  "remarqueSuggeree": "Une remarque concise (1-3 phrases) que l'inspecteur peut utiliser dans son rapport, en français, en texte brut sans aucun formatage markdown (pas de etoiles, dièses, accents graves, ni listes à puces markdown)",
   "conformite": "conforme" | "non_conforme" | "indetermine",
   "confiance": 0.0-1.0
 }
