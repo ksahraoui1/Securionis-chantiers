@@ -26,6 +26,14 @@ export default function AdminPointsControlePage() {
   const [showForm, setShowForm] = useState(false);
   const [editingPoint, setEditingPoint] = useState<Tables<"points_controle"> | null>(null);
 
+  // Création catégorie / thème inline
+  const [newCatName, setNewCatName] = useState("");
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [savingCat, setSavingCat] = useState(false);
+  const [newThemeName, setNewThemeName] = useState("");
+  const [showNewTheme, setShowNewTheme] = useState(false);
+  const [savingTheme, setSavingTheme] = useState(false);
+
   // Load categories (new ones only: phase_id IS NULL)
   useEffect(() => {
     async function load() {
@@ -77,6 +85,42 @@ export default function AdminPointsControlePage() {
     loadPoints();
   }, [loadPoints]);
 
+  async function handleCreateCategory() {
+    if (!newCatName.trim()) return;
+    setSavingCat(true);
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("categories")
+      .insert({ libelle: newCatName.trim(), phase_id: null, is_custom: true, actif: true })
+      .select("*")
+      .single();
+    if (data) {
+      setCategories((prev) => [...prev, data].sort((a, b) => a.libelle.localeCompare(b.libelle)));
+      setFilterCat(data.id);
+      setNewCatName("");
+      setShowNewCat(false);
+    }
+    setSavingCat(false);
+  }
+
+  async function handleCreateTheme() {
+    if (!newThemeName.trim() || !filterCat) return;
+    setSavingTheme(true);
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("themes")
+      .insert({ categorie_id: filterCat, libelle: newThemeName.trim() })
+      .select("*")
+      .single();
+    if (data) {
+      setThemes((prev) => [...prev, data].sort((a, b) => a.libelle.localeCompare(b.libelle)));
+      setFilterTheme(data.id);
+      setNewThemeName("");
+      setShowNewTheme(false);
+    }
+    setSavingTheme(false);
+  }
+
   async function handleToggleActif(id: string, actif: boolean) {
     const supabase = createClient();
     await supabase
@@ -125,39 +169,99 @@ export default function AdminPointsControlePage() {
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              Catégorie
-            </label>
-            <select
-              value={filterCat}
-              onChange={(e) => setFilterCat(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
-            >
-              <option value="">Toutes les catégories</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.libelle}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-gray-500">Catégorie</label>
+              <button
+                type="button"
+                onClick={() => setShowNewCat(!showNewCat)}
+                className="text-[10px] text-blue-600 hover:underline"
+              >
+                {showNewCat ? "Annuler" : "+ Nouvelle"}
+              </button>
+            </div>
+            {showNewCat ? (
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateCategory(); } }}
+                  placeholder="Nom de la catégorie"
+                  autoFocus
+                  className="flex-1 rounded-lg border border-blue-300 px-3 py-2 text-sm min-h-touch bg-blue-50"
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateCategory}
+                  disabled={!newCatName.trim() || savingCat}
+                  className="px-3 py-2 min-h-touch bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingCat ? "..." : "Créer"}
+                </button>
+              </div>
+            ) : (
+              <select
+                value={filterCat}
+                onChange={(e) => setFilterCat(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
+              >
+                <option value="">Toutes les catégories</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.libelle}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              Thème
-            </label>
-            <select
-              value={filterTheme}
-              onChange={(e) => setFilterTheme(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
-              disabled={!filterCat}
-            >
-              <option value="">Tous les thèmes</option>
-              {themes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.libelle}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-gray-500">Thème</label>
+              {filterCat && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewTheme(!showNewTheme)}
+                  className="text-[10px] text-blue-600 hover:underline"
+                >
+                  {showNewTheme ? "Annuler" : "+ Nouveau"}
+                </button>
+              )}
+            </div>
+            {showNewTheme && filterCat ? (
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={newThemeName}
+                  onChange={(e) => setNewThemeName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateTheme(); } }}
+                  placeholder="Nom du thème"
+                  autoFocus
+                  className="flex-1 rounded-lg border border-blue-300 px-3 py-2 text-sm min-h-touch bg-blue-50"
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateTheme}
+                  disabled={!newThemeName.trim() || savingTheme}
+                  className="px-3 py-2 min-h-touch bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingTheme ? "..." : "Créer"}
+                </button>
+              </div>
+            ) : (
+              <select
+                value={filterTheme}
+                onChange={(e) => setFilterTheme(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
+                disabled={!filterCat}
+              >
+                <option value="">Tous les thèmes</option>
+                {themes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.libelle}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">
