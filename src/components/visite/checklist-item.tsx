@@ -23,6 +23,7 @@ interface ChecklistItemProps {
     photos: string[];
   }) => void;
   documents?: Tables<"point_controle_documents">[];
+  linkedDocs?: { id: string; titre: string; fichier_url: string; type_fichier: string }[];
 }
 
 const VALEUR_OPTIONS = [
@@ -41,6 +42,7 @@ export function ChecklistItem({
   initialPhotos = [],
   onChange,
   documents = [],
+  linkedDocs = [],
 }: ChecklistItemProps) {
   const [valeur, setValeur] = useState(initialValeur ?? "");
   const [remarque, setRemarque] = useState(initialRemarque ?? "");
@@ -137,7 +139,7 @@ export function ChecklistItem({
             {pointControle.explications}
           </p>
         )}
-        {documents.length > 0 && (
+        {(documents.length > 0 || linkedDocs.length > 0) && (
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             {documents.map((doc) => (
               <a
@@ -149,6 +151,24 @@ export function ChecklistItem({
               >
                 <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
                 {doc.nom}
+              </a>
+            ))}
+            {linkedDocs.map((doc) => (
+              <a
+                key={doc.id}
+                href={doc.fichier_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded hover:opacity-80 transition-colors ${
+                  doc.type_fichier === "pdf"
+                    ? "bg-red-50 text-red-700"
+                    : "bg-blue-50 text-blue-700"
+                }`}
+              >
+                <span className="material-symbols-outlined text-xs">
+                  {doc.type_fichier === "pdf" ? "picture_as_pdf" : "image"}
+                </span>
+                {doc.titre}
               </a>
             ))}
           </div>

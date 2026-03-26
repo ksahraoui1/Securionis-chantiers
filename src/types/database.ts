@@ -439,6 +439,63 @@ export type Database = {
           updated_at?: string;
         };
       };
+      base_documentaire: {
+        Row: {
+          id: string;
+          titre: string;
+          source: string;
+          reference: string | null;
+          description: string | null;
+          fichier_url: string;
+          fichier_nom: string;
+          fichier_taille: number | null;
+          type_fichier: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          titre: string;
+          source?: string;
+          reference?: string | null;
+          description?: string | null;
+          fichier_url: string;
+          fichier_nom: string;
+          fichier_taille?: number | null;
+          type_fichier?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          titre?: string;
+          source?: string;
+          reference?: string | null;
+          description?: string | null;
+          fichier_url?: string;
+          fichier_nom?: string;
+          fichier_taille?: number | null;
+          type_fichier?: string;
+          updated_at?: string;
+        };
+      };
+      point_controle_doc_liens: {
+        Row: {
+          id: string;
+          document_id: string;
+          point_controle_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id: string;
+          point_controle_id: string;
+          created_at?: string;
+        };
+        Update: {
+          document_id?: string;
+          point_controle_id?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

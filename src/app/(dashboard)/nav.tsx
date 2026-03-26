@@ -34,6 +34,7 @@ export function DashboardNav({
     ...(userRole === "administrateur"
       ? [
           { href: "/admin/points-controle", label: "Points de contrôle", icon: "checklist" },
+          { href: "/admin/documents", label: "Documents", icon: "library_books" },
           { href: "/admin/utilisateurs", label: "Utilisateurs", icon: "group" },
           { href: "/admin/entreprise", label: "Entreprise", icon: "business" },
         ]

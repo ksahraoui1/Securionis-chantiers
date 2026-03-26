@@ -8,8 +8,13 @@ import { QuickAddPoint } from "./quick-add-point";
 import { useAutosave } from "@/hooks/use-autosave";
 import type { Tables } from "@/types/database";
 
+type LinkedDoc = {
+  base_documentaire: { id: string; titre: string; fichier_url: string; type_fichier: string } | null;
+};
+
 type PointWithDocs = Tables<"points_controle"> & {
   point_controle_documents?: Tables<"point_controle_documents">[];
+  point_controle_doc_liens?: LinkedDoc[];
 };
 
 interface ChecklistFormProps {
@@ -44,7 +49,7 @@ export function ChecklistForm({
 
     let query = supabase
       .from("points_controle")
-      .select("*, point_controle_documents(*)")
+      .select("*, point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
       .eq("actif", true)
       .order("objet")
       .order("intitule");
@@ -159,6 +164,9 @@ export function ChecklistForm({
               initialPhotos={existing?.photos ?? []}
               onChange={handleChange}
               documents={point.point_controle_documents ?? []}
+              linkedDocs={(point.point_controle_doc_liens ?? [])
+                .map((l) => l.base_documentaire)
+                .filter((d): d is NonNullable<typeof d> => d !== null)}
             />
           );
         })
