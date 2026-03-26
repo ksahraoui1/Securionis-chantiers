@@ -136,6 +136,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
           generationConfig: {
             maxOutputTokens: 1024,
             temperature: 0.2,
+            responseMimeType: "application/json",
           },
         }),
         signal: AbortSignal.timeout(30000),
@@ -154,19 +155,39 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     const geminiData = await geminiRes.json();
     const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
-    // Parse JSON (handle possible markdown code blocks)
-    const jsonStr = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    // Parse JSON — nettoyer les blocs markdown si présents
+    let jsonStr = raw.trim();
+    // Retirer ```json ... ``` ou ``` ... ```
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1].trim();
+    }
 
     let analysis;
     try {
       analysis = JSON.parse(jsonStr);
     } catch {
-      return NextResponse.json({
-        dangers: [],
-        remarqueSuggeree: raw.slice(0, 500),
-        conformite: "indetermine",
-        confiance: 0,
-      });
+      // Fallback : essayer d'extraire le JSON entre { et }
+      const braceMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (braceMatch) {
+        try {
+          analysis = JSON.parse(braceMatch[0]);
+        } catch {
+          return NextResponse.json({
+            dangers: [],
+            remarqueSuggeree: "",
+            conformite: "indetermine",
+            confiance: 0,
+          });
+        }
+      } else {
+        return NextResponse.json({
+          dangers: [],
+          remarqueSuggeree: "",
+          conformite: "indetermine",
+          confiance: 0,
+        });
+      }
     }
 
     return NextResponse.json(analysis);
