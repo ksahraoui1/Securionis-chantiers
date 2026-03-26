@@ -63,14 +63,15 @@ export default async function ChantierDetailPage({
     .order("categorie")
     .order("nom");
 
-  // Count NC per visite for timeline
+  // Count NC per visite + detect corrected visits for timeline
   const visiteIds = visites?.map((v) => v.id) ?? [];
   let ncCountByVisite: Record<string, number> = {};
+  const ncReponsesByVisite: Record<string, string[]> = {};
 
   if (visiteIds.length > 0) {
     const { data: ncReponses } = await supabase
       .from("reponses")
-      .select("visite_id")
+      .select("id, visite_id")
       .in("visite_id", visiteIds)
       .eq("valeur", "non_conforme");
 
@@ -78,8 +79,21 @@ export default async function ChantierDetailPage({
       for (const r of ncReponses) {
         ncCountByVisite[r.visite_id] =
           (ncCountByVisite[r.visite_id] ?? 0) + 1;
+        if (!ncReponsesByVisite[r.visite_id]) ncReponsesByVisite[r.visite_id] = [];
+        ncReponsesByVisite[r.visite_id].push(r.id);
       }
     }
+  }
+
+  // Detect visits where ALL NC are corrected
+  const ecartByReponseId = new Map(
+    (ecarts ?? []).map((e) => [e.reponse_id, e.statut])
+  );
+
+  function isVisiteAllCorrected(visiteId: string): boolean {
+    const ncIds = ncReponsesByVisite[visiteId];
+    if (!ncIds || ncIds.length === 0) return false;
+    return ncIds.every((rId) => ecartByReponseId.get(rId) === "corrige");
   }
 
   const visitesForTimeline =
@@ -191,6 +205,32 @@ export default async function ChantierDetailPage({
           initialDestinataires={destinataires ?? []}
         />
       </Card>
+
+      {/* Bandeau : NC corrigées → régénérer rapport */}
+      {visites?.filter((v) => v.statut === "terminee" && isVisiteAllCorrected(v.id)).map((v) => (
+        <div key={`corrected-${v.id}`} className="rounded-xl bg-green-50 border border-green-200 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-green-600 text-2xl mt-0.5">task_alt</span>
+              <div>
+                <p className="text-sm font-semibold text-green-800">
+                  Toutes les NC de la visite du {new Date(v.date_visite).toLocaleDateString("fr-CH")} sont corrigées
+                </p>
+                <p className="text-xs text-green-700 mt-0.5">
+                  Vous pouvez générer un rapport mis à jour et l'envoyer par email.
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/chantiers/${chantierId}/visites/${v.id}/rapport`}
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm shrink-0"
+            >
+              <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
+              Générer le rapport
+            </Link>
+          </div>
+        </div>
+      ))}
 
       {/* Visites */}
       <div>
