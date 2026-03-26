@@ -41,6 +41,21 @@ export default function AdminDocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Edit modal
+  const [editDoc, setEditDoc] = useState<Tables<"base_documentaire"> | null>(null);
+  const [editTitre, setEditTitre] = useState("");
+  const [editSource, setEditSource] = useState("autre");
+  const [editRef, setEditRef] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Email modal
+  const [emailDocId, setEmailDocId] = useState<string | null>(null);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+
   // Liaison modal
   const [linkDocId, setLinkDocId] = useState<string | null>(null);
   const [linkPoints, setLinkPoints] = useState<{ id: string; intitule: string; linked: boolean }[]>([]);
@@ -119,6 +134,68 @@ export default function AdminDocumentsPage() {
       setError(err instanceof Error ? err.message : "Erreur lors de l'upload");
     } finally {
       setUploading(false);
+    }
+  }
+
+  function openEdit(doc: Tables<"base_documentaire">) {
+    setEditDoc(doc);
+    setEditTitre(doc.titre);
+    setEditSource(doc.source);
+    setEditRef(doc.reference ?? "");
+    setEditDesc(doc.description ?? "");
+  }
+
+  async function handleSaveEdit() {
+    if (!editDoc || !editTitre.trim()) return;
+    setSavingEdit(true);
+    const supabase = createClient();
+    await supabase
+      .from("base_documentaire")
+      .update({
+        titre: editTitre.trim(),
+        source: editSource,
+        reference: editRef.trim() || null,
+        description: editDesc.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", editDoc.id);
+    setEditDoc(null);
+    setSavingEdit(false);
+    await loadDocuments();
+  }
+
+  function openEmail(doc: Tables<"base_documentaire">) {
+    setEmailDocId(doc.id);
+    setEmailTo("");
+    setEmailSubject(`Document : ${doc.titre}`);
+    setEmailSent(false);
+  }
+
+  async function handleSendEmail() {
+    if (!emailDocId || !emailTo.trim()) return;
+    setSendingEmail(true);
+
+    try {
+      const res = await fetch("/api/documents/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId: emailDocId,
+          to: emailTo.trim(),
+          subject: emailSubject.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Erreur d'envoi");
+      }
+
+      setEmailSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur d'envoi email");
+    } finally {
+      setSendingEmail(false);
     }
   }
 
@@ -405,6 +482,22 @@ export default function AdminDocumentsPage() {
                     </a>
                     <button
                       type="button"
+                      onClick={() => openEdit(doc)}
+                      className="p-2 min-h-touch min-w-touch flex items-center justify-center text-gray-600 hover:bg-gray-50 rounded-lg"
+                      title="Modifier"
+                    >
+                      <span className="material-symbols-outlined text-lg">edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEmail(doc)}
+                      className="p-2 min-h-touch min-w-touch flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded-lg"
+                      title="Envoyer par email"
+                    >
+                      <span className="material-symbols-outlined text-lg">mail</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => openLinkModal(doc.id)}
                       className="p-2 min-h-touch min-w-touch flex items-center justify-center text-green-600 hover:bg-green-50 rounded-lg"
                       title="Lier aux points de contrôle"
@@ -427,6 +520,132 @@ export default function AdminDocumentsPage() {
         </div>
       )}
 
+      {/* Modal édition */}
+      <Modal
+        isOpen={!!editDoc}
+        onClose={() => setEditDoc(null)}
+        title="Modifier le document"
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Titre *</label>
+            <input
+              type="text"
+              value={editTitre}
+              onChange={(e) => setEditTitre(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Source</label>
+              <select
+                value={editSource}
+                onChange={(e) => setEditSource(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
+              >
+                {SOURCES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Référence</label>
+              <input
+                type="text"
+                value={editRef}
+                onChange={(e) => setEditRef(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+            <textarea
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+              rows={2}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleSaveEdit}
+              disabled={!editTitre.trim() || savingEdit}
+              className="flex-1 py-3 min-h-touch bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+            >
+              {savingEdit ? "Enregistrement..." : "Enregistrer"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditDoc(null)}
+              className="px-4 py-3 min-h-touch bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal email */}
+      <Modal
+        isOpen={!!emailDocId}
+        onClose={() => setEmailDocId(null)}
+        title="Envoyer par email"
+      >
+        <div className="space-y-3">
+          {emailSent ? (
+            <div className="bg-green-50 rounded-lg p-4 text-center">
+              <span className="material-symbols-outlined text-green-600 text-3xl">check_circle</span>
+              <p className="text-sm font-medium text-green-800 mt-2">Email envoyé avec succès</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Destinataire *</label>
+                <input
+                  type="email"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  placeholder="email@exemple.com"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Objet</label>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch"
+                />
+              </div>
+            </>
+          )}
+          <div className="flex gap-2 pt-1">
+            {!emailSent && (
+              <button
+                type="button"
+                onClick={handleSendEmail}
+                disabled={!emailTo.trim() || sendingEmail}
+                className="flex-1 py-3 min-h-touch bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-lg">send</span>
+                {sendingEmail ? "Envoi..." : "Envoyer"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEmailDocId(null)}
+              className={`${emailSent ? "flex-1" : ""} px-4 py-3 min-h-touch bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm`}
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Modal liaison */}
       <Modal
         isOpen={!!linkDocId}
@@ -448,7 +667,6 @@ export default function AdminDocumentsPage() {
             <p className="text-gray-400 text-center py-4">Chargement...</p>
           ) : (
             <div className="max-h-80 overflow-y-auto space-y-1">
-              {/* Linked first */}
               {filteredLinkPoints
                 .sort((a, b) => (a.linked === b.linked ? 0 : a.linked ? -1 : 1))
                 .map((p) => (
