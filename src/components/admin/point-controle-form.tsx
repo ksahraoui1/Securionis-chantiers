@@ -18,6 +18,8 @@ export function PointControleForm({
   const [categories, setCategories] = useState<Tables<"categories">[]>([]);
   const [themes, setThemes] = useState<Tables<"themes">[]>([]);
   const [categorieId, setCategorieId] = useState(initialData?.categorie_id ?? "");
+  const [newCategorie, setNewCategorie] = useState("");
+  const [showNewCategorie, setShowNewCategorie] = useState(false);
   const [themeId, setThemeId] = useState(initialData?.theme_id ?? "");
   const [newTheme, setNewTheme] = useState("");
   const [showNewTheme, setShowNewTheme] = useState(false);
@@ -158,7 +160,7 @@ export function PointControleForm({
     e.preventDefault();
     setError(null);
 
-    if (!categorieId || !intitule.trim()) {
+    if ((!categorieId && !showNewCategorie) || (!newCategorie.trim() && showNewCategorie) || !intitule.trim()) {
       setError("Catégorie et intitulé sont obligatoires.");
       return;
     }
@@ -167,13 +169,30 @@ export function PointControleForm({
     try {
       const supabase = createClient();
 
+      // Créer une nouvelle catégorie si nécessaire
+      let finalCategorieId = categorieId;
+      if (showNewCategorie && newCategorie.trim()) {
+        const { data: newCatData, error: catError } = await supabase
+          .from("categories")
+          .insert({
+            libelle: newCategorie.trim(),
+            phase_id: null,
+            is_custom: true,
+            actif: true,
+          })
+          .select("id")
+          .single();
+        if (catError) throw catError;
+        finalCategorieId = newCatData.id;
+      }
+
       // Créer un nouveau thème si nécessaire
       let finalThemeId = themeId || null;
       if (showNewTheme && newTheme.trim()) {
         const { data: newThemeData, error: themeError } = await supabase
           .from("themes")
           .insert({
-            categorie_id: categorieId,
+            categorie_id: finalCategorieId,
             libelle: newTheme.trim(),
           })
           .select("id")
@@ -184,7 +203,7 @@ export function PointControleForm({
 
       const payload = {
         phase_id: null,
-        categorie_id: categorieId,
+        categorie_id: finalCategorieId,
         theme_id: finalThemeId,
         intitule: intitule.trim(),
         critere: critere.trim() || null,
@@ -232,25 +251,48 @@ export function PointControleForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">
-            Catégorie *
-          </label>
-          <select
-            value={categorieId}
-            onChange={(e) => {
-              setCategorieId(e.target.value);
-              setThemeId("");
-            }}
-            className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
-            required
-          >
-            <option value="">Sélectionner</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.libelle}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-500">
+              Catégorie *
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setShowNewCategorie(!showNewCategorie);
+                if (!showNewCategorie) { setCategorieId(""); setThemeId(""); setShowNewTheme(true); }
+                else { setNewCategorie(""); }
+              }}
+              className="text-[10px] text-blue-600 hover:underline"
+            >
+              {showNewCategorie ? "Choisir existante" : "+ Nouvelle catégorie"}
+            </button>
+          </div>
+          {showNewCategorie ? (
+            <input
+              type="text"
+              value={newCategorie}
+              onChange={(e) => setNewCategorie(e.target.value)}
+              className="w-full rounded-lg border border-blue-300 px-3 py-3 min-h-touch text-sm bg-blue-50"
+              placeholder="Nom de la nouvelle catégorie"
+            />
+          ) : (
+            <select
+              value={categorieId}
+              onChange={(e) => {
+                setCategorieId(e.target.value);
+                setThemeId("");
+              }}
+              className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch text-sm"
+              required
+            >
+              <option value="">Sélectionner</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.libelle}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
