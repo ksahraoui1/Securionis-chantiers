@@ -25,10 +25,10 @@ interface PhotoAiAnalysisProps {
   onApplyConformite: (valeur: string) => void;
 }
 
-const SEVERITE_CONFIG: Record<string, { icon: string; bg: string; text: string }> = {
-  critique: { icon: "emergency", bg: "bg-red-100", text: "text-red-800" },
-  majeur: { icon: "warning", bg: "bg-amber-100", text: "text-amber-800" },
-  mineur: { icon: "info", bg: "bg-blue-100", text: "text-blue-800" },
+const SEVERITE_CONFIG: Record<string, { icon: string; bg: string; bgSelected: string; text: string }> = {
+  critique: { icon: "emergency", bg: "bg-red-50", bgSelected: "bg-red-100", text: "text-red-800" },
+  majeur: { icon: "warning", bg: "bg-amber-50", bgSelected: "bg-amber-100", text: "text-amber-800" },
+  mineur: { icon: "info", bg: "bg-blue-50", bgSelected: "bg-blue-100", text: "text-blue-800" },
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -47,6 +47,7 @@ export function PhotoAiAnalysis({
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDangers, setSelectedDangers] = useState<Set<number>>(new Set());
   const [applied, setApplied] = useState<{ remarque: boolean; conformite: boolean }>({
     remarque: false,
     conformite: false,
@@ -56,6 +57,7 @@ export function PhotoAiAnalysis({
     setLoading(true);
     setError(null);
     setResult(null);
+    setSelectedDangers(new Set());
     setApplied({ remarque: false, conformite: false });
 
     try {
@@ -80,6 +82,10 @@ export function PhotoAiAnalysis({
         }));
       }
       setResult(data);
+      // Sélectionner tous les dangers par défaut
+      if (data.dangers?.length > 0) {
+        setSelectedDangers(new Set(data.dangers.map((_: Danger, i: number) => i)));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'analyse");
     } finally {
@@ -87,9 +93,31 @@ export function PhotoAiAnalysis({
     }
   }
 
+  function toggleDanger(index: number) {
+    setSelectedDangers((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+    // Réinitialiser l'état "appliquée" quand la sélection change
+    setApplied((prev) => ({ ...prev, remarque: false }));
+  }
+
+  function buildRemarqueFromSelection(): string {
+    if (!result) return "";
+    const selected = result.dangers.filter((_, i) => selectedDangers.has(i));
+    if (selected.length === 0) return "";
+    return selected.map((d) => d.description).join(". ") + ".";
+  }
+
   function handleApplyRemarque() {
-    if (result?.remarqueSuggeree) {
-      onApplyRemarque(result.remarqueSuggeree);
+    const remarque = buildRemarqueFromSelection();
+    if (remarque) {
+      onApplyRemarque(remarque);
       setApplied((prev) => ({ ...prev, remarque: true }));
     }
   }
@@ -137,16 +165,38 @@ export function PhotoAiAnalysis({
             )}
           </div>
 
-          {/* Dangers */}
+          {/* Dangers avec checkboxes */}
           {result.dangers.length > 0 && (
             <div className="space-y-2">
+              <p className="text-[10px] text-gray-500 uppercase font-medium">
+                Sélectionnez les constats à retenir :
+              </p>
               {result.dangers.map((d, i) => {
                 const cfg = SEVERITE_CONFIG[d.severite] ?? SEVERITE_CONFIG.mineur;
+                const isSelected = selectedDangers.has(i);
                 return (
-                  <div
+                  <button
                     key={i}
-                    className={`flex items-start gap-2 rounded-lg p-2.5 ${cfg.bg}`}
+                    type="button"
+                    onClick={() => toggleDanger(i)}
+                    className={`w-full flex items-start gap-2 rounded-lg p-2.5 text-left transition-all ${
+                      isSelected ? cfg.bgSelected : cfg.bg + " opacity-50"
+                    }`}
                   >
+                    {/* Checkbox */}
+                    <div
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                        isSelected
+                          ? "bg-purple-600 border-purple-600"
+                          : "border-gray-300 bg-white"
+                      }`}
+                    >
+                      {isSelected && (
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
                     <span className={`material-symbols-outlined text-lg mt-0.5 ${cfg.text}`}>
                       {cfg.icon}
                     </span>
@@ -159,9 +209,11 @@ export function PhotoAiAnalysis({
                           {TYPE_LABELS[d.type] ?? d.type}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-900 mt-0.5">{d.description}</p>
+                      <p className={`text-sm mt-0.5 ${isSelected ? "text-gray-900" : "text-gray-400 line-through"}`}>
+                        {d.description}
+                      </p>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -180,13 +232,15 @@ export function PhotoAiAnalysis({
             </p>
           )}
 
-          {/* Suggested remark */}
-          {result.remarqueSuggeree && (
+          {/* Remarque construite à partir de la sélection */}
+          {selectedDangers.size > 0 && (
             <div className="bg-white rounded-lg p-3 space-y-2">
               <p className="text-xs font-medium text-gray-500 uppercase">
-                Remarque suggérée
+                Remarque ({selectedDangers.size} constat{selectedDangers.size > 1 ? "s" : ""} retenu{selectedDangers.size > 1 ? "s" : ""})
               </p>
-              <p className="text-sm text-gray-900">{result.remarqueSuggeree}</p>
+              <p className="text-sm text-gray-900">
+                {buildRemarqueFromSelection()}
+              </p>
               <button
                 type="button"
                 onClick={handleApplyRemarque}
