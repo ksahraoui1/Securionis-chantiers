@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ChecklistItem } from "./checklist-item";
 import { ThemeAdder } from "./theme-adder";
+import { QuickAddPoint } from "./quick-add-point";
 import { useAutosave } from "@/hooks/use-autosave";
 import type { Tables } from "@/types/database";
 
@@ -162,6 +163,13 @@ export function ChecklistForm({
           );
         })
       )}
+
+      {/* Ajout rapide */}
+      <QuickAddPoint
+        themeIds={themeIds}
+        categorieIds={categorieIds}
+        onPointCreated={(newPoint) => setPoints((prev) => [...prev, newPoint])}
+      />
 
       <div className="sticky bottom-0 bg-gray-50 pt-4 pb-6 border-t">
         <button

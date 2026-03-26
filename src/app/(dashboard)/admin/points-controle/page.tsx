@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PointControleForm } from "@/components/admin/point-controle-form";
+import { ImportExcelPoints } from "@/components/admin/import-excel-points";
 import { Modal } from "@/components/ui/modal";
 import type { Tables } from "@/types/database";
 
@@ -106,15 +107,18 @@ export default function AdminPointsControlePage() {
             {activeCount} actifs · {inactiveCount} désactivés · {categories.length} catégories
           </p>
         </div>
-        <button
-          onClick={() => {
-            setEditingPoint(null);
-            setShowForm(true);
-          }}
-          className="px-4 py-3 min-h-touch bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm"
-        >
-          + Nouveau point
-        </button>
+        <div className="flex items-center gap-2">
+          <ImportExcelPoints onImported={loadPoints} />
+          <button
+            onClick={() => {
+              setEditingPoint(null);
+              setShowForm(true);
+            }}
+            className="px-4 py-3 min-h-touch bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm"
+          >
+            + Nouveau point
+          </button>
+        </div>
       </div>
 
       {/* Filtres */}
