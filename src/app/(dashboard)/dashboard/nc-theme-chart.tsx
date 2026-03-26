@@ -38,13 +38,8 @@ export function NcThemeChart({ data }: NcThemeChartProps) {
               <div className="flex items-center justify-between mb-0.5">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-800 truncate">
-                    {d.theme}
+                    {d.categorie ? `${d.categorie} — ${d.theme}` : d.theme}
                   </p>
-                  {d.categorie && (
-                    <p className="text-[10px] text-gray-400 truncate">
-                      {d.categorie}
-                    </p>
-                  )}
                 </div>
                 <div className="flex items-center gap-2 ml-3 shrink-0 text-xs">
                   {d.ouvertes > 0 && (
