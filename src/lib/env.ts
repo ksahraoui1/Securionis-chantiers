@@ -57,6 +57,6 @@ export function getResendFromEmail(): string {
   return process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
 }
 
-export function getGeminiApiKey(): string {
-  return requireServer("GEMINI_API_KEY", process.env.GEMINI_API_KEY);
+export function getAnthropicApiKey(): string {
+  return requireServer("ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY);
 }

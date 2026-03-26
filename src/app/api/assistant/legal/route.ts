@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getGeminiApiKey } from "@/lib/env";
+import Anthropic from "@anthropic-ai/sdk";
+import { getAnthropicApiKey } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -8,7 +9,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
  * Body: { question, context: { intitule, critere?, baseLegale?, objet? }, history? }
  *
  * Assistant IA juridique spécialisé en sécurité chantier suisse.
- * Utilise Gemini 2.5 Flash.
+ * Utilise Claude Haiku 4.5.
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
 
   let apiKey: string;
   try {
-    apiKey = getGeminiApiKey();
+    apiKey = getAnthropicApiKey();
   } catch {
     return NextResponse.json(
       { error: "Le service d'assistance IA n'est pas disponible." },
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const systemInstruction = `Tu es un assistant juridique expert en sécurité sur les chantiers de construction en Suisse. Tu assistes des inspecteurs de terrain pendant leurs visites de contrôle.
+  const systemPrompt = `Tu es un assistant juridique expert en sécurité sur les chantiers de construction en Suisse. Tu assistes des inspecteurs de terrain pendant leurs visites de contrôle.
 
 Tes domaines d'expertise :
 - Ordonnance sur les travaux de construction (OTConst, RS 832.311.141)
@@ -86,59 +87,34 @@ Règles :
 6. Si la question sort du domaine construction/sécurité, indique poliment que tu ne peux aider que sur ces sujets
 7. Réponds en texte brut uniquement. N'utilise JAMAIS de formatage markdown. Utilise des retours à la ligne et des espaces pour structurer ta réponse. Pour les listes, utilise des numéros (1. 2. 3.) ou des tirets simples suivis d'un espace${contextBlock}`;
 
-  // Build Gemini conversation contents
-  const contents: { role: string; parts: { text: string }[] }[] = [];
+  const anthropic = new Anthropic({ apiKey });
+
+  // Build messages array with history
+  const messages: { role: "user" | "assistant"; content: string }[] = [];
 
   if (history && history.length > 0) {
     for (const msg of history) {
-      contents.push({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }],
-      });
+      messages.push({ role: msg.role, content: msg.content });
     }
   }
 
-  contents.push({
-    role: "user",
-    parts: [{ text: question }],
-  });
+  messages.push({ role: "user", content: question });
 
   try {
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstruction }],
-          },
-          contents,
-          generationConfig: {
-            maxOutputTokens: 1024,
-            temperature: 0.3,
-          },
-        }),
-        signal: AbortSignal.timeout(30000),
-      }
-    );
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages,
+    });
 
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text();
-      console.error("Gemini API error:", errBody);
-      return NextResponse.json(
-        { error: "Erreur du service IA" },
-        { status: 500 }
-      );
-    }
-
-    const geminiData = await geminiRes.json();
-    const answer = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const textBlock = response.content.find((b) => b.type === "text");
+    const answer = textBlock && "text" in textBlock ? textBlock.text : "";
 
     return NextResponse.json({ answer });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur API";
-    console.error("Gemini error:", message);
+    console.error("Anthropic error:", message);
     return NextResponse.json(
       { error: "Erreur du service IA" },
       { status: 500 }
