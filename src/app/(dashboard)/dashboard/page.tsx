@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EcartStatusBadge } from "@/components/ecart/ecart-status-badge";
-import { NcChart } from "./nc-chart";
+import { NcThemeChart } from "./nc-theme-chart";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
   // --- Toutes les NC ---
   const { data: allEcarts } = await supabase
     .from("ecarts")
-    .select("id, chantier_id, statut, delai, created_at")
+    .select("id, chantier_id, statut, delai, created_at, reponse_id")
     .in("chantier_id", chantierIds.length > 0 ? chantierIds : [""]);
 
   // --- Toutes les réponses (pour taux de conformité) ---
@@ -43,6 +43,59 @@ export default async function DashboardPage() {
     .from("reponses")
     .select("id, valeur, visite_id")
     .in("visite_id", visiteIds.length > 0 ? visiteIds : [""]);
+
+  // --- NC par thème : réponses NC → point_controle → theme ---
+  const ecartReponseIds = allEcarts?.map((e) => e.reponse_id).filter(Boolean) ?? [];
+  const { data: ncReponses } = ecartReponseIds.length > 0
+    ? await supabase
+        .from("reponses")
+        .select("id, point_controle_id")
+        .in("id", ecartReponseIds)
+    : { data: [] };
+
+  const ncPointIds = [...new Set(ncReponses?.map((r) => r.point_controle_id) ?? [])];
+  const { data: ncPoints } = ncPointIds.length > 0
+    ? await supabase
+        .from("points_controle")
+        .select("id, theme_id, themes(libelle, categories(libelle))")
+        .in("id", ncPointIds)
+    : { data: [] };
+
+  // Build map: reponse_id → theme info
+  const pointThemeMap = new Map(
+    (ncPoints ?? []).map((p) => [
+      p.id,
+      {
+        theme: (p.themes as unknown as { libelle: string; categories: { libelle: string } })?.libelle ?? "Sans thème",
+        categorie: (p.themes as unknown as { libelle: string; categories: { libelle: string } })?.categories?.libelle ?? "",
+      },
+    ])
+  );
+  const reponsePointMap = new Map(
+    (ncReponses ?? []).map((r) => [r.id, r.point_controle_id])
+  );
+
+  // Aggregate NC by theme
+  const ncByTheme: Record<string, { ouvertes: number; corrigees: number; categorie: string }> = {};
+  for (const ecart of allEcarts ?? []) {
+    const pointId = reponsePointMap.get(ecart.reponse_id);
+    const themeInfo = pointId ? pointThemeMap.get(pointId) : null;
+    const themeName = themeInfo?.theme ?? "Sans thème";
+    if (!ncByTheme[themeName]) {
+      ncByTheme[themeName] = { ouvertes: 0, corrigees: 0, categorie: themeInfo?.categorie ?? "" };
+    }
+    if (ecart.statut === "corrige") {
+      ncByTheme[themeName].corrigees++;
+    } else {
+      ncByTheme[themeName].ouvertes++;
+    }
+  }
+
+  // Sort by total NC descending, take top 10
+  const ncParTheme = Object.entries(ncByTheme)
+    .map(([theme, data]) => ({ theme, categorie: data.categorie, ouvertes: data.ouvertes, corrigees: data.corrigees }))
+    .sort((a, b) => (b.ouvertes + b.corrigees) - (a.ouvertes + a.corrigees))
+    .slice(0, 10);
 
   // ===== INDICATEURS =====
 
@@ -79,29 +132,7 @@ export default async function DashboardPage() {
   const tauxConformite =
     totalReponses > 0 ? Math.round((conformes / totalReponses) * 100) : null;
 
-  // 5. Données graphique NC par mois (6 derniers mois)
-  const ncParMois: { mois: string; ouvertes: number; corrigees: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const moisKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const moisLabel = d.toLocaleDateString("fr-CH", {
-      month: "short",
-      year: "2-digit",
-    });
-    const ouvertes =
-      allEcarts?.filter(
-        (e) =>
-          e.created_at.slice(0, 7) === moisKey && e.statut !== "corrige"
-      ).length ?? 0;
-    const corrigees =
-      allEcarts?.filter(
-        (e) =>
-          e.created_at.slice(0, 7) === moisKey && e.statut === "corrige"
-      ).length ?? 0;
-    ncParMois.push({ mois: moisLabel, ouvertes, corrigees });
-  }
-
-  // 6. Chantiers avec NC urgentes (ouvertes avec délai dépassé ou sans délai)
+  // 5. Chantiers avec NC urgentes (ouvertes avec délai dépassé ou sans délai)
   const ncParChantier: Record<
     string,
     { ouvertes: number; urgentes: number }
@@ -207,13 +238,13 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Graphique NC */}
-      <Card title="Évolution des non-conformités">
-        {allEcarts && allEcarts.length > 0 ? (
-          <NcChart data={ncParMois} />
+      {/* NC par thème */}
+      <Card title="Non-conformités par thème">
+        {ncParTheme.length > 0 ? (
+          <NcThemeChart data={ncParTheme} />
         ) : (
           <p className="text-gray-500 text-sm py-8 text-center">
-            Aucune donnée disponible
+            Aucune non-conformité enregistrée
           </p>
         )}
       </Card>
