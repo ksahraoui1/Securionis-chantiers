@@ -299,7 +299,7 @@ export function PointControleForm({
             <label className="text-xs font-medium text-gray-500">
               Thème
             </label>
-            {categorieId && (
+            {(categorieId || showNewCategorie) && (
               <button
                 type="button"
                 onClick={() => {
@@ -313,7 +313,7 @@ export function PointControleForm({
               </button>
             )}
           </div>
-          {showNewTheme ? (
+          {showNewTheme || showNewCategorie ? (
             <input
               type="text"
               value={newTheme}
