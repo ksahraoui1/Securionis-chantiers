@@ -97,6 +97,23 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: "#dc2626",
   },
+  constatationCorrigee: {
+    marginBottom: 10,
+    padding: 8,
+    backgroundColor: "#f0fdf4",
+    borderRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: "#16a34a",
+  },
+  badgeCorrige: {
+    fontSize: 8,
+    fontFamily: "Helvetica-Bold",
+    color: "#ffffff",
+    backgroundColor: "#16a34a",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
   constatationTitle: {
     fontFamily: "Helvetica-Bold",
     fontSize: 10,
@@ -334,41 +351,46 @@ export function RapportVisite({
             Aucune non-conformité constatée.
           </Text>
         ) : (
-          nonConformeReponses.map((r) => (
-            <View key={r.id} style={styles.constatation}>
-              <Text style={styles.constatationTitle}>
-                {(r.points_controle as { intitule: string } | null)?.intitule ??
-                  "Point de contrôle"}
-              </Text>
-              {r.remarque && (
-                <RemarqueText text={r.remarque} />
-              )}
-              {r.photos && r.photos.length > 0 && (
-                <View style={styles.photosRow}>
-                  {r.photos.map((photoUrl, i) => (
-                    <Image key={i} src={photoUrl} style={styles.photoImage} />
-                  ))}
+          nonConformeReponses.map((r) => {
+            const ecart = ecartByReponseId.get(r.id);
+            const isCorrige = ecart?.statut === "corrige";
+
+            return (
+              <View key={r.id} style={isCorrige ? styles.constatationCorrigee : styles.constatation}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <Text style={styles.constatationTitle}>
+                    {(r.points_controle as { intitule: string } | null)?.intitule ??
+                      "Point de contrôle"}
+                  </Text>
+                  {isCorrige && (
+                    <Text style={styles.badgeCorrige}>CORRIGÉ</Text>
+                  )}
                 </View>
-              )}
-              {/* Délai et statut sous la constatation */}
-              {(() => {
-                const ecart = ecartByReponseId.get(r.id);
-                if (!ecart) return null;
-                return (
+                {r.remarque && (
+                  <RemarqueText text={r.remarque} />
+                )}
+                {r.photos && r.photos.length > 0 && (
+                  <View style={styles.photosRow}>
+                    {r.photos.map((photoUrl, i) => (
+                      <Image key={i} src={photoUrl} style={styles.photoImage} />
+                    ))}
+                  </View>
+                )}
+                {ecart && (
                   <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
                     {ecart.delai && (
-                      <Text style={{ fontSize: 8, color: "#b91c1c", fontFamily: "Helvetica-Bold" }}>
+                      <Text style={{ fontSize: 8, color: isCorrige ? "#166534" : "#b91c1c", fontFamily: "Helvetica-Bold" }}>
                         Délai : {ecart.delai}
                       </Text>
                     )}
-                    <Text style={{ fontSize: 8, color: "#6b7280" }}>
+                    <Text style={{ fontSize: 8, color: isCorrige ? "#16a34a" : "#6b7280", fontFamily: isCorrige ? "Helvetica-Bold" : "Helvetica" }}>
                       Statut : {LABELS_STATUT_ECART[ecart.statut] ?? ecart.statut}
                     </Text>
                   </View>
-                );
-              })()}
-            </View>
-          ))
+                )}
+              </View>
+            );
+          })
         )}
 
         {/* Copie(s) */}
