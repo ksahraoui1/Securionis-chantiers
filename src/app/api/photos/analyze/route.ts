@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import Anthropic from "@anthropic-ai/sdk";
-import { getAnthropicApiKey } from "@/lib/env";
+import { getGeminiApiKey } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/photos/analyze
  * Body: { imageUrl: string, pointControle?: string, critere?: string }
  *
- * Sends the photo to Claude Vision to detect:
- * - Missing safety equipment (helmets, harnesses, guardrails)
- * - Risk zones
- * - Visual non-conformities
- *
- * Returns a suggested remark and conformity assessment.
+ * Envoie la photo à Gemini 2.5 Flash pour détecter :
+ * - Équipements de protection manquants
+ * - Zones à risque
+ * - Non-conformités visuelles
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -33,7 +30,7 @@ export async function POST(request: Request) {
 
   let apiKey: string;
   try {
-    apiKey = getAnthropicApiKey();
+    apiKey = getGeminiApiKey();
   } catch {
     return NextResponse.json(
       { error: "Le service d'analyse IA n'est pas disponible." },
@@ -64,20 +61,14 @@ export async function POST(request: Request) {
 
   // Fetch the image and convert to base64
   let imageBase64: string;
-  let mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  let mimeType: string;
 
   try {
     const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
     if (!imgRes.ok) throw new Error("Impossible de charger l'image");
 
     const contentType = imgRes.headers.get("content-type") ?? "image/jpeg";
-    if (contentType.includes("png")) {
-      mediaType = "image/png";
-    } else if (contentType.includes("webp")) {
-      mediaType = "image/webp";
-    } else {
-      mediaType = "image/jpeg";
-    }
+    mimeType = contentType.split(";")[0].trim();
 
     const buffer = await imgRes.arrayBuffer();
     imageBase64 = Buffer.from(buffer).toString("base64");
@@ -88,7 +79,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Build context prompt
+  // Build context
   let context = "";
   if (pointControle) {
     context += `\nPoint de contrôle en cours : "${pointControle}"`;
@@ -97,27 +88,7 @@ export async function POST(request: Request) {
     context += `\nCritère d'acceptation : "${critere}"`;
   }
 
-  const anthropic = new Anthropic({ apiKey });
-
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mediaType,
-                data: imageBase64,
-              },
-            },
-            {
-              type: "text",
-              text: `Tu es un expert en sécurité sur les chantiers de construction en Suisse (normes SUVA, OTConst, SIA).
+  const prompt = `Tu es un expert en sécurité sur les chantiers de construction en Suisse (normes SUVA, OTConst, SIA).
 
 IMPORTANT : Tu DOIS écrire en français correct avec TOUS les accents (é, è, ê, à, ù, ô, î, ç, etc.). Ne jamais omettre les accents. Par exemple : "sécurité", "échafaudage", "conformité", "contrôlé", "détecté", "protégé", "éclairage", "général".
 
@@ -140,16 +111,48 @@ Réponds en JSON avec cette structure exacte :
 Si la photo ne montre pas de chantier ou n'est pas analysable, retourne :
 { "dangers": [], "remarqueSuggeree": "", "conformite": "indetermine", "confiance": 0 }
 
-Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`,
+Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
+
+  try {
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: imageBase64,
+                  },
+                },
+                { text: prompt },
+              ],
             },
           ],
-        },
-      ],
-    });
+          generationConfig: {
+            maxOutputTokens: 1024,
+            temperature: 0.2,
+          },
+        }),
+        signal: AbortSignal.timeout(30000),
+      }
+    );
 
-    // Extract text from response
-    const textBlock = response.content.find((b) => b.type === "text");
-    const raw = textBlock && "text" in textBlock ? textBlock.text : "";
+    if (!geminiRes.ok) {
+      const errBody = await geminiRes.text();
+      console.error("Gemini API error:", errBody);
+      return NextResponse.json(
+        { error: "Erreur lors de l'analyse IA" },
+        { status: 500 }
+      );
+    }
+
+    const geminiData = await geminiRes.json();
+    const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
     // Parse JSON (handle possible markdown code blocks)
     const jsonStr = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
@@ -163,15 +166,15 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`,
         remarqueSuggeree: raw.slice(0, 500),
         conformite: "indetermine",
         confiance: 0,
-        raw,
       });
     }
 
     return NextResponse.json(analysis);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur API";
+    console.error("Gemini error:", message);
     return NextResponse.json(
-      { error: `Erreur lors de l'analyse IA : ${message}` },
+      { error: "Erreur lors de l'analyse IA" },
       { status: 500 }
     );
   }

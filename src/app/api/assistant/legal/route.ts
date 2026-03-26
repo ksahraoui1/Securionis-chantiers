@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import Anthropic from "@anthropic-ai/sdk";
-import { getAnthropicApiKey } from "@/lib/env";
+import { getGeminiApiKey } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -9,7 +8,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
  * Body: { question, context: { intitule, critere?, baseLegale?, objet? }, history? }
  *
  * Assistant IA juridique spécialisé en sécurité chantier suisse.
- * Répond aux questions avec références légales (OTConst, SUVA, SIA, LTr, etc.)
+ * Utilise Gemini 2.5 Flash.
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -29,7 +28,7 @@ export async function POST(request: Request) {
 
   let apiKey: string;
   try {
-    apiKey = getAnthropicApiKey();
+    apiKey = getGeminiApiKey();
   } catch {
     return NextResponse.json(
       { error: "Le service d'assistance IA n'est pas disponible." },
@@ -66,7 +65,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const systemPrompt = `Tu es un assistant juridique expert en sécurité sur les chantiers de construction en Suisse. Tu assistes des inspecteurs de terrain pendant leurs visites de contrôle.
+  const systemInstruction = `Tu es un assistant juridique expert en sécurité sur les chantiers de construction en Suisse. Tu assistes des inspecteurs de terrain pendant leurs visites de contrôle.
 
 Tes domaines d'expertise :
 - Ordonnance sur les travaux de construction (OTConst, RS 832.311.141)
@@ -74,48 +73,74 @@ Tes domaines d'expertise :
 - Loi sur le travail (LTr, RS 822.11)
 - Directives SUVA (feuillets, listes de contrôle)
 - Normes SIA (SIA 118, SIA 260, etc.)
-- RPAC (Règlement sur le plan d'affectation communal) et réglementations cantonales
+- RPAC et réglementations cantonales
 - Code des obligations (CO) pour la responsabilité
 - Ordonnance sur les installations électriques à basse tension (OIBT)
 
 Règles :
-1. Réponds toujours en français
+1. Réponds toujours en français correct avec tous les accents
 2. Cite systématiquement les articles de loi ou normes pertinents (ex: "OTConst Art. 22, al. 1")
 3. Sois concis et pratique — l'inspecteur est sur le terrain
 4. Si tu n'es pas sûr d'une référence précise, indique-le clairement
 5. Propose des formulations utilisables directement dans un rapport d'inspection
 6. Si la question sort du domaine construction/sécurité, indique poliment que tu ne peux aider que sur ces sujets
-7. IMPORTANT : Réponds en texte brut uniquement. N'utilise JAMAIS de formatage markdown (pas d'étoiles, de dièses, d'accents graves). Utilise des retours à la ligne et des espaces pour structurer ta réponse. Pour les listes, utilise des numeros (1. 2. 3.) ou des tirets simples suivis d'un espace${contextBlock}`;
+7. Réponds en texte brut uniquement. N'utilise JAMAIS de formatage markdown. Utilise des retours à la ligne et des espaces pour structurer ta réponse. Pour les listes, utilise des numéros (1. 2. 3.) ou des tirets simples suivis d'un espace${contextBlock}`;
 
-  const anthropic = new Anthropic({ apiKey });
-
-  // Build messages array with history
-  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  // Build Gemini conversation contents
+  const contents: { role: string; parts: { text: string }[] }[] = [];
 
   if (history && history.length > 0) {
     for (const msg of history) {
-      messages.push({ role: msg.role, content: msg.content });
+      contents.push({
+        role: msg.role === "user" ? "user" : "model",
+        parts: [{ text: msg.content }],
+      });
     }
   }
 
-  messages.push({ role: "user", content: question });
+  contents.push({
+    role: "user",
+    parts: [{ text: question }],
+  });
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages,
-    });
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
+          },
+          contents,
+          generationConfig: {
+            maxOutputTokens: 1024,
+            temperature: 0.3,
+          },
+        }),
+        signal: AbortSignal.timeout(30000),
+      }
+    );
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    const answer = textBlock && "text" in textBlock ? textBlock.text : "";
+    if (!geminiRes.ok) {
+      const errBody = await geminiRes.text();
+      console.error("Gemini API error:", errBody);
+      return NextResponse.json(
+        { error: "Erreur du service IA" },
+        { status: 500 }
+      );
+    }
+
+    const geminiData = await geminiRes.json();
+    const answer = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
     return NextResponse.json({ answer });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur API";
+    console.error("Gemini error:", message);
     return NextResponse.json(
-      { error: `Erreur assistant IA : ${message}` },
+      { error: "Erreur du service IA" },
       { status: 500 }
     );
   }
