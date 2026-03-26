@@ -32,7 +32,7 @@ export function TimelineVisites({
     <div className="space-y-3">
       {visites.map((visite) => {
         const href =
-          visite.statut === "terminee" && visite.rapport_url
+          visite.statut === "terminee"
             ? `/chantiers/${chantierId}/visites/${visite.id}/rapport`
             : `/chantiers/${chantierId}/visites/${visite.id}`;
 
@@ -67,8 +67,11 @@ export function TimelineVisites({
                 </Badge>
               </div>
             </div>
-            {visite.statut === "terminee" && visite.rapport_url && (
-              <p className="text-xs text-blue-600 mt-2">Voir le rapport</p>
+            {visite.statut === "terminee" && (
+              <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs">description</span>
+                {visite.rapport_url ? "Voir le rapport" : "Générer le rapport"}
+              </p>
             )}
           </Link>
         );

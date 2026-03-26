@@ -61,6 +61,13 @@ export default async function RapportPage({
     reponses?.filter((r) => r.valeur === "conforme").length ?? 0;
   const totalReponses = reponses?.length ?? 0;
 
+  // Détecter si toutes les NC de cette visite sont corrigées
+  const ncReponseIds = new Set(
+    reponses?.filter((r) => r.valeur === "non_conforme").map((r) => r.id) ?? []
+  );
+  const visiteEcarts = ecarts?.filter((e) => ncReponseIds.has(e.reponse_id)) ?? [];
+  const allNcCorrected = visiteEcarts.length > 0 && visiteEcarts.every((e) => e.statut === "corrige");
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">
@@ -87,17 +94,43 @@ export default async function RapportPage({
         </div>
       </div>
 
+      {/* Bandeau NC toutes corrigées */}
+      {allNcCorrected && (
+        <div className="rounded-lg bg-green-50 border border-green-200 p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-green-600 text-2xl">check_circle</span>
+            <div>
+              <p className="text-sm font-semibold text-green-800">
+                Toutes les non-conformités ont été corrigées
+              </p>
+              <p className="text-xs text-green-700 mt-1">
+                Vous pouvez régénérer le rapport PDF mis à jour et l'envoyer par email aux destinataires.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Ecarts summary */}
-      {ecarts && ecarts.length > 0 && (
+      {visiteEcarts.length > 0 && (
         <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-400 mb-6">
           <h2 className="text-lg font-semibold mb-3">Non-conformités</h2>
           <ul className="space-y-2">
-            {ecarts.map((ecart) => (
+            {visiteEcarts.map((ecart) => (
               <li
                 key={ecart.id}
                 className="flex items-start justify-between text-sm"
               >
-                <span className="text-gray-700">{ecart.description}</span>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  {ecart.statut === "corrige" ? (
+                    <span className="material-symbols-outlined text-green-500 text-base shrink-0">check_circle</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-red-500 text-base shrink-0">error</span>
+                  )}
+                  <span className={`${ecart.statut === "corrige" ? "text-gray-400 line-through" : "text-gray-700"}`}>
+                    {ecart.description}
+                  </span>
+                </div>
                 <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
                   {ecart.delai ?? "Pas de délai"}
                 </span>
@@ -111,7 +144,8 @@ export default async function RapportPage({
       <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-400 mb-6 space-y-2">
         <div className="flex items-center gap-2 text-sm">
           {visite.rapport_url ? (
-            <span className="text-green-600 font-medium">
+            <span className="text-green-600 font-medium flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm">check_circle</span>
               PDF généré
             </span>
           ) : (
@@ -120,11 +154,12 @@ export default async function RapportPage({
         </div>
         <div className="flex items-center gap-2 text-sm">
           {visite.email_envoye ? (
-            <span className="text-green-600 font-medium">
-              Email envoye
+            <span className="text-green-600 font-medium flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm">check_circle</span>
+              Email envoyé
             </span>
           ) : (
-            <span className="text-gray-400">Email non envoye</span>
+            <span className="text-gray-400">Email non envoyé</span>
           )}
         </div>
       </div>
