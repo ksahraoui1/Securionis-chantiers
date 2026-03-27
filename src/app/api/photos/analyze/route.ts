@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicApiKey } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { isAllowedSupabaseUrl } from "@/lib/utils/security";
 
 /**
  * POST /api/photos/analyze
@@ -50,14 +51,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "imageUrl requis" }, { status: 400 });
   }
 
-  // SSRF protection: only allow Supabase storage URLs
-  try {
-    const parsedUrl = new URL(imageUrl);
-    if (!parsedUrl.hostname.endsWith("supabase.co") && !parsedUrl.hostname.endsWith("supabase.in")) {
-      return NextResponse.json({ error: "URL non autorisée" }, { status: 400 });
-    }
-  } catch {
-    return NextResponse.json({ error: "URL invalide" }, { status: 400 });
+  // SSRF protection: whitelist stricte du hostname Supabase
+  if (!isAllowedSupabaseUrl(imageUrl)) {
+    return NextResponse.json({ error: "URL non autorisée" }, { status: 400 });
   }
 
   // Fetch the image and convert to base64

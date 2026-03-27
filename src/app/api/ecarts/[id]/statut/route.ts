@@ -85,12 +85,7 @@ export async function PATCH(
   } catch (err) {
     console.error("Ecart statut update error:", err);
     return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : "Erreur lors de la mise a jour du statut",
-      },
+      { error: "Erreur lors de la mise à jour du statut" },
       { status: 500 }
     );
   }

@@ -496,6 +496,34 @@ export type Database = {
           point_controle_id?: string;
         };
       };
+      audit_logs: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          action: string;
+          resource: string;
+          resource_id: string | null;
+          details: Json | null;
+          ip_address: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          action: string;
+          resource: string;
+          resource_id?: string | null;
+          details?: Json | null;
+          ip_address?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          action?: string;
+          resource?: string;
+          resource_id?: string | null;
+          details?: Json | null;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

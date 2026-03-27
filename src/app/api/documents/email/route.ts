@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Resend } from "resend";
 import { getResendApiKey, getResendFromEmail } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { escapeHtml, isAllowedSupabaseUrl } from "@/lib/utils/security";
 
 /**
  * POST /api/documents/email
@@ -49,9 +50,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    // SSRF protection
-    const parsedUrl = new URL(doc.fichier_url);
-    if (!parsedUrl.hostname.endsWith("supabase.co") && !parsedUrl.hostname.endsWith("supabase.in")) {
+    // SSRF protection: whitelist stricte du hostname Supabase
+    if (!isAllowedSupabaseUrl(doc.fichier_url)) {
       return NextResponse.json({ error: "URL non autorisée" }, { status: 400 });
     }
 
@@ -88,11 +88,11 @@ export async function POST(request: Request) {
       subject: subject?.trim() || `Document : ${doc.titre}`,
       html: `
         <p>Bonjour,</p>
-        <p>Veuillez trouver ci-joint le document : <strong>${doc.titre}</strong></p>
-        ${doc.description ? `<p>${doc.description}</p>` : ""}
-        ${doc.reference ? `<p><em>Référence : ${doc.reference}</em></p>` : ""}
+        <p>Veuillez trouver ci-joint le document : <strong>${escapeHtml(doc.titre)}</strong></p>
+        ${doc.description ? `<p>${escapeHtml(doc.description)}</p>` : ""}
+        ${doc.reference ? `<p><em>Référence : ${escapeHtml(doc.reference)}</em></p>` : ""}
         <br>
-        <p>Cordialement,<br>${senderName}${entrepriseNom ? `<br>${entrepriseNom}` : ""}</p>
+        <p>Cordialement,<br>${escapeHtml(senderName)}${entrepriseNom ? `<br>${escapeHtml(entrepriseNom)}` : ""}</p>
       `,
       attachments: [
         {

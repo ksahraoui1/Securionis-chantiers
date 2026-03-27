@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { canAccessVisite } from "@/lib/utils/security";
 
 export async function POST(
   request: NextRequest,
@@ -17,6 +18,11 @@ export async function POST(
 
     if (!user) {
       return NextResponse.json({ error: "Non autorise" }, { status: 401 });
+    }
+
+    // Vérification d'autorisation
+    if (!(await canAccessVisite(supabase, user.id, visiteId))) {
+      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 
     // Load visite
@@ -138,12 +144,7 @@ export async function POST(
   } catch (err) {
     console.error("PDF generation error:", err);
     return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : "Erreur lors de la generation du PDF",
-      },
+      { error: "Erreur lors de la génération du PDF" },
       { status: 500 }
     );
   }

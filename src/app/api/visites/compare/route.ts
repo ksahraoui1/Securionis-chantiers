@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { canAccessVisite } from "@/lib/utils/security";
 
 /**
  * GET /api/visites/compare?visiteA=xxx&visiteB=xxx
@@ -28,6 +29,16 @@ export async function GET(request: Request) {
       { error: "visiteA et visiteB sont requis" },
       { status: 400 }
     );
+  }
+
+  // Vérification d'autorisation
+  const [canA, canB] = await Promise.all([
+    canAccessVisite(supabase, user.id, visiteAId),
+    canAccessVisite(supabase, user.id, visiteBId),
+  ]);
+
+  if (!canA || !canB) {
+    return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
   }
 
   // Load both visites
