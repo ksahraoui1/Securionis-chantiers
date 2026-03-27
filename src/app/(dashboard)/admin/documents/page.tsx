@@ -425,7 +425,7 @@ export default function AdminDocumentsPage() {
               disabled={!uploadFile || !uploadTitre.trim() || uploading}
               className="px-4 py-2 min-h-touch text-sm bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {uploading ? "Upload..." : "Enregistrer"}
+              {uploading ? "Envoi..." : "Enregistrer"}
             </button>
           </div>
         </div>

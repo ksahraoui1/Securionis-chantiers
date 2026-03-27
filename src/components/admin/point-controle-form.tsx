@@ -427,7 +427,7 @@ export function PointControleForm({
                 disabled={uploading}
                 className="text-xs px-3 py-1.5 min-h-touch bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50"
               >
-                {uploading ? "Upload..." : "+ Ajouter PDF"}
+                {uploading ? "Envoi..." : "+ Ajouter PDF"}
               </button>
             </>
           )}

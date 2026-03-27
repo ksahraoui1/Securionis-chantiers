@@ -287,7 +287,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
               disabled={!uploadFile || !uploadNom.trim() || uploading}
               className="px-4 py-2 min-h-touch text-sm bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              {uploading ? "Upload..." : "Enregistrer"}
+              {uploading ? "Envoi..." : "Enregistrer"}
             </button>
           </div>
         </div>
@@ -413,7 +413,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                     <span className="material-symbols-outlined text-sm">
                       {replacingId === doc.id ? "hourglass_top" : "sync"}
                     </span>
-                    {replacingId === doc.id ? "Upload..." : "Nouvelle version"}
+                    {replacingId === doc.id ? "Envoi..." : "Nouvelle version"}
                   </button>
                   <button
                     type="button"

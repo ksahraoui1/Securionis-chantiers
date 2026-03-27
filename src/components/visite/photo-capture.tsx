@@ -173,7 +173,7 @@ export function PhotoCapture({
       )}
 
       {uploading && (
-        <p className="text-sm text-blue-600">Upload en cours...</p>
+        <p className="text-sm text-blue-600">Envoi en cours...</p>
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
