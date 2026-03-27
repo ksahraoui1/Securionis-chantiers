@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
-const VALID_ROLES = ["inspecteur", "administrateur"];
+const VALID_ROLES = ["invité", "inspecteur", "administrateur"];
 
 export async function PATCH(request: Request) {
   const supabase = await createClient();

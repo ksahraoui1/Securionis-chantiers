@@ -60,3 +60,22 @@ export function getResendFromEmail(): string {
 export function getAnthropicApiKey(): string {
   return requireServer("ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY);
 }
+
+export function getStripeSecretKey(): string {
+  return requireServer("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
+}
+
+export function getStripeWebhookSecret(): string {
+  return requireServer("STRIPE_WEBHOOK_SECRET", process.env.STRIPE_WEBHOOK_SECRET);
+}
+
+export function getStripePublishableKey(): string {
+  return requireValue(
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  );
+}
+
+export function getAppUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? "https://chantiers.securionis.com";
+}

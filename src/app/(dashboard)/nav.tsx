@@ -31,6 +31,9 @@ export function DashboardNav({
   const links = [
     { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
     { href: "/chantiers", label: "Chantiers", icon: "foundation" },
+    ...(userRole === "invité"
+      ? [{ href: "/dashboard/abonnement", label: "Abonnement", icon: "workspace_premium" }]
+      : []),
     ...(userRole === "administrateur"
       ? [
           { href: "/admin/points-controle", label: "Points de contrôle", icon: "checklist" },
@@ -79,9 +82,16 @@ export function DashboardNav({
 
           {/* Desktop user */}
           <div className="hidden md:flex items-center gap-4">
-            <span className="text-sm text-gray-600 truncate max-w-[150px]">
-              {userName}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 truncate max-w-[150px]">
+                {userName}
+              </span>
+              {userRole === "invité" && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">
+                  GRATUIT
+                </span>
+              )}
+            </div>
             <button
               onClick={handleLogout}
               className="px-3 py-2 min-h-touch text-sm text-gray-600 hover:bg-gray-100 rounded-lg"

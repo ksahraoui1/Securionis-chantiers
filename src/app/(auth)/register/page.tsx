@@ -66,7 +66,7 @@ export default function RegisterPage() {
         id: data.user.id,
         nom: nom.trim(),
         email,
-        role: "inspecteur",
+        role: "invité",
       });
     }
 

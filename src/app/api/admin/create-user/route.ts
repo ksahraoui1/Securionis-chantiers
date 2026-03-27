@@ -3,7 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { validatePassword } from "@/lib/utils/security";
 
-const VALID_ROLES = ["inspecteur", "administrateur"];
+const VALID_ROLES = ["invité", "inspecteur", "administrateur"];
 
 export async function POST(request: Request) {
   const supabase = await createClient();

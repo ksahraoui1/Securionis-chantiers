@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { canAccessVisite } from "@/lib/utils/security";
+import { canAccessVisite, getUserRole } from "@/lib/utils/security";
+import { getLimits } from "@/lib/stripe/limits";
 
 export async function POST(
   request: NextRequest,
@@ -23,6 +24,16 @@ export async function POST(
     // Vérification d'autorisation
     if (!(await canAccessVisite(supabase, user.id, visiteId))) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+    }
+
+    // Vérification limites plan
+    const role = await getUserRole(supabase, user.id);
+    const limits = getLimits(role ?? "invité");
+    if (!limits.canGeneratePdf) {
+      return NextResponse.json(
+        { error: "La génération de rapports PDF est réservée aux abonnés. Passez à l'offre payante." },
+        { status: 403 }
+      );
     }
 
     // Load visite

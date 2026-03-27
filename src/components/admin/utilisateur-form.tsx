@@ -107,7 +107,8 @@ export function UtilisateurForm({ onSaved, onCancel }: UtilisateurFormProps) {
           }
           className="w-full rounded-lg border border-gray-300 px-3 py-3 min-h-touch"
         >
-          <option value="inspecteur">Inspecteur</option>
+          <option value="invité">Invité (gratuit)</option>
+          <option value="inspecteur">Inspecteur (payant)</option>
           <option value="administrateur">Administrateur</option>
         </select>
       </div>

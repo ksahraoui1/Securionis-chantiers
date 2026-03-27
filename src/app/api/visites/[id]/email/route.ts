@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendRapport } from "@/lib/email/send-rapport";
-import { canAccessVisite } from "@/lib/utils/security";
+import { canAccessVisite, getUserRole } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getLimits } from "@/lib/stripe/limits";
 
 export async function POST(
   request: NextRequest,
@@ -30,6 +31,16 @@ export async function POST(
     // Vérification d'autorisation
     if (!(await canAccessVisite(supabase, user.id, visiteId))) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+    }
+
+    // Vérification limites plan
+    const role = await getUserRole(supabase, user.id);
+    const limits = getLimits(role ?? "invité");
+    if (!limits.canSendEmail) {
+      return NextResponse.json(
+        { error: "L'envoi de rapports par email est réservé aux abonnés. Passez à l'offre payante." },
+        { status: 403 }
+      );
     }
 
     // Load visite

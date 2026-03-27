@@ -14,7 +14,7 @@ export type Database = {
           id: string;
           nom: string;
           email: string;
-          role: "inspecteur" | "administrateur";
+          role: "invité" | "inspecteur" | "administrateur";
           entreprise_id: string | null;
           created_at: string;
           updated_at: string;
@@ -23,7 +23,7 @@ export type Database = {
           id: string;
           nom: string;
           email: string;
-          role?: "inspecteur" | "administrateur";
+          role?: "invité" | "inspecteur" | "administrateur";
           entreprise_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -32,7 +32,7 @@ export type Database = {
           id?: string;
           nom?: string;
           email?: string;
-          role?: "inspecteur" | "administrateur";
+          role?: "invité" | "inspecteur" | "administrateur";
           entreprise_id?: string | null;
           updated_at?: string;
         };
@@ -494,6 +494,46 @@ export type Database = {
         Update: {
           document_id?: string;
           point_controle_id?: string;
+        };
+      };
+      subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          stripe_customer_id: string;
+          stripe_subscription_id: string | null;
+          status: string;
+          plan: string;
+          current_period_start: string | null;
+          current_period_end: string | null;
+          trial_end: string | null;
+          cancel_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          stripe_customer_id: string;
+          stripe_subscription_id?: string | null;
+          status?: string;
+          plan?: string;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
+          trial_end?: string | null;
+          cancel_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          stripe_subscription_id?: string | null;
+          status?: string;
+          plan?: string;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
+          trial_end?: string | null;
+          cancel_at?: string | null;
+          updated_at?: string;
         };
       };
       audit_logs: {
