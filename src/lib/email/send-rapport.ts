@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { getResendApiKey, getResendFromEmail } from "@/lib/env";
+import { isAllowedSupabaseUrl, escapeHtml } from "@/lib/utils/security";
 
 function getResend() {
   return new Resend(getResendApiKey());
@@ -22,9 +23,8 @@ export async function sendRapport(
   inspecteurNom?: string,
   entreprise?: EntrepriseInfo | null
 ): Promise<string[]> {
-  // SSRF protection: only allow Supabase storage URLs
-  const parsedUrl = new URL(rapportUrl);
-  if (!parsedUrl.hostname.endsWith("supabase.co") && !parsedUrl.hostname.endsWith("supabase.in")) {
+  // SSRF protection: whitelist stricte du hostname Supabase
+  if (!isAllowedSupabaseUrl(rapportUrl)) {
     throw new Error("URL de rapport non autorisée");
   }
 
@@ -84,16 +84,16 @@ function buildEmailHtml(
 
   if (entreprise) {
     const lines: string[] = [];
-    lines.push(`<strong>${entreprise.nom}</strong>`);
-    if (inspecteurNom) lines.push(inspecteurNom);
+    lines.push(`<strong>${escapeHtml(entreprise.nom)}</strong>`);
+    if (inspecteurNom) lines.push(escapeHtml(inspecteurNom));
     if (entreprise.adresse) {
       const adresseLine = [entreprise.adresse, entreprise.npa, entreprise.ville]
         .filter(Boolean)
         .join(" ");
-      lines.push(adresseLine);
+      lines.push(escapeHtml(adresseLine));
     }
-    if (entreprise.telephone) lines.push(entreprise.telephone);
-    if (entreprise.email) lines.push(entreprise.email);
+    if (entreprise.telephone) lines.push(escapeHtml(entreprise.telephone));
+    if (entreprise.email) lines.push(escapeHtml(entreprise.email));
 
     signature = `
       <hr style="border:none;border-top:1px solid #999;margin:20px 0"/>
@@ -101,7 +101,7 @@ function buildEmailHtml(
   } else if (inspecteurNom) {
     signature = `
       <hr style="border:none;border-top:1px solid #999;margin:20px 0"/>
-      <p style="margin:0">${inspecteurNom}</p>`;
+      <p style="margin:0">${escapeHtml(inspecteurNom)}</p>`;
   }
 
   return `

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { validateDocumentFile, getSafeExtension } from "@/lib/utils/file-validation";
 import type { Tables } from "@/types/database";
 
 interface DocumentManagerProps {
@@ -73,12 +74,19 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
 
   async function handleUpload() {
     if (!uploadFile || !uploadNom.trim()) return;
+
+    const validation = validateDocumentFile(uploadFile);
+    if (!validation.valid) {
+      setError(validation.error ?? "Fichier invalide");
+      return;
+    }
+
     setUploading(true);
     setError(null);
 
     try {
       const supabase = createClient();
-      const ext = uploadFile.name.split(".").pop() ?? "pdf";
+      const ext = getSafeExtension(uploadFile.name);
       const path = `chantiers/${chantierId}/docs/${crypto.randomUUID()}.${ext}`;
 
       const { error: storageError } = await supabase.storage
@@ -115,6 +123,12 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
   }
 
   async function handleReplace(docId: string, file: File) {
+    const validation = validateDocumentFile(file);
+    if (!validation.valid) {
+      setError(validation.error ?? "Fichier invalide");
+      return;
+    }
+
     setError(null);
     setReplacingId(docId);
 
@@ -123,7 +137,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
       const doc = documents.find((d) => d.id === docId);
       if (!doc) return;
 
-      const ext = file.name.split(".").pop() ?? "pdf";
+      const ext = getSafeExtension(file.name);
       const path = `chantiers/${chantierId}/docs/${crypto.randomUUID()}.${ext}`;
 
       const { error: storageError } = await supabase.storage
@@ -238,7 +252,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.dwg,.dxf"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -248,7 +262,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
               className="w-full flex items-center justify-center gap-2 py-4 min-h-[56px] rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors text-sm"
             >
               <span className="material-symbols-outlined text-xl">cloud_upload</span>
-              {uploadFile ? uploadFile.name : "Choisir un fichier (PDF, Word, Excel, Image, DWG)"}
+              {uploadFile ? uploadFile.name : "Choisir un fichier (PDF, Word, Excel, Image)"}
             </button>
           </div>
 
@@ -377,7 +391,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                   <input
                     ref={replacingId === doc.id ? replaceRef : undefined}
                     type="file"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.dwg,.dxf"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) handleReplace(doc.id, file);

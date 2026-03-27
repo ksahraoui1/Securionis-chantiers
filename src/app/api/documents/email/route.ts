@@ -38,6 +38,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Adresse email invalide" }, { status: 400 });
   }
 
+  // Protection email header injection
+  if (subject && /[\r\n]/.test(subject)) {
+    return NextResponse.json({ error: "Sujet invalide" }, { status: 400 });
+  }
+
   // Load document
   const { data: doc, error: docError } = await supabase
     .from("base_documentaire")

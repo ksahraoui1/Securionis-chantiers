@@ -90,8 +90,17 @@ export function PointControleForm({
 
   // Upload a PDF to a point
   async function uploadDocToPoint(pointId: string, file: File, ordre: number) {
+    // Validation fichier
+    const allowedExts = ["pdf", "jpg", "jpeg", "png"];
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!allowedExts.includes(ext)) {
+      throw new Error("Format non autorisé. Formats acceptés : PDF, JPG, PNG");
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      throw new Error("Le fichier dépasse 50 Mo");
+    }
+
     const supabase = createClient();
-    const ext = file.name.split(".").pop() ?? "pdf";
     const path = `points-controle/${pointId}/${crypto.randomUUID()}.${ext}`;
 
     const { error: storageError } = await supabase.storage

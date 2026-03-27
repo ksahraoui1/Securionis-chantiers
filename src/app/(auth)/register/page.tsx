@@ -54,11 +54,8 @@ export default function RegisterPage() {
     });
 
     if (signUpError) {
-      if (signUpError.message.includes("already registered")) {
-        setError("Cet email est déjà utilisé. Essayez de vous connecter.");
-      } else {
-        setError(signUpError.message);
-      }
+      // Message générique pour éviter l'énumération de comptes
+      setError("Impossible de créer le compte. Vérifiez vos informations ou essayez de vous connecter.");
       setLoading(false);
       return;
     }
@@ -161,10 +158,10 @@ export default function RegisterPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={8}
             autoComplete="new-password"
             className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            placeholder="Minimum 6 caractères"
+            placeholder="Minimum 8 caractères (majuscule, minuscule, chiffre)"
           />
         </div>
 
@@ -178,7 +175,7 @@ export default function RegisterPage() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={8}
             autoComplete="new-password"
             className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             placeholder="Retapez le mot de passe"

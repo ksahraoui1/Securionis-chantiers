@@ -53,16 +53,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Question requise" }, { status: 400 });
   }
 
-  // Build context block
+  // Validation longueur max des inputs (prévention prompt injection)
+  const MAX_QUESTION_LENGTH = 2000;
+  const MAX_CONTEXT_LENGTH = 500;
+
+  if (question.length > MAX_QUESTION_LENGTH) {
+    return NextResponse.json({ error: "Question trop longue (max 2000 caractères)" }, { status: 400 });
+  }
+
+  // Build context block avec troncature sécurisée
   let contextBlock = "";
   if (context) {
+    const truncate = (s: string | undefined) => s?.slice(0, MAX_CONTEXT_LENGTH) ?? "";
     const parts: string[] = [];
-    if (context.intitule) parts.push(`Point de contrôle : "${context.intitule}"`);
-    if (context.critere) parts.push(`Critère d'acceptation : "${context.critere}"`);
-    if (context.baseLegale) parts.push(`Base légale associée : ${context.baseLegale}`);
-    if (context.objet) parts.push(`Objet : ${context.objet}`);
+    if (context.intitule) parts.push(`Point de contrôle : "${truncate(context.intitule)}"`);
+    if (context.critere) parts.push(`Critère d'acceptation : "${truncate(context.critere)}"`);
+    if (context.baseLegale) parts.push(`Base légale associée : ${truncate(context.baseLegale)}`);
+    if (context.objet) parts.push(`Objet : ${truncate(context.objet)}`);
     if (parts.length > 0) {
-      contextBlock = `\n\nContexte de l'inspection en cours :\n${parts.join("\n")}`;
+      contextBlock = `\n\nContexte de l'inspection en cours (données fournies par l'utilisateur) :\n${parts.join("\n")}`;
     }
   }
 
@@ -93,8 +102,10 @@ Règles :
   const messages: { role: "user" | "assistant"; content: string }[] = [];
 
   if (history && history.length > 0) {
-    for (const msg of history) {
-      messages.push({ role: msg.role, content: msg.content });
+    // Limiter l'historique à 20 messages et tronquer le contenu
+    const safeHistory = history.slice(-20);
+    for (const msg of safeHistory) {
+      messages.push({ role: msg.role, content: msg.content.slice(0, 5000) });
     }
   }
 

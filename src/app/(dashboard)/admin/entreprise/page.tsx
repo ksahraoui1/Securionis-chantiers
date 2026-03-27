@@ -166,7 +166,7 @@ export default function AdminEntreprisePage() {
             <input
               ref={fileRef}
               type="file"
-              accept="image/png,image/jpeg,image/svg+xml"
+              accept="image/png,image/jpeg"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];

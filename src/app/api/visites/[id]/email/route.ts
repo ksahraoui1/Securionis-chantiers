@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendRapport } from "@/lib/email/send-rapport";
 import { canAccessVisite } from "@/lib/utils/security";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(
   request: NextRequest,
@@ -19,6 +20,11 @@ export async function POST(
 
     if (!user) {
       return NextResponse.json({ error: "Non autorise" }, { status: 401 });
+    }
+
+    // Rate limit: 10 emails par heure
+    if (!checkRateLimit(`visite-email:${user.id}`, 10, 60 * 60 * 1000)) {
+      return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 
     // Vérification d'autorisation

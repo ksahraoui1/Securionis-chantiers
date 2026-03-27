@@ -35,8 +35,13 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 6) {
-      setError("Le mot de passe doit contenir au moins 6 caractères.");
+    if (password.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Le mot de passe doit contenir au moins une majuscule, une minuscule et un chiffre.");
       return;
     }
 
@@ -53,7 +58,7 @@ export default function ResetPasswordPage() {
     });
 
     if (updateError) {
-      setError(updateError.message);
+      setError("Impossible de modifier le mot de passe. Demandez un nouveau lien.");
       setLoading(false);
       return;
     }
@@ -128,10 +133,10 @@ export default function ResetPasswordPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={8}
             autoComplete="new-password"
             className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            placeholder="Minimum 6 caractères"
+            placeholder="Minimum 8 caractères"
           />
         </div>
 
@@ -145,7 +150,7 @@ export default function ResetPasswordPage() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={8}
             autoComplete="new-password"
             className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             placeholder="Retapez le mot de passe"

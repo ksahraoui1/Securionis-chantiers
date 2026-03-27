@@ -95,12 +95,24 @@ export default function AdminDocumentsPage() {
 
   async function handleUpload() {
     if (!uploadFile || !uploadTitre.trim()) return;
+
+    // Validation fichier côté client
+    const allowedExts = ["pdf", "jpg", "jpeg", "png"];
+    const ext = uploadFile.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!allowedExts.includes(ext)) {
+      setError("Format non autorisé. Formats acceptés : PDF, JPG, PNG");
+      return;
+    }
+    if (uploadFile.size > 50 * 1024 * 1024) {
+      setError("Le fichier dépasse 50 Mo");
+      return;
+    }
+
     setUploading(true);
     setError(null);
 
     try {
       const supabase = createClient();
-      const ext = uploadFile.name.split(".").pop()?.toLowerCase() ?? "pdf";
       const typeFichier = ["jpg", "jpeg"].includes(ext) ? "jpeg" : ext === "png" ? "png" : "pdf";
       const path = `base-documentaire/${crypto.randomUUID()}.${ext}`;
 

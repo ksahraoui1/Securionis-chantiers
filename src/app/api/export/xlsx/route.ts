@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import * as XLSX from "xlsx";
-import { canAccessChantier } from "@/lib/utils/security";
+import { canAccessChantier, getUserRole } from "@/lib/utils/security";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET /api/export/xlsx?scope=all|chantier&chantierId=xxx
@@ -23,14 +24,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
+  // Rate limit: 10 exports par heure
+  if (!checkRateLimit(`export:${user.id}`, 10, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
+  }
+
   const url = new URL(request.url);
   const scope = url.searchParams.get("scope") ?? "all";
   const chantierId = url.searchParams.get("chantierId");
 
-  // Vérification d'autorisation pour export chantier spécifique
+  // Vérification d'autorisation
   if (scope === "chantier" && chantierId) {
     if (!(await canAccessChantier(supabase, user.id, chantierId))) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+    }
+  } else if (scope === "all") {
+    const role = await getUserRole(supabase, user.id);
+    if (role !== "administrateur") {
+      return NextResponse.json({ error: "Export global réservé aux administrateurs" }, { status: 403 });
     }
   }
 
