@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ChecklistItem } from "./checklist-item";
 import { ThemeAdder } from "./theme-adder";
 import { QuickAddPoint } from "./quick-add-point";
+import { PointSelector } from "./point-selector";
 import { useAutosave } from "@/hooks/use-autosave";
 import type { Tables } from "@/types/database";
 
@@ -37,10 +38,12 @@ export function ChecklistForm({
   onValidate,
   validating,
 }: ChecklistFormProps) {
+  const [allPoints, setAllPoints] = useState<PointWithDocs[]>([]);
   const [points, setPoints] = useState<PointWithDocs[]>([]);
   const [loading, setLoading] = useState(true);
   const [showThemeAdder, setShowThemeAdder] = useState(false);
   const [themeIds, setThemeIds] = useState<string[]>([]);
+  const [selectionDone, setSelectionDone] = useState(false);
   const { save, saveStatus } = useAutosave(visiteId);
 
   // Load points based on current themeIds
@@ -61,9 +64,32 @@ export function ChecklistForm({
     }
 
     const { data } = await query;
-    if (data) setPoints(data as PointWithDocs[]);
+    if (data) {
+      const loaded = data as PointWithDocs[];
+      setAllPoints(loaded);
+
+      // Si des réponses existent déjà, on saute la sélection (visite reprise)
+      const hasExistingReponses = Object.keys(existingReponses).length > 0;
+      if (hasExistingReponses) {
+        setPoints(loaded);
+        setSelectionDone(true);
+      } else {
+        // Vérifier si une sélection précédente existe en localStorage
+        const storedSelection = localStorage.getItem(`visite-selected-points-${visiteId}`);
+        if (storedSelection) {
+          try {
+            const savedIds = new Set<string>(JSON.parse(storedSelection));
+            const filtered = loaded.filter((p) => savedIds.has(p.id));
+            if (filtered.length > 0) {
+              setPoints(filtered);
+              setSelectionDone(true);
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+    }
     setLoading(false);
-  }, [categorieIds]);
+  }, [categorieIds, existingReponses]);
 
   // Initial load
   useEffect(() => {
@@ -82,8 +108,18 @@ export function ChecklistForm({
     setThemeIds(merged);
     localStorage.setItem(`visite-themes-${visiteId}`, JSON.stringify(merged));
     setShowThemeAdder(false);
+    setSelectionDone(false);
     setLoading(true);
     loadPoints(merged);
+  }
+
+  // Handle point selection confirmation
+  function handleSelectionConfirm(selectedIds: string[]) {
+    const selectedSet = new Set(selectedIds);
+    setPoints(allPoints.filter((p) => selectedSet.has(p.id)));
+    setSelectionDone(true);
+    // Sauvegarder la sélection pour reprise
+    localStorage.setItem(`visite-selected-points-${visiteId}`, JSON.stringify(selectedIds));
   }
 
   const handleChange = useCallback(
@@ -111,6 +147,16 @@ export function ChecklistForm({
           Chargement des points de contrôle...
         </div>
       </div>
+    );
+  }
+
+  // Étape 1 : sélection des points à contrôler
+  if (!selectionDone && allPoints.length > 0) {
+    return (
+      <PointSelector
+        points={allPoints}
+        onConfirm={handleSelectionConfirm}
+      />
     );
   }
 
