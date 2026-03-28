@@ -24,12 +24,17 @@ export function ChantierSearch({ chantiersWithStats }: ChantierSearchProps) {
 
   if (chantiersWithStats.length === 0) {
     return (
-      <div className="text-center py-16">
-        <p className="text-gray-500 mb-4">Aucun chantier trouvé</p>
+      <div className="text-center py-20">
+        <div className="w-16 h-16 rounded-2xl bg-stone-100 flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-3xl text-stone-400">foundation</span>
+        </div>
+        <h3 className="font-heading font-semibold text-gray-900 mb-2">Aucun chantier</h3>
+        <p className="text-gray-400 text-sm mb-6">Commencez par créer votre premier chantier</p>
         <Link
           href="/chantiers/nouveau"
-          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition-all shadow-sm hover:shadow-md"
         >
+          <span className="material-symbols-outlined text-lg">add</span>
           Créer un chantier
         </Link>
       </div>
@@ -38,19 +43,25 @@ export function ChantierSearch({ chantiersWithStats }: ChantierSearchProps) {
 
   return (
     <div>
-      <div className="mb-4">
-        <input
-          type="search"
-          placeholder="Rechercher par adresse..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-[44px] text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
-        />
+      <div className="mb-5">
+        <div className="relative">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-xl text-gray-400">search</span>
+          <input
+            type="search"
+            placeholder="Rechercher par adresse..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input-field pl-12"
+          />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          Aucun chantier ne correspond a votre recherche.
+        <div className="text-center py-12">
+          <span className="material-symbols-outlined text-3xl text-stone-300 block mb-2">search_off</span>
+          <p className="text-gray-400 text-sm">
+            Aucun chantier ne correspond à votre recherche.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

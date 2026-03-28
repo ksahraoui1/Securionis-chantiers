@@ -63,20 +63,27 @@ export default async function ChantiersPage() {
     })) ?? [];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Chantiers</h1>
+    <div className="max-w-5xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+        <div>
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
+            Chantiers
+          </h1>
+          <p className="text-sm text-gray-400 mt-1">
+            {chantiersWithStats.length} chantier{chantiersWithStats.length !== 1 ? "s" : ""} actif{chantiersWithStats.length !== 1 ? "s" : ""}
+          </p>
+        </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <Link
             href="/chantiers/archives"
-            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-sm"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-white text-gray-600 font-medium rounded-xl border border-stone-200 hover:bg-stone-50 transition-all text-sm shadow-subtle"
           >
             <span className="material-symbols-outlined text-lg">inventory_2</span>
             Archives
           </Link>
           <Link
             href="/chantiers/nouveau"
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex-1 sm:flex-initial"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition-all flex-1 sm:flex-initial shadow-sm hover:shadow-md text-sm"
           >
             <span className="material-symbols-outlined text-lg">add</span>
             Nouveau chantier

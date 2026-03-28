@@ -52,7 +52,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ backgroundColor: "#F7F5F2" }}>
       <DashboardNav
         userName={profile?.nom ?? user.email ?? ""}
         userRole={profile?.role ?? "inspecteur"}
@@ -60,7 +60,12 @@ export default async function DashboardLayout({
         entrepriseLogoUrl={entrepriseLogoUrl}
       />
       <OfflineBanner />
-      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+      {/* Desktop: offset for sidebar. Tablet/Mobile: no offset */}
+      <main className="lg:pl-[260px] transition-all duration-300">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 animate-page-enter">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

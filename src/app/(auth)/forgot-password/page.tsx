@@ -36,22 +36,22 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
-        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-blue-600 text-3xl">forward_to_inbox</span>
+      <div className="bg-white rounded-2xl shadow-card border border-stone-200 p-8 text-center">
+        <div className="w-14 h-14 bg-brand-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-brand-600 text-2xl">forward_to_inbox</span>
         </div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">
+        <h1 className="font-heading text-xl font-bold text-gray-900 mb-2">
           Email envoyé
         </h1>
-        <p className="text-sm text-gray-600 mb-6">
-          Si un compte existe pour <strong>{email}</strong>, vous recevrez un lien de réinitialisation dans quelques minutes.
+        <p className="text-sm text-gray-500 mb-6">
+          Si un compte existe pour <strong className="text-gray-700">{email}</strong>, vous recevrez un lien de réinitialisation dans quelques minutes.
         </p>
         <p className="text-xs text-gray-400 mb-6">
           Vérifiez aussi votre dossier spam.
         </p>
         <Link
           href="/login"
-          className="text-sm text-blue-600 hover:underline font-medium"
+          className="text-sm text-brand-600 hover:text-brand-700 font-medium transition-colors"
         >
           Retour à la connexion
         </Link>
@@ -60,19 +60,19 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-5 sm:p-8">
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
+    <div className="bg-white rounded-2xl shadow-card border border-stone-200 p-6 sm:p-8">
+      <div className="mb-6">
+        <h2 className="font-heading text-xl font-bold text-gray-900">
           Mot de passe oublié
-        </h1>
-        <p className="text-sm text-gray-500 mt-2">
+        </h2>
+        <p className="text-sm text-gray-500 mt-1">
           Entrez votre email pour recevoir un lien de réinitialisation.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
             Adresse email
           </label>
           <input
@@ -82,31 +82,32 @@ export default function ForgotPasswordPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            className="input-field"
             placeholder="votre@email.ch"
           />
         </div>
 
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl p-3">
+            <span className="material-symbols-outlined text-base text-red-500">error</span>
             {error}
-          </p>
+          </div>
         )}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-4 min-h-touch bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-lg"
+          className="w-full py-3.5 min-h-touch bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 active:bg-brand-800 disabled:opacity-50 disabled:cursor-not-allowed text-base transition-all duration-200 shadow-sm hover:shadow-md mt-2"
         >
           {loading ? "Envoi..." : "Envoyer le lien"}
         </button>
       </form>
 
-      <p className="text-center text-sm text-gray-500 mt-6">
-        <Link href="/login" className="text-blue-600 hover:underline font-medium">
+      <div className="mt-6 pt-5 border-t border-stone-150 text-center">
+        <Link href="/login" className="text-sm text-brand-600 hover:text-brand-700 font-medium transition-colors">
           Retour à la connexion
         </Link>
-      </p>
+      </div>
     </div>
   );
 }

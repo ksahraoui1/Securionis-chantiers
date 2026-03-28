@@ -38,10 +38,10 @@ export function ArchiveToggleButton({ chantierId, archived }: ArchiveToggleButto
       type="button"
       onClick={handleToggle}
       disabled={loading}
-      className={`inline-flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
+      className={`inline-flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-xl font-medium text-sm transition-all disabled:opacity-50 ${
         archived
-          ? "bg-green-50 text-green-700 hover:bg-green-100"
-          : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-inset ring-emerald-600/10"
+          : "bg-amber-50 text-amber-700 hover:bg-amber-100 ring-1 ring-inset ring-amber-600/10"
       }`}
     >
       <span className="material-symbols-outlined text-lg">

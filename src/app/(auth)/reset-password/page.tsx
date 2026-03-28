@@ -75,14 +75,14 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-green-600 text-3xl">check_circle</span>
+      <div className="bg-white rounded-2xl shadow-card border border-stone-200 p-8 text-center">
+        <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
         </div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">
+        <h1 className="font-heading text-xl font-bold text-gray-900 mb-2">
           Mot de passe modifié
         </h1>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-500">
           Redirection vers le tableau de bord...
         </p>
       </div>
@@ -91,19 +91,19 @@ export default function ResetPasswordPage() {
 
   if (!sessionReady) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
-        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-amber-600 text-3xl">hourglass_top</span>
+      <div className="bg-white rounded-2xl shadow-card border border-stone-200 p-8 text-center">
+        <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-amber-600 text-2xl">hourglass_top</span>
         </div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">
+        <h1 className="font-heading text-xl font-bold text-gray-900 mb-2">
           Vérification en cours...
         </h1>
-        <p className="text-sm text-gray-600 mb-6">
+        <p className="text-sm text-gray-500 mb-6">
           Si la page ne change pas, le lien a peut-être expiré.
         </p>
         <Link
           href="/forgot-password"
-          className="text-sm text-blue-600 hover:underline font-medium"
+          className="text-sm text-brand-600 hover:text-brand-700 font-medium transition-colors"
         >
           Demander un nouveau lien
         </Link>
@@ -112,19 +112,19 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-5 sm:p-8">
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
+    <div className="bg-white rounded-2xl shadow-card border border-stone-200 p-6 sm:p-8">
+      <div className="mb-6">
+        <h2 className="font-heading text-xl font-bold text-gray-900">
           Nouveau mot de passe
-        </h1>
-        <p className="text-sm text-gray-500 mt-2">
+        </h2>
+        <p className="text-sm text-gray-500 mt-1">
           Choisissez votre nouveau mot de passe.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
             Nouveau mot de passe
           </label>
           <input
@@ -135,13 +135,13 @@ export default function ResetPasswordPage() {
             required
             minLength={8}
             autoComplete="new-password"
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            className="input-field"
             placeholder="Minimum 8 caractères"
           />
         </div>
 
         <div>
-          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1.5">
             Confirmer le mot de passe
           </label>
           <input
@@ -152,21 +152,22 @@ export default function ResetPasswordPage() {
             required
             minLength={8}
             autoComplete="new-password"
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            className="input-field"
             placeholder="Retapez le mot de passe"
           />
         </div>
 
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl p-3">
+            <span className="material-symbols-outlined text-base text-red-500">error</span>
             {error}
-          </p>
+          </div>
         )}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-4 min-h-touch bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-lg"
+          className="w-full py-3.5 min-h-touch bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 active:bg-brand-800 disabled:opacity-50 disabled:cursor-not-allowed text-base transition-all duration-200 shadow-sm hover:shadow-md mt-2"
         >
           {loading ? "Modification..." : "Changer le mot de passe"}
         </button>

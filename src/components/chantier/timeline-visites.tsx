@@ -22,9 +22,14 @@ export function TimelineVisites({
 }: TimelineVisitesProps) {
   if (visites.length === 0) {
     return (
-      <p className="text-sm text-gray-500 py-4">
-        Aucune visite pour ce chantier.
-      </p>
+      <div className="text-center py-10">
+        <div className="w-12 h-12 rounded-xl bg-stone-100 flex items-center justify-center mx-auto mb-3">
+          <span className="material-symbols-outlined text-2xl text-stone-400">event_note</span>
+        </div>
+        <p className="text-sm text-gray-400">
+          Aucune visite pour ce chantier.
+        </p>
+      </div>
     );
   }
 
@@ -40,25 +45,44 @@ export function TimelineVisites({
           <Link
             key={visite.id}
             href={href}
-            className="block bg-white rounded-lg border border-gray-400 p-4 hover:shadow-sm transition-shadow"
+            className="block bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-5 card-hover shadow-card"
           >
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  {new Date(visite.date_visite).toLocaleDateString("fr-CH", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {visite.inspecteur_nom}
-                </p>
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  visite.statut === "terminee"
+                    ? "bg-emerald-50"
+                    : visite.statut === "en_cours"
+                      ? "bg-amber-50"
+                      : "bg-stone-50"
+                }`}>
+                  <span className={`material-symbols-outlined text-lg ${
+                    visite.statut === "terminee"
+                      ? "text-emerald-500"
+                      : visite.statut === "en_cours"
+                        ? "text-amber-500"
+                        : "text-stone-400"
+                  }`}>
+                    {visite.statut === "terminee" ? "task_alt" : visite.statut === "en_cours" ? "pending" : "edit_note"}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {new Date(visite.date_visite).toLocaleDateString("fr-CH", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {visite.inspecteur_nom}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {visite.nc_count > 0 && (
-                  <span className="text-xs font-medium text-red-600">
+                  <span className="text-xs font-semibold text-red-600 tabular-nums">
                     {visite.nc_count} NC
                   </span>
                 )}
@@ -68,10 +92,12 @@ export function TimelineVisites({
               </div>
             </div>
             {visite.statut === "terminee" && (
-              <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
-                <span className="material-symbols-outlined text-xs">description</span>
-                {visite.rapport_url ? "Voir le rapport" : "Générer le rapport"}
-              </p>
+              <div className="mt-3 pt-3 border-t border-stone-100 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-brand-500">description</span>
+                <span className="text-xs text-brand-600 font-medium">
+                  {visite.rapport_url ? "Voir le rapport" : "Générer le rapport"}
+                </span>
+              </div>
             )}
           </Link>
         );
