@@ -102,15 +102,45 @@ export function ChecklistForm({
     }
   }, [categorieIds, visiteId, loadPoints]);
 
-  // Handle adding new themes
-  function handleThemesAdded(newThemeIds: string[]) {
-    const merged = [...new Set([...themeIds, ...newThemeIds])];
+  // Handle adding new themes — append new points without losing existing ones
+  async function handleThemesAdded(newThemeIds: string[]) {
+    const onlyNew = newThemeIds.filter((id) => !themeIds.includes(id));
+    if (onlyNew.length === 0) {
+      setShowThemeAdder(false);
+      return;
+    }
+
+    const merged = [...new Set([...themeIds, ...onlyNew])];
     setThemeIds(merged);
     localStorage.setItem(`visite-themes-${visiteId}`, JSON.stringify(merged));
     setShowThemeAdder(false);
-    setSelectionDone(false);
-    setLoading(true);
-    loadPoints(merged);
+
+    // Load only the new points
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("points_controle")
+      .select("*, point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
+      .eq("actif", true)
+      .in("theme_id", onlyNew)
+      .order("objet")
+      .order("intitule");
+
+    if (data) {
+      const newPoints = data as PointWithDocs[];
+      const existingIds = new Set(points.map((p) => p.id));
+      const toAdd = newPoints.filter((p) => !existingIds.has(p.id));
+
+      setAllPoints((prev) => [...prev, ...toAdd]);
+      setPoints((prev) => {
+        const updated = [...prev, ...toAdd];
+        // Mettre à jour la sélection sauvegardée
+        localStorage.setItem(
+          `visite-selected-points-${visiteId}`,
+          JSON.stringify(updated.map((p) => p.id))
+        );
+        return updated;
+      });
+    }
   }
 
   // Handle point selection confirmation

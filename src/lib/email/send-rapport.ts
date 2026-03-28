@@ -43,36 +43,28 @@ export async function sendRapport(
   const subject = `Rapport de visite — ${chantierAdresse} — ${dateFormatted}`;
   const filename = `rapport_visite_${dateVisite}.pdf`;
 
-  const sentTo: string[] = [];
+  const allEmails = destinataires.map((d) => d.email);
 
-  for (const dest of destinataires) {
-    try {
-      const resend = getResend();
-      await resend.emails.send({
-        from:
-          getResendFromEmail(),
-        to: dest.email,
-        subject,
-        html: buildEmailHtml(dateFormatted, inspecteurNom, entreprise),
-        attachments: [
-          {
-            filename,
-            content: pdfBuffer,
-          },
-        ],
-      });
+  try {
+    const resend = getResend();
+    await resend.emails.send({
+      from: getResendFromEmail(),
+      to: allEmails,
+      subject,
+      html: buildEmailHtml(dateFormatted, inspecteurNom, entreprise),
+      attachments: [
+        {
+          filename,
+          content: pdfBuffer,
+        },
+      ],
+    });
 
-      sentTo.push(dest.email);
-    } catch (err) {
-      console.error(`Failed to send email to ${dest.email}:`, err);
-    }
+    return allEmails;
+  } catch (err) {
+    console.error("Failed to send email to all recipients:", err);
+    throw new Error("Erreur lors de l'envoi de l'email");
   }
-
-  if (sentTo.length === 0) {
-    throw new Error("Aucun email n'a pu etre envoye");
-  }
-
-  return sentTo;
 }
 
 function buildEmailHtml(

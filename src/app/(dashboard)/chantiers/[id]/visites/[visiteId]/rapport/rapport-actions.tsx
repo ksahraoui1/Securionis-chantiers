@@ -56,6 +56,10 @@ export function RapportActions({
   }
 
   async function handleSendEmail() {
+    if (!pdfGenerated) {
+      setError("Veuillez d'abord générer le PDF.");
+      return;
+    }
     setSendingEmail(true);
     setError(null);
     setSuccessMessage(null);
@@ -65,14 +69,14 @@ export function RapportActions({
         method: "POST",
       });
 
+      const body = await res.json();
+
       if (!res.ok) {
-        const body = await res.json();
         throw new Error(body.error ?? "Erreur lors de l'envoi");
       }
 
-      const data = await res.json();
       setEmailSent(true);
-      setSuccessMessage(`Email envoyé à ${data.count} destinataire(s)`);
+      setSuccessMessage(`Email envoyé à ${body.count} destinataire(s) : ${(body.sent_to ?? []).join(", ")}`);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Erreur lors de l'envoi"
@@ -143,11 +147,17 @@ export function RapportActions({
         variant={!pdfGenerated || !hasDestinataires ? "secondary" : "primary"}
         className="w-full"
         loading={sendingEmail}
-        disabled={!pdfGenerated || !hasDestinataires}
+        disabled={sendingEmail || !pdfGenerated || !hasDestinataires}
         onClick={handleSendEmail}
       >
         {emailSent ? "Renvoyer par email" : "Envoyer par email"}
       </Button>
+
+      {!hasDestinataires && (
+        <p className="text-xs text-amber-600 text-center">
+          Ajoutez des destinataires dans la fiche chantier pour envoyer le rapport.
+        </p>
+      )}
     </div>
   );
 }

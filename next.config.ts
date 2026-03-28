@@ -24,6 +24,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' https: data: blob:",
               "font-src 'self' https://fonts.gstatic.com",
               "connect-src 'self' https://*.supabase.co https://*.supabase.in",
+              "frame-src 'self' https://*.supabase.co https://*.supabase.in",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
