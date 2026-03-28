@@ -108,37 +108,30 @@ export default async function ChantierDetailPage({
     })) ?? [];
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5 sm:space-y-6 stagger-children">
+    <div className="max-w-2xl mx-auto px-4 py-4 sm:py-6 space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <Link
-              href="/chantiers"
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <span className="material-symbols-outlined text-xl">arrow_back</span>
-            </Link>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="font-heading text-xl sm:text-2xl font-bold text-gray-900 break-words">
-                {chantier.nom || chantier.adresse}
-              </h1>
-              {chantier.archived ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold uppercase tracking-wide bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10">
-                  <span className="material-symbols-outlined text-xs">inventory_2</span>
-                  Archivé
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10">
-                  Actif
-                </span>
-              )}
-            </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words">
+              {chantier.nom || chantier.adresse}
+            </h1>
+            {chantier.archived ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                <span className="material-symbols-outlined text-xs">inventory_2</span>
+                Archivé
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <span className="material-symbols-outlined text-xs">check_circle</span>
+                Actif
+              </span>
+            )}
           </div>
           {chantier.nom && (
-            <p className="text-sm text-gray-500 mt-0.5 break-words">{chantier.adresse}</p>
+            <p className="text-sm text-gray-600 mt-0.5 break-words">{chantier.adresse}</p>
           )}
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-gray-500 mt-1">
             {chantier.nature_travaux}
           </p>
         </div>
@@ -146,7 +139,7 @@ export default async function ChantierDetailPage({
           <a
             href={`/api/export/xlsx?scope=chantier&chantierId=${chantierId}`}
             download
-            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-3 py-2 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-sm"
+            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             title="Export Excel"
           >
             <span className="material-symbols-outlined text-lg">download</span>
@@ -154,90 +147,83 @@ export default async function ChantierDetailPage({
           <ArchiveToggleButton chantierId={chantierId} archived={chantier.archived} />
           <Link
             href={`/chantiers/${chantierId}/modifier`}
-            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 text-sm bg-white text-gray-700 border border-stone-200 rounded-xl hover:bg-stone-50 transition-all font-medium shadow-subtle"
+            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
           >
-            <span className="material-symbols-outlined text-base mr-1.5">edit</span>
             Modifier
           </Link>
         </div>
       </div>
 
       {/* Info chantier */}
-      <Card title="Informations" icon="info">
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mt-4">
+      <Card title="Informations">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           {chantier.ref_communale && (
             <>
-              <dt className="text-gray-400">Ref. communale</dt>
-              <dd className="text-gray-900 font-medium">{chantier.ref_communale}</dd>
+              <dt className="text-gray-500">Ref. communale</dt>
+              <dd className="text-gray-900">{chantier.ref_communale}</dd>
             </>
           )}
           {chantier.numero_camac && (
             <>
-              <dt className="text-gray-400">N. CAMAC</dt>
-              <dd className="text-gray-900 font-medium">{chantier.numero_camac}</dd>
+              <dt className="text-gray-500">N. CAMAC</dt>
+              <dd className="text-gray-900">{chantier.numero_camac}</dd>
             </>
           )}
           {chantier.numero_parcelle && (
             <>
-              <dt className="text-gray-400">N. parcelle</dt>
-              <dd className="text-gray-900 font-medium">{chantier.numero_parcelle}</dd>
+              <dt className="text-gray-500">N. parcelle</dt>
+              <dd className="text-gray-900">{chantier.numero_parcelle}</dd>
             </>
           )}
           {chantier.numero_eca && (
             <>
-              <dt className="text-gray-400">N. ECA</dt>
-              <dd className="text-gray-900 font-medium">{chantier.numero_eca}</dd>
+              <dt className="text-gray-500">N. ECA</dt>
+              <dd className="text-gray-900">{chantier.numero_eca}</dd>
             </>
           )}
           {chantier.contact_nom && (
             <>
-              <dt className="text-gray-400">Contact</dt>
-              <dd className="text-gray-900 font-medium">{chantier.contact_nom}</dd>
+              <dt className="text-gray-500">Contact</dt>
+              <dd className="text-gray-900">{chantier.contact_nom}</dd>
             </>
           )}
         </dl>
       </Card>
 
       {/* Documents */}
-      <Card title="Documents" icon="folder_open">
-        <div className="mt-4">
-          <DocumentManager
-            chantierId={chantierId}
-            initialDocuments={documents ?? []}
-          />
-        </div>
+      <Card title="Documents">
+        <DocumentManager
+          chantierId={chantierId}
+          initialDocuments={documents ?? []}
+        />
       </Card>
 
       {/* Destinataires */}
-      <Card title="Destinataires" icon="mail">
-        <div className="mt-4">
-          <DestinatairesSection
-            chantierId={chantierId}
-            initialDestinataires={destinataires ?? []}
-          />
-        </div>
+      <Card title="Destinataires">
+        <DestinatairesSection
+          chantierId={chantierId}
+          initialDestinataires={destinataires ?? []}
+        />
       </Card>
 
       {/* Bandeau : NC corrigées → régénérer rapport */}
       {visites?.filter((v) => v.statut === "terminee" && isVisiteAllCorrected(v.id)).map((v) => (
-        <div key={`corrected-${v.id}`} className="rounded-2xl bg-emerald-50 border border-emerald-200/60 p-5">
+        <div key={`corrected-${v.id}`} className="rounded-xl bg-green-50 border border-green-200 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-emerald-600 text-xl">task_alt</span>
-              </div>
+              <span className="material-symbols-outlined text-green-600 text-2xl mt-0.5">task_alt</span>
               <div>
-                <p className="text-sm font-semibold text-emerald-800">
+                <p className="text-sm font-semibold text-green-800">
                   Toutes les NC de la visite du {new Date(v.date_visite).toLocaleDateString("fr-CH")} sont corrigées
                 </p>
-                <p className="text-xs text-emerald-600 mt-0.5">
-                  Vous pouvez générer un rapport mis à jour et l&apos;envoyer par email.
+                <p className="text-xs text-green-700 mt-0.5">
+                  Vous pouvez générer un rapport mis à jour et l'envoyer par email.
                 </p>
               </div>
             </div>
             <Link
               href={`/chantiers/${chantierId}/visites/${v.id}/rapport`}
-              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition-all text-sm shrink-0 shadow-sm"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm shrink-0"
             >
               <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
               Générer le rapport
@@ -248,12 +234,12 @@ export default async function ChantierDetailPage({
 
       {/* Visites */}
       <div>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h2 className="font-heading text-lg font-bold text-gray-900">Visites</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <h2 className="text-lg font-semibold text-gray-900">Visites</h2>
           {!chantier.archived && (
             <Link
               href={`/chantiers/${chantierId}/visites/nouvelle`}
-              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition-all text-sm w-full sm:w-auto shadow-sm hover:shadow-md"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto"
             >
               <span className="material-symbols-outlined text-lg">add</span>
               Nouvelle visite
@@ -275,7 +261,7 @@ export default async function ChantierDetailPage({
 
       {/* Non-conformités */}
       <div>
-        <h2 className="font-heading text-lg font-bold text-gray-900 mb-4">Non-conformités</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Non-conformités</h2>
         <EcartListWithActions ecarts={ecarts ?? []} />
       </div>
     </div>

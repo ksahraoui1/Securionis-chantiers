@@ -99,15 +99,22 @@ export default async function DashboardPage() {
 
   // ===== INDICATEURS =====
 
+  // 1. Chantiers actifs = ceux avec au moins 1 visite non terminée ou activité récente
   const chantiersActifs = chantiers?.length ?? 0;
-  const ncOuvertes = allEcarts?.filter((e) => e.statut !== "corrige").length ?? 0;
 
+  // 2. NC ouvertes (non corrigées)
+  const ncOuvertes =
+    allEcarts?.filter((e) => e.statut !== "corrige").length ?? 0;
+
+  // 3. Visites ce mois
   const now = new Date();
   const debutMois = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString()
     .slice(0, 10);
-  const visitesCeMois = allVisites?.filter((v) => v.date_visite >= debutMois).length ?? 0;
+  const visitesCeMois =
+    allVisites?.filter((v) => v.date_visite >= debutMois).length ?? 0;
 
+  // 4. Taux de conformité sur les 3 derniers mois
   const debut3Mois = new Date(now.getFullYear(), now.getMonth() - 3, 1)
     .toISOString()
     .slice(0, 10);
@@ -125,7 +132,7 @@ export default async function DashboardPage() {
   const tauxConformite =
     totalReponses > 0 ? Math.round((conformes / totalReponses) * 100) : null;
 
-  // Chantiers avec NC urgentes
+  // 5. Chantiers avec NC urgentes (ouvertes avec délai dépassé ou sans délai)
   const ncParChantier: Record<
     string,
     { ouvertes: number; urgentes: number }
@@ -138,6 +145,7 @@ export default async function DashboardPage() {
       ncParChantier[e.chantier_id] = { ouvertes: 0, urgentes: 0 };
     }
     ncParChantier[e.chantier_id].ouvertes++;
+    // Urgente si délai dépassé
     if (e.delai && e.delai < todayStr) {
       ncParChantier[e.chantier_id].urgentes++;
     }
@@ -152,6 +160,7 @@ export default async function DashboardPage() {
     }))
     .sort((a, b) => b.ncUrgentes - a.ncUrgentes) ?? [];
 
+  // Chantiers avec NC ouvertes (mais pas forcément urgentes)
   const chantiersAvecNc = chantiers
     ?.filter(
       (c) =>
@@ -166,21 +175,13 @@ export default async function DashboardPage() {
     .sort((a, b) => b.ncOuvertes - a.ncOuvertes) ?? [];
 
   return (
-    <div className="space-y-6 sm:space-y-8 stagger-children">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-            Tableau de bord
-          </h1>
-          <p className="text-sm text-gray-400 mt-1">
-            Vue d&apos;ensemble de vos chantiers et inspections
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Tableau de bord</h1>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Link
             href="/chantiers/archives"
-            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-white text-gray-600 font-medium rounded-xl border border-stone-200 hover:bg-stone-50 transition-all text-sm shadow-subtle"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-sm"
           >
             <span className="material-symbols-outlined text-lg">inventory_2</span>
             Archives
@@ -188,7 +189,7 @@ export default async function DashboardPage() {
           <a
             href="/api/export/xlsx?scope=all"
             download
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition-all text-sm shadow-sm hover:shadow-md flex-1 sm:flex-initial"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm flex-1 sm:flex-initial"
           >
             <span className="material-symbols-outlined text-lg">download</span>
             Export Excel
@@ -202,8 +203,8 @@ export default async function DashboardPage() {
           label="Chantiers actifs"
           value={chantiersActifs}
           href="/chantiers"
-          icon="foundation"
-          color="brand"
+          icon="domain"
+          color="blue"
         />
         <KpiCard
           label="NC ouvertes"
@@ -216,8 +217,8 @@ export default async function DashboardPage() {
           label="Visites ce mois"
           value={visitesCeMois}
           href="/chantiers"
-          icon="event_note"
-          color="blue"
+          icon="checklist"
+          color="indigo"
         />
         <KpiCard
           label="Taux de conformité"
@@ -238,30 +239,24 @@ export default async function DashboardPage() {
       </div>
 
       {/* NC par thème */}
-      <Card title="Non-conformités par thème" icon="bar_chart">
+      <Card title="Non-conformités par thème">
         {ncParTheme.length > 0 ? (
           <NcThemeChart data={ncParTheme} />
         ) : (
-          <div className="py-12 text-center mt-4">
-            <span className="material-symbols-outlined text-4xl text-stone-300 mb-3 block">analytics</span>
-            <p className="text-gray-400 text-sm">
-              Aucune non-conformité enregistrée
-            </p>
-          </div>
+          <p className="text-gray-500 text-sm py-8 text-center">
+            Aucune non-conformité enregistrée
+          </p>
         )}
       </Card>
 
       {/* Chantiers urgents */}
-      <Card title="Chantiers avec NC en attente" icon="priority_high">
+      <Card title="Chantiers avec NC en attente">
         {chantiersUrgents.length === 0 && chantiersAvecNc.length === 0 ? (
-          <div className="py-12 text-center mt-4">
-            <span className="material-symbols-outlined text-4xl text-emerald-300 mb-3 block">check_circle</span>
-            <p className="text-gray-400 text-sm">
-              Aucune non-conformité en attente
-            </p>
-          </div>
+          <p className="text-gray-500 text-sm py-4 text-center">
+            Aucune non-conformité en attente
+          </p>
         ) : (
-          <div className="divide-y divide-stone-100 mt-4">
+          <div className="divide-y divide-gray-100">
             {chantiersUrgents.map((c) => (
               <ChantierNcRow
                 key={c.id}
@@ -306,57 +301,39 @@ function KpiCard({
   icon?: string;
   color: string;
 }) {
-  const colorMap: Record<string, { bg: string; icon: string; accent: string }> = {
-    brand: {
-      bg: "bg-white",
-      icon: "bg-brand-50 text-brand-600",
-      accent: "text-brand-700",
-    },
-    red: {
-      bg: "bg-white",
-      icon: "bg-red-50 text-red-600",
-      accent: "text-red-700",
-    },
-    green: {
-      bg: "bg-white",
-      icon: "bg-emerald-50 text-emerald-600",
-      accent: "text-emerald-700",
-    },
-    amber: {
-      bg: "bg-white",
-      icon: "bg-amber-50 text-amber-600",
-      accent: "text-amber-700",
-    },
-    blue: {
-      bg: "bg-white",
-      icon: "bg-blue-50 text-blue-600",
-      accent: "text-blue-700",
-    },
-    gray: {
-      bg: "bg-white",
-      icon: "bg-stone-100 text-gray-500",
-      accent: "text-gray-700",
-    },
+  const colorMap: Record<string, { card: string; icon: string }> = {
+    blue: { card: "text-blue-700 bg-blue-50 border-blue-200", icon: "bg-blue-100 text-blue-600" },
+    red: { card: "text-red-700 bg-red-50 border-red-200", icon: "bg-red-100 text-red-600" },
+    green: { card: "text-green-700 bg-green-50 border-green-200", icon: "bg-green-100 text-green-600" },
+    amber: { card: "text-amber-700 bg-amber-50 border-amber-200", icon: "bg-amber-100 text-amber-600" },
+    indigo: { card: "text-indigo-700 bg-indigo-50 border-indigo-200", icon: "bg-indigo-100 text-indigo-600" },
+    gray: { card: "text-gray-700 bg-gray-50 border-gray-200", icon: "bg-gray-100 text-gray-600" },
   };
 
   const colors = colorMap[color] ?? colorMap.gray;
 
   const content = (
-    <div className={`rounded-2xl border border-stone-200/80 p-5 ${colors.bg} ${href ? "card-hover cursor-pointer" : ""} shadow-card`}>
+    <div className={`rounded-xl border p-4 ${colors.card} ${href ? "hover:shadow-md hover:scale-[1.02] cursor-pointer" : ""} transition-all`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-400">{label}</p>
-          <p className={`text-3xl font-heading font-bold mt-1.5 ${colors.accent}`}>{value}</p>
+          <p className="text-sm font-medium opacity-75">{label}</p>
+          <p className="text-3xl font-bold mt-1">{value}</p>
           {subtitle && (
-            <p className="text-[11px] text-gray-400 mt-1">{subtitle}</p>
+            <p className="text-xs opacity-60 mt-1">{subtitle}</p>
           )}
         </div>
         {icon && (
-          <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${colors.icon}`}>
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colors.icon}`}>
             <span className="material-symbols-outlined text-xl">{icon}</span>
           </div>
         )}
       </div>
+      {href && (
+        <p className="text-[10px] opacity-50 mt-2 flex items-center gap-0.5">
+          Voir le détail
+          <span className="material-symbols-outlined text-xs">arrow_forward</span>
+        </p>
+      )}
     </div>
   );
 
@@ -383,25 +360,24 @@ function ChantierNcRow({
   return (
     <Link
       href={`/chantiers/${id}`}
-      className="flex items-center justify-between py-3.5 px-3 hover:bg-stone-50 rounded-xl min-h-touch transition-colors -mx-1"
+      className="flex items-center justify-between py-3 px-2 hover:bg-gray-50 rounded-lg min-h-touch"
     >
       <div className="min-w-0 flex-1">
         <p className="font-medium text-gray-900 truncate">
           {nom ?? adresse}
         </p>
         {nom && (
-          <p className="text-sm text-gray-400 truncate mt-0.5">{adresse}</p>
+          <p className="text-sm text-gray-500 truncate">{adresse}</p>
         )}
       </div>
       <div className="flex items-center gap-2 ml-4 shrink-0">
         {ncUrgentes > 0 && (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/10">
-            <span className="material-symbols-outlined text-xs">schedule</span>
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800">
             {ncUrgentes} urgente{ncUrgentes > 1 ? "s" : ""}
           </span>
         )}
         <EcartStatusBadge statut="ouvert" />
-        <span className="text-sm font-semibold text-gray-500 tabular-nums">
+        <span className="text-sm font-medium text-gray-600">
           {ncOuvertes}
         </span>
       </div>

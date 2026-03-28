@@ -3,7 +3,7 @@
 import React from "react";
 import { Spinner } from "./spinner";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps {
@@ -19,19 +19,17 @@ interface ButtonProps {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 focus-visible:ring-brand-500 shadow-sm hover:shadow-md",
+    "bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 focus-visible:ring-blue-500",
   secondary:
-    "bg-white text-gray-700 border border-stone-200 hover:bg-stone-50 active:bg-stone-100 focus-visible:ring-stone-400 shadow-subtle",
+    "bg-gray-200 text-gray-800 hover:bg-gray-300 active:bg-gray-400 focus-visible:ring-gray-400",
   danger:
-    "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 focus-visible:ring-red-500 shadow-sm",
-  ghost:
-    "text-gray-600 hover:bg-stone-100 active:bg-stone-200 focus-visible:ring-stone-400",
+    "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 focus-visible:ring-red-500",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
   sm: "min-h-[44px] min-w-[44px] px-3 py-2 text-sm",
-  md: "min-h-[44px] min-w-[44px] px-4 py-2.5 text-sm",
-  lg: "min-h-[52px] min-w-[52px] px-6 py-3 text-base",
+  md: "min-h-[44px] min-w-[44px] px-4 py-2.5 text-base",
+  lg: "min-h-[52px] min-w-[52px] px-6 py-3 text-lg",
 };
 
 export function Button({
@@ -53,8 +51,8 @@ export function Button({
       disabled={isDisabled}
       className={`
         inline-flex items-center justify-center gap-2
-        rounded-xl font-medium
-        transition-all duration-200
+        rounded-lg font-medium
+        transition-colors duration-150
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
         disabled:cursor-not-allowed disabled:opacity-50
         ${variantClasses[variant]}

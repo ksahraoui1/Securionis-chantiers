@@ -1,70 +1,6 @@
 @import "tailwindcss";
 
-@config "../../tailwind.config.ts";
-
-@theme {
-  --font-heading: 'Outfit', system-ui, sans-serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
-
-  --color-brand-50: #FFF7ED;
-  --color-brand-100: #FFEDD5;
-  --color-brand-200: #FED7AA;
-  --color-brand-300: #FDBA74;
-  --color-brand-400: #FB923C;
-  --color-brand-500: #F97316;
-  --color-brand-600: #E8590C;
-  --color-brand-700: #C2410C;
-  --color-brand-800: #9A3412;
-  --color-brand-900: #7C2D12;
-
-  --color-navy-50: #F0F3F9;
-  --color-navy-100: #D9E0EF;
-  --color-navy-200: #B3C1DF;
-  --color-navy-300: #8DA2CF;
-  --color-navy-400: #6783BF;
-  --color-navy-500: #3D5A9E;
-  --color-navy-600: #2D4373;
-  --color-navy-700: #1A2744;
-  --color-navy-800: #0F1729;
-  --color-navy-900: #0A0F1C;
-
-  --color-stone-50: #FAFAF8;
-  --color-stone-100: #F7F5F2;
-  --color-stone-150: #F0EDE8;
-  --color-stone-200: #E8E4DD;
-  --color-stone-300: #D5CFC5;
-  --color-stone-400: #B8B0A3;
-
-  --shadow-subtle: 0 1px 2px rgba(15, 23, 41, 0.04);
-  --shadow-card: 0 1px 3px rgba(15, 23, 41, 0.04), 0 1px 2px rgba(15, 23, 41, 0.02);
-  --shadow-lifted: 0 4px 12px rgba(15, 23, 41, 0.06), 0 1px 3px rgba(15, 23, 41, 0.04);
-  --shadow-float: 0 12px 32px rgba(15, 23, 41, 0.08), 0 4px 8px rgba(15, 23, 41, 0.04);
-  --shadow-glow: 0 0 0 3px rgba(233, 89, 12, 0.15);
-
-  --animate-fade-in: fadeIn 0.4s ease-out;
-  --animate-slide-up: slideUp 0.4s ease-out;
-  --animate-slide-in-left: slideInLeft 0.3s ease-out;
-  --animate-scale-in: scaleIn 0.2s ease-out;
-
-  @keyframes fadeIn {
-    0% { opacity: 0; }
-    100% { opacity: 1; }
-  }
-  @keyframes slideUp {
-    0% { opacity: 0; transform: translateY(12px); }
-    100% { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes slideInLeft {
-    0% { opacity: 0; transform: translateX(-12px); }
-    100% { opacity: 1; transform: translateX(0); }
-  }
-  @keyframes scaleIn {
-    0% { opacity: 0; transform: scale(0.95); }
-    100% { opacity: 1; transform: scale(1); }
-  }
-}
-
-/* ─── Material Symbols Outlined — hébergé localement ─── */
+/* Material Symbols Outlined — hébergé localement */
 @font-face {
   font-family: 'Material Symbols Outlined';
   font-style: normal;
@@ -91,30 +27,16 @@
   font-feature-settings: 'liga';
 }
 
-/* ─── Base ─── */
 html {
   scroll-behavior: smooth;
   touch-action: manipulation;
 }
 
 body {
-  @apply min-h-screen font-body text-gray-900 antialiased;
-  background-color: #F7F5F2;
+  @apply min-h-screen bg-gray-50 text-gray-900;
 }
 
-/* ─── Headings use Outfit ─── */
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Outfit', system-ui, sans-serif;
-}
-
-/* ─── Focus ring style ─── */
-*:focus-visible {
-  outline: 2px solid #E8590C;
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-/* ─── Custom scrollbar ─── */
+/* Minimal scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -125,112 +47,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(26, 39, 68, 0.15);
+  background-color: rgba(156, 163, 175, 0.5);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(26, 39, 68, 0.3);
-}
-
-/* ─── Selection color ─── */
-::selection {
-  background-color: rgba(233, 89, 12, 0.15);
-  color: #7C2D12;
-}
-
-/* ─── Page transitions ─── */
-@keyframes page-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-page-enter {
-  animation: page-enter 0.35s ease-out both;
-}
-
-/* Stagger children animation */
-.stagger-children > * {
-  animation: page-enter 0.35s ease-out both;
-}
-.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 300ms; }
-.stagger-children > *:nth-child(8) { animation-delay: 350ms; }
-
-/* ─── Sidebar nav link hover effect ─── */
-.nav-link {
-  position: relative;
-  transition: all 0.2s ease;
-}
-
-.nav-link::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%) scaleY(0);
-  width: 3px;
-  height: 60%;
-  border-radius: 0 3px 3px 0;
-  background: #E8590C;
-  transition: transform 0.2s ease;
-}
-
-.nav-link:hover::before,
-.nav-link.active::before {
-  transform: translateY(-50%) scaleY(1);
-}
-
-/* ─── Card hover lift ─── */
-.card-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(15, 23, 41, 0.08), 0 2px 6px rgba(15, 23, 41, 0.04);
-}
-
-/* ─── Input styles ─── */
-.input-field {
-  @apply w-full rounded-xl border border-stone-300 bg-white px-4 py-3 min-h-[44px] text-gray-900 placeholder-gray-400 transition-all duration-200;
-}
-
-.input-field:focus {
-  @apply border-brand-500 outline-none;
-  box-shadow: 0 0 0 3px rgba(233, 89, 12, 0.1);
-}
-
-.input-field:hover:not(:focus) {
-  @apply border-stone-400;
-}
-
-/* ─── Gradient text ─── */
-.text-gradient {
-  background: linear-gradient(135deg, #E8590C, #F97316);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ─── Dot grid pattern ─── */
-.bg-dots {
-  background-image: radial-gradient(circle, rgba(26, 39, 68, 0.06) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-
-/* ─── Tabular numbers for KPIs ─── */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
+  background-color: rgba(156, 163, 175, 0.8);
 }

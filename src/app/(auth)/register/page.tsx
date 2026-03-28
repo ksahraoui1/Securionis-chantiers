@@ -83,20 +83,20 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="bg-white rounded-2xl shadow-card border border-stone-200 p-8 text-center">
-        <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-emerald-600 text-2xl">mark_email_read</span>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
+        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-green-600 text-3xl">mark_email_read</span>
         </div>
-        <h1 className="font-heading text-xl font-bold text-gray-900 mb-2">
+        <h1 className="text-xl font-bold text-gray-900 mb-2">
           Vérifiez votre email
         </h1>
-        <p className="text-sm text-gray-500 mb-6">
-          Un lien de confirmation a été envoyé à <strong className="text-gray-700">{email}</strong>.
+        <p className="text-sm text-gray-600 mb-6">
+          Un lien de confirmation a été envoyé à <strong>{email}</strong>.
           Cliquez dessus pour activer votre compte.
         </p>
         <Link
           href="/login"
-          className="text-sm text-brand-600 hover:text-brand-700 font-medium transition-colors"
+          className="text-sm text-blue-600 hover:underline"
         >
           Retour à la connexion
         </Link>
@@ -105,19 +105,19 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-card border border-stone-200 p-6 sm:p-8">
-      <div className="mb-6">
-        <h2 className="font-heading text-xl font-bold text-gray-900">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-5 sm:p-8">
+      <div className="text-center mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">
           Créer un compte
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">
+        </h1>
+        <p className="text-sm text-gray-500 mt-2">
           Securionis Chantiers — Inspection SST
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="nom" className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label htmlFor="nom" className="block text-sm font-medium text-gray-700 mb-1">
             Nom complet
           </label>
           <input
@@ -127,13 +127,13 @@ export default function RegisterPage() {
             onChange={(e) => setNom(e.target.value)}
             required
             autoComplete="name"
-            className="input-field"
+            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             placeholder="Jean Dupont"
           />
         </div>
 
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
             Email professionnel
           </label>
           <input
@@ -143,13 +143,13 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            className="input-field"
+            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             placeholder="votre@email.ch"
           />
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
             Mot de passe
           </label>
           <input
@@ -160,13 +160,13 @@ export default function RegisterPage() {
             required
             minLength={8}
             autoComplete="new-password"
-            className="input-field"
+            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             placeholder="Minimum 8 caractères (majuscule, minuscule, chiffre)"
           />
         </div>
 
         <div>
-          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
             Confirmer le mot de passe
           </label>
           <input
@@ -177,35 +177,32 @@ export default function RegisterPage() {
             required
             minLength={8}
             autoComplete="new-password"
-            className="input-field"
+            className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             placeholder="Retapez le mot de passe"
           />
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl p-3">
-            <span className="material-symbols-outlined text-base text-red-500">error</span>
+          <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
             {error}
-          </div>
+          </p>
         )}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3.5 min-h-touch bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 active:bg-brand-800 disabled:opacity-50 disabled:cursor-not-allowed text-base transition-all duration-200 shadow-sm hover:shadow-md mt-2"
+          className="w-full py-4 min-h-touch bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-lg"
         >
           {loading ? "Création..." : "Créer mon compte"}
         </button>
       </form>
 
-      <div className="mt-6 pt-5 border-t border-stone-150 text-center">
-        <p className="text-sm text-gray-500">
-          Déjà un compte ?{" "}
-          <Link href="/login" className="text-brand-600 hover:text-brand-700 font-semibold transition-colors">
-            Se connecter
-          </Link>
-        </p>
-      </div>
+      <p className="text-center text-sm text-gray-500 mt-6">
+        Déjà un compte ?{" "}
+        <Link href="/login" className="text-blue-600 hover:underline font-medium">
+          Se connecter
+        </Link>
+      </p>
     </div>
   );
 }

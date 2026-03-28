@@ -18,15 +18,15 @@ interface BadgeProps {
 }
 
 const variantClasses: Record<BadgeVariant, string> = {
-  conforme: "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
-  "non-conforme": "bg-red-50 text-red-700 ring-red-600/10",
-  "pas-necessaire": "bg-gray-50 text-gray-600 ring-gray-500/10",
-  ouvert: "bg-red-50 text-red-700 ring-red-600/10",
-  "en-cours": "bg-amber-50 text-amber-700 ring-amber-600/10",
-  corrige: "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
-  brouillon: "bg-gray-50 text-gray-600 ring-gray-500/10",
-  en_cours: "bg-amber-50 text-amber-700 ring-amber-600/10",
-  terminee: "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
+  conforme: "bg-green-100 text-green-800",
+  "non-conforme": "bg-red-100 text-red-800",
+  "pas-necessaire": "bg-gray-100 text-gray-600",
+  ouvert: "bg-red-100 text-red-800",
+  "en-cours": "bg-amber-100 text-amber-800",
+  corrige: "bg-green-100 text-green-800",
+  brouillon: "bg-gray-100 text-gray-600",
+  en_cours: "bg-amber-100 text-amber-800",
+  terminee: "bg-green-100 text-green-800",
 };
 
 export function Badge({ variant, children, className = "" }: BadgeProps) {
@@ -34,9 +34,8 @@ export function Badge({ variant, children, className = "" }: BadgeProps) {
     <span
       className={`
         inline-flex items-center
-        rounded-lg px-2 py-0.5
-        text-[11px] font-semibold uppercase tracking-wide
-        ring-1 ring-inset
+        rounded-full px-2.5 py-0.5
+        text-xs font-medium
         ${variantClasses[variant]}
         ${className}
       `}
