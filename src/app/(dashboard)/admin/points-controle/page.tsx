@@ -38,11 +38,11 @@ export default function AdminPointsControlePage() {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("categories")
         .select("*")
-        .is("phase_id", null)
         .order("libelle");
+      console.log("[points-controle] categories loaded:", data?.length, "error:", error);
       if (data) setCategories(data);
     }
     load();

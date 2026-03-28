@@ -43,7 +43,6 @@ export function PointControleForm({
       const { data } = await supabase
         .from("categories")
         .select("*")
-        .is("phase_id", null)
         .eq("actif", true)
         .order("libelle");
       if (data) setCategories(data);

@@ -96,8 +96,7 @@ export function ImportExcelPoints({ onImported }: ImportExcelPointsProps) {
       // Load existing categories
       const { data: existingCats } = await supabase
         .from("categories")
-        .select("id, libelle")
-        .is("phase_id", null);
+        .select("id, libelle");
 
       const catMap = new Map((existingCats ?? []).map((c) => [c.libelle, c.id]));
 

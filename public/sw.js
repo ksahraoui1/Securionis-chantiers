@@ -1,7 +1,7 @@
 // Service Worker — Securionis Chantiers
 // Stratégie : Network-first pour les pages, Cache-first pour les assets statiques.
 
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const STATIC_CACHE = `securionis-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `securionis-pages-${CACHE_VERSION}`;
 
