@@ -97,6 +97,18 @@ export async function POST(
       .limit(1)
       .maybeSingle();
 
+    // Load signature image as data URI
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    let signatureDataUri: string | null = null;
+    try {
+      const sigPath = path.join(process.cwd(), "public", "signature-inspecteur.png");
+      const sigBuffer = await fs.readFile(sigPath);
+      signatureDataUri = `data:image/png;base64,${sigBuffer.toString("base64")}`;
+    } catch {
+      // Signature file not found, skip
+    }
+
     // Dynamically import react-pdf to avoid SSR issues
     const { renderToBuffer } = await import("@react-pdf/renderer");
     const { RapportVisite } = await import(
@@ -120,6 +132,7 @@ export async function POST(
           : null,
         entrepriseTelephone: entreprise?.telephone ?? null,
         entrepriseEmail: entreprise?.email ?? null,
+        signatureDataUri,
       })
     );
 

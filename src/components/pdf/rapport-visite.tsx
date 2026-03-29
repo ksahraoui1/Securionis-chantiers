@@ -26,26 +26,26 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logoImage: {
-    height: 60,
-    maxWidth: 210,
+    height: 40,
+    maxWidth: 140,
     objectFit: "contain",
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: "Helvetica-Bold",
     color: "#1e40af",
     flex: 1,
     textAlign: "center",
   },
   headerTitleAlone: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: "Helvetica-Bold",
     color: "#1e40af",
     textAlign: "center",
     marginBottom: 20,
   },
   logoPlaceholder: {
-    width: 210,
+    width: 140,
   },
   sectionTitle: {
     fontSize: 13,
@@ -251,6 +251,7 @@ interface RapportVisiteProps {
   entrepriseAdresse?: string | null;
   entrepriseTelephone?: string | null;
   entrepriseEmail?: string | null;
+  signatureDataUri?: string | null;
 }
 
 export function RapportVisite({
@@ -265,6 +266,7 @@ export function RapportVisite({
   entrepriseAdresse,
   entrepriseTelephone,
   entrepriseEmail,
+  signatureDataUri,
 }: RapportVisiteProps) {
   const dateFormatted = new Date(visite.date_visite).toLocaleDateString(
     "fr-CH",
@@ -391,6 +393,16 @@ export function RapportVisite({
               </View>
             );
           })
+        )}
+
+        {/* Signature */}
+        {signatureDataUri && (
+          <View style={{ marginTop: 24, alignItems: "flex-end" }}>
+            <Image
+              src={signatureDataUri}
+              style={{ width: 120, height: 120, objectFit: "contain" }}
+            />
+          </View>
         )}
 
         {/* Copie(s) */}
