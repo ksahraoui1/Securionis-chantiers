@@ -52,9 +52,8 @@ export function ChecklistForm({
 
     let query = supabase
       .from("points_controle")
-      .select("*, point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
+      .select("*, themes(libelle), point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
       .eq("actif", true)
-      .order("objet")
       .order("intitule");
 
     if (currentThemeIds.length > 0) {
@@ -119,10 +118,9 @@ export function ChecklistForm({
     const supabase = createClient();
     const { data } = await supabase
       .from("points_controle")
-      .select("*, point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
+      .select("*, themes(libelle), point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
       .eq("actif", true)
       .in("theme_id", onlyNew)
-      .order("objet")
       .order("intitule");
 
     if (data) {

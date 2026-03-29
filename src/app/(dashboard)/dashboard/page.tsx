@@ -111,8 +111,14 @@ export default async function DashboardPage() {
   const debutMois = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString()
     .slice(0, 10);
-  const visitesCeMois =
-    allVisites?.filter((v) => v.date_visite >= debutMois).length ?? 0;
+  const visitesCeMoisList =
+    allVisites?.filter((v) => v.date_visite >= debutMois) ?? [];
+  const visitesCeMois = visitesCeMoisList.length;
+
+  // Map chantier_id -> chantier info for visites du mois
+  const chantierMap = new Map(
+    chantiers?.map((c) => [c.id, c]) ?? []
+  );
 
   // 4. Taux de conformité sur les 3 derniers mois
   const debut3Mois = new Date(now.getFullYear(), now.getMonth() - 3, 1)
@@ -216,7 +222,7 @@ export default async function DashboardPage() {
         <KpiCard
           label="Visites ce mois"
           value={visitesCeMois}
-          href="/chantiers"
+          href="#visites-mois"
           icon="checklist"
           color="indigo"
         />
@@ -237,6 +243,57 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      {/* Visites ce mois */}
+      <Card title={`Visites ce mois (${visitesCeMois})`}>
+        <div id="visites-mois">
+          {visitesCeMoisList.length === 0 ? (
+            <p className="text-gray-500 text-sm py-4 text-center">
+              Aucune visite ce mois
+            </p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {visitesCeMoisList
+                .sort((a, b) => b.date_visite.localeCompare(a.date_visite))
+                .map((v) => {
+                  const chantier = chantierMap.get(v.chantier_id);
+                  const href = v.statut === "terminee"
+                    ? `/chantiers/${v.chantier_id}/visites/${v.id}/rapport`
+                    : `/chantiers/${v.chantier_id}/visites/${v.id}`;
+                  return (
+                    <Link
+                      key={v.id}
+                      href={href}
+                      className="flex items-center justify-between py-3 px-2 hover:bg-gray-50 rounded-lg min-h-touch"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 truncate">
+                          {chantier?.nom ?? chantier?.adresse ?? "Chantier"}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {new Date(v.date_visite).toLocaleDateString("fr-CH", {
+                            weekday: "short",
+                            day: "numeric",
+                            month: "long",
+                          })}
+                        </p>
+                      </div>
+                      <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${
+                        v.statut === "terminee"
+                          ? "bg-green-100 text-green-800"
+                          : v.statut === "en_cours"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-gray-100 text-gray-600"
+                      }`}>
+                        {v.statut === "terminee" ? "Terminée" : v.statut === "en_cours" ? "En cours" : "Brouillon"}
+                      </span>
+                    </Link>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* NC par thème */}
       <Card title="Non-conformités par thème">
