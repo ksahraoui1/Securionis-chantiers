@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseUrl } from "@/lib/env";
 
 /**
  * Vérifie que l'utilisateur a accès à une visite donnée.
@@ -93,7 +94,7 @@ export function escapeHtml(str: string): string {
 export function isAllowedSupabaseUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseUrl = getSupabaseUrl();
     if (!supabaseUrl) return false;
 
     const allowedHostname = new URL(supabaseUrl).hostname;

@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { getStripeSecretKey } from "@/lib/env";
+import { getStripeSecretKey, getStripePriceMonthly, getStripePriceYearly } from "@/lib/env";
 
 let stripeInstance: Stripe | null = null;
 
@@ -12,9 +12,9 @@ export function getStripe(): Stripe {
   return stripeInstance;
 }
 
-// Prix configurés — à remplacer par les IDs Stripe réels après création
-// Ces IDs seront créés automatiquement via l'API ou le dashboard Stripe
-export const STRIPE_PRICES = {
-  monthly: process.env.STRIPE_PRICE_MONTHLY ?? "",
-  yearly: process.env.STRIPE_PRICE_YEARLY ?? "",
-};
+export function getStripePrices() {
+  return {
+    monthly: getStripePriceMonthly(),
+    yearly: getStripePriceYearly(),
+  };
+}

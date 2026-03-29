@@ -32,6 +32,17 @@ export function getSupabaseAnonKey(): string {
   );
 }
 
+export function getStripePublishableKey(): string {
+  return requireValue(
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  );
+}
+
+export function getAppUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? "https://chantiers.securionis.com";
+}
+
 // --- Clés secrètes (serveur uniquement) ---
 // Ces fonctions lèvent une erreur si appelées côté client.
 
@@ -69,13 +80,16 @@ export function getStripeWebhookSecret(): string {
   return requireServer("STRIPE_WEBHOOK_SECRET", process.env.STRIPE_WEBHOOK_SECRET);
 }
 
-export function getStripePublishableKey(): string {
-  return requireValue(
-    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  );
+export function getStripePriceMonthly(): string {
+  if (typeof window !== "undefined") {
+    throw new Error("SECURITE: tentative d'accès à STRIPE_PRICE_MONTHLY côté client.");
+  }
+  return process.env.STRIPE_PRICE_MONTHLY ?? "";
 }
 
-export function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "https://chantiers.securionis.com";
+export function getStripePriceYearly(): string {
+  if (typeof window !== "undefined") {
+    throw new Error("SECURITE: tentative d'accès à STRIPE_PRICE_YEARLY côté client.");
+  }
+  return process.env.STRIPE_PRICE_YEARLY ?? "";
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getStripe, STRIPE_PRICES } from "@/lib/stripe/client";
+import { getStripe, getStripePrices } from "@/lib/stripe/client";
 import { getAppUrl } from "@/lib/env";
 
 /**
@@ -19,7 +19,8 @@ export async function POST(request: Request) {
   }
 
   const { plan } = await request.json();
-  const priceId = plan === "yearly" ? STRIPE_PRICES.yearly : STRIPE_PRICES.monthly;
+  const prices = getStripePrices();
+  const priceId = plan === "yearly" ? prices.yearly : prices.monthly;
 
   if (!priceId) {
     return NextResponse.json(
