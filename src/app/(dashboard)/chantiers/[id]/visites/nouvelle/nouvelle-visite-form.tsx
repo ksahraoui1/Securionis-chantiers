@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/types/database";
@@ -16,6 +16,7 @@ export function NouvelleVisiteForm({
   inspecteurId,
 }: NouvelleVisiteFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Step 1: Categories
   const [categories, setCategories] = useState<Tables<"categories">[]>([]);
@@ -46,6 +47,20 @@ export function NouvelleVisiteForm({
     }
     load();
   }, []);
+
+  // Pre-select categories from query param (visit preparation flow)
+  useEffect(() => {
+    if (categories.length === 0) return;
+    const catParam = searchParams.get("categories");
+    if (!catParam) return;
+    const catIds = catParam.split(",").filter(Boolean);
+    const validIds = catIds.filter((id) =>
+      categories.some((c) => c.id === id)
+    );
+    if (validIds.length > 0) {
+      setSelectedCatIds(validIds);
+    }
+  }, [categories, searchParams]);
 
   // Load themes when categories change
   useEffect(() => {
