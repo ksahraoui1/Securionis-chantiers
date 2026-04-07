@@ -43,7 +43,13 @@ export async function sendRapport(
   const subject = `Rapport de visite — ${chantierAdresse} — ${dateFormatted}`;
   const filename = `rapport_visite_${dateVisite}.pdf`;
 
-  const allEmails = destinataires.map((d) => d.email);
+  const allEmails = destinataires
+    .map((d) => d.email.trim().replace(/^\.+/, ""))
+    .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+
+  if (allEmails.length === 0) {
+    throw new Error("Aucune adresse email valide parmi les destinataires");
+  }
 
   try {
     const resend = getResend();
