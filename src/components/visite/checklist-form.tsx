@@ -194,30 +194,13 @@ export function ChecklistForm({
         <span className="text-sm text-gray-500">
           {points.length} point{points.length > 1 ? "s" : ""} de contrôle
         </span>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400">
-            {saveStatus === "saving" && "Enregistrement..."}
-            {saveStatus === "saved" && "Enregistré"}
-            {saveStatus === "saved-offline" && "Sauvegardé hors-ligne"}
-            {saveStatus === "error" && "Erreur de sauvegarde"}
-          </span>
-          <button
-            type="button"
-            onClick={() => setShowThemeAdder(true)}
-            className="px-3 py-1.5 min-h-touch text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            + Catégories / Thèmes
-          </button>
-        </div>
+        <span className="text-xs text-gray-400">
+          {saveStatus === "saving" && "Enregistrement..."}
+          {saveStatus === "saved" && "Enregistré"}
+          {saveStatus === "saved-offline" && "Sauvegardé hors-ligne"}
+          {saveStatus === "error" && "Erreur de sauvegarde"}
+        </span>
       </div>
-
-      {showThemeAdder && (
-        <ThemeAdder
-          existingThemeIds={themeIds}
-          onAdd={handleThemesAdded}
-          onCancel={() => setShowThemeAdder(false)}
-        />
-      )}
 
       {points.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
@@ -252,6 +235,23 @@ export function ChecklistForm({
         categorieIds={categorieIds}
         onPointCreated={(newPoint) => setPoints((prev) => [...prev, newPoint])}
       />
+
+      {/* Ajout catégories / thèmes */}
+      <button
+        type="button"
+        onClick={() => setShowThemeAdder(true)}
+        className="w-full py-3 min-h-touch text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700"
+      >
+        + Catégories / Thèmes
+      </button>
+
+      {showThemeAdder && (
+        <ThemeAdder
+          existingThemeIds={themeIds}
+          onAdd={handleThemesAdded}
+          onCancel={() => setShowThemeAdder(false)}
+        />
+      )}
 
       <div className="sticky bottom-0 bg-gray-50 pt-4 pb-6 border-t">
         <button

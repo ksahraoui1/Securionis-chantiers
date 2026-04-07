@@ -11,6 +11,8 @@ interface NouvelleVisiteFormProps {
   inspecteurId: string;
 }
 
+type ThemeWithCategory = Tables<"themes"> & { categories: { libelle: string } };
+
 export function NouvelleVisiteForm({
   chantierId,
   inspecteurId,
@@ -24,9 +26,14 @@ export function NouvelleVisiteForm({
   const [catSearch, setCatSearch] = useState("");
 
   // Step 2: Themes
-  const [themes, setThemes] = useState<Tables<"themes">[]>([]);
+  const [themes, setThemes] = useState<ThemeWithCategory[]>([]);
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([]);
   const [themeSearch, setThemeSearch] = useState("");
+
+  // Global keyword search
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [globalResults, setGlobalResults] = useState<ThemeWithCategory[]>([]);
+  const [loadingGlobal, setLoadingGlobal] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +95,56 @@ export function NouvelleVisiteForm({
     load();
   }, [selectedCatIds]);
 
+  // Global keyword search: search across all themes + categories
+  useEffect(() => {
+    if (globalSearch.trim().length < 2) {
+      setGlobalResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setLoadingGlobal(true);
+      const supabase = createClient();
+      const keyword = globalSearch.trim().toLowerCase();
+
+      // Search themes by keyword (libelle)
+      const { data: themeResults } = await supabase
+        .from("themes")
+        .select("*, categories(libelle)")
+        .eq("actif", true)
+        .ilike("libelle", `%${keyword}%`)
+        .order("libelle")
+        .limit(100);
+
+      // Search categories by keyword, then get their themes
+      const { data: catResults } = await supabase
+        .from("categories")
+        .select("id")
+        .eq("actif", true)
+        .ilike("libelle", `%${keyword}%`);
+
+      let catThemes: ThemeWithCategory[] = [];
+      if (catResults && catResults.length > 0) {
+        const catIds = catResults.map((c) => c.id);
+        const { data } = await supabase
+          .from("themes")
+          .select("*, categories(libelle)")
+          .in("categorie_id", catIds)
+          .eq("actif", true)
+          .order("libelle")
+          .limit(200);
+        if (data) catThemes = data as ThemeWithCategory[];
+      }
+
+      // Merge and deduplicate
+      const allThemes = [...(themeResults as ThemeWithCategory[] || []), ...catThemes];
+      const unique = Array.from(new Map(allThemes.map((t) => [t.id, t])).values());
+      setGlobalResults(unique);
+      setLoadingGlobal(false);
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [globalSearch]);
+
   function toggleCat(id: string) {
     setSelectedCatIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -98,6 +155,19 @@ export function NouvelleVisiteForm({
     setSelectedThemeIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+  }
+
+  function toggleGlobalTheme(theme: ThemeWithCategory) {
+    const isSelected = selectedThemeIds.includes(theme.id);
+    if (isSelected) {
+      setSelectedThemeIds((prev) => prev.filter((x) => x !== theme.id));
+    } else {
+      setSelectedThemeIds((prev) => [...prev, theme.id]);
+      // Auto-select parent category
+      if (!selectedCatIds.includes(theme.categorie_id)) {
+        setSelectedCatIds((prev) => [...prev, theme.categorie_id]);
+      }
+    }
   }
 
   function selectAllThemes() {
@@ -155,10 +225,104 @@ export function NouvelleVisiteForm({
   // Count points preview
   const totalThemes = selectedThemeIds.length;
 
+  // Group global results by category
+  const globalGrouped = globalResults.reduce<Record<string, { catLabel: string; catId: string; themes: ThemeWithCategory[] }>>((acc, theme) => {
+    const catId = theme.categorie_id;
+    if (!acc[catId]) {
+      acc[catId] = { catLabel: theme.categories.libelle, catId, themes: [] };
+    }
+    acc[catId].themes.push(theme);
+    return acc;
+  }, {});
+
+  const isGlobalMode = globalSearch.trim().length >= 2;
+
   return (
     <div className="space-y-8">
-      {/* Step 1: Categories */}
+      {/* Global keyword search */}
       <div>
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder="Recherche par mot-cl\u00e9 (cat\u00e9gories + th\u00e8mes)..."
+            className="w-full rounded-lg border border-gray-300 pl-10 pr-10 py-3 text-sm min-h-touch focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+          {globalSearch && (
+            <button
+              type="button"
+              onClick={() => setGlobalSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        {isGlobalMode && !loadingGlobal && globalResults.length > 0 && (
+          <p className="text-xs text-gray-500 mt-1">
+            {globalResults.length} th\u00e8me{globalResults.length > 1 ? "s" : ""} trouv\u00e9{globalResults.length > 1 ? "s" : ""} dans {Object.keys(globalGrouped).length} cat\u00e9gorie{Object.keys(globalGrouped).length > 1 ? "s" : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Global search results */}
+      {isGlobalMode && (
+        <div>
+          {loadingGlobal ? (
+            <p className="text-gray-500 text-center py-4">Recherche...</p>
+          ) : globalResults.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">Aucun r\u00e9sultat pour &laquo;&nbsp;{globalSearch.trim()}&nbsp;&raquo;</p>
+          ) : (
+            <div className="space-y-4 max-h-[500px] overflow-y-auto">
+              {Object.values(globalGrouped).map((group) => (
+                <div key={group.catId}>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    {group.catLabel}
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {group.themes.map((theme) => (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        onClick={() => toggleGlobalTheme(theme)}
+                        className={`flex items-center gap-2 p-3 rounded-lg border text-left text-sm transition-colors min-h-touch ${
+                          selectedThemeIds.includes(theme.id)
+                            ? "border-blue-600 bg-blue-50"
+                            : "border-gray-200 bg-white hover:border-blue-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${
+                            selectedThemeIds.includes(theme.id)
+                              ? "bg-blue-600 border-blue-600"
+                              : "border-gray-300"
+                          }`}
+                        >
+                          {selectedThemeIds.includes(theme.id) && (
+                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="font-medium truncate">{theme.libelle}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 1: Categories (hidden during global search) */}
+      {!isGlobalMode && <div>
         <h2 className="text-lg font-semibold mb-1">
           1. Sélectionnez les catégories
         </h2>
@@ -210,10 +374,10 @@ export function NouvelleVisiteForm({
             {selectedCatIds.length} catégorie{selectedCatIds.length > 1 ? "s" : ""} sélectionnée{selectedCatIds.length > 1 ? "s" : ""}
           </p>
         )}
-      </div>
+      </div>}
 
-      {/* Step 2: Themes */}
-      {selectedCatIds.length > 0 && (
+      {/* Step 2: Themes (hidden during global search) */}
+      {!isGlobalMode && selectedCatIds.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-1">
             2. Sélectionnez les thèmes
