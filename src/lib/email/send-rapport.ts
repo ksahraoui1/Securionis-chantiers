@@ -28,11 +28,22 @@ export async function sendRapport(
     throw new Error("URL de rapport non autorisée");
   }
 
+  const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50 Mo
   const pdfResponse = await fetch(rapportUrl, { signal: AbortSignal.timeout(30000) });
   if (!pdfResponse.ok) {
     throw new Error("Impossible de telecharger le PDF depuis le stockage");
   }
-  const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+
+  const pdfContentLength = parseInt(pdfResponse.headers.get("content-length") ?? "0", 10);
+  if (pdfContentLength > MAX_PDF_SIZE) {
+    throw new Error("Le PDF est trop volumineux pour l'envoi par email");
+  }
+
+  const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+  if (pdfArrayBuffer.byteLength > MAX_PDF_SIZE) {
+    throw new Error("Le PDF est trop volumineux pour l'envoi par email");
+  }
+  const pdfBuffer = Buffer.from(pdfArrayBuffer);
 
   const dateFormatted = new Date(dateVisite).toLocaleDateString("fr-CH", {
     day: "numeric",

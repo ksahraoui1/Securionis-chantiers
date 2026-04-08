@@ -116,6 +116,15 @@ export async function POST(
       .update({ email_envoye: true })
       .eq("id", visiteId);
 
+    // Audit log
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "send_rapport_email",
+      resource_type: "visite",
+      resource_id: visiteId,
+      details: { sent_to: sentTo, count: sentTo.length },
+    });
+
     return NextResponse.json({
       sent_to: sentTo,
       count: sentTo.length,

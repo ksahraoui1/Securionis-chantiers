@@ -41,10 +41,11 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { imageUrl, pointControle, critere } = body as {
+  const { imageUrl, pointControle, critere, visiteId } = body as {
     imageUrl: string;
     pointControle?: string;
     critere?: string;
+    visiteId?: string;
   };
 
   if (!imageUrl) {
@@ -56,15 +57,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "URL non autorisée" }, { status: 400 });
   }
 
+  // Vérifier l'accès à la visite si fourni
+  if (visiteId) {
+    const { canAccessVisite } = await import("@/lib/utils/security");
+    if (!(await canAccessVisite(supabase, user.id, visiteId))) {
+      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+    }
+  }
+
   // Fetch the image and convert to base64
   let imageBase64: string;
   let mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+  const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 Mo
 
   try {
     const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
     if (!imgRes.ok) throw new Error("Impossible de charger l'image");
 
+    // Vérifier la taille avant de lire le body
+    const contentLength = parseInt(imgRes.headers.get("content-length") ?? "0", 10);
+    if (contentLength > MAX_IMAGE_SIZE) {
+      return NextResponse.json({ error: "Image trop volumineuse (max 10 Mo)" }, { status: 400 });
+    }
+
     const contentType = imgRes.headers.get("content-type") ?? "image/jpeg";
+    // Vérifier que c'est bien une image
+    if (!contentType.startsWith("image/")) {
+      return NextResponse.json({ error: "Le fichier n'est pas une image" }, { status: 400 });
+    }
+
     if (contentType.includes("png")) {
       mediaType = "image/png";
     } else if (contentType.includes("webp")) {
@@ -74,6 +96,9 @@ export async function POST(request: Request) {
     }
 
     const buffer = await imgRes.arrayBuffer();
+    if (buffer.byteLength > MAX_IMAGE_SIZE) {
+      return NextResponse.json({ error: "Image trop volumineuse (max 10 Mo)" }, { status: 400 });
+    }
     imageBase64 = Buffer.from(buffer).toString("base64");
   } catch {
     return NextResponse.json(
@@ -82,13 +107,14 @@ export async function POST(request: Request) {
     );
   }
 
-  // Build context
+  // Build context — tronquer les inputs utilisateur pour limiter le prompt injection
+  const MAX_CTX = 500;
   let context = "";
   if (pointControle) {
-    context += `\nPoint de contrôle en cours : "${pointControle}"`;
+    context += `\nPoint de contrôle en cours : "${pointControle.slice(0, MAX_CTX)}"`;
   }
   if (critere) {
-    context += `\nCritère d'acceptation : "${critere}"`;
+    context += `\nCritère d'acceptation : "${critere.slice(0, MAX_CTX)}"`;
   }
 
   const anthropic = new Anthropic({ apiKey });

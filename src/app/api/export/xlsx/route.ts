@@ -34,7 +34,10 @@ export async function GET(request: Request) {
   const chantierId = url.searchParams.get("chantierId");
 
   // Vérification d'autorisation
-  if (scope === "chantier" && chantierId) {
+  if (scope === "chantier") {
+    if (!chantierId) {
+      return NextResponse.json({ error: "chantierId est requis pour l'export chantier" }, { status: 400 });
+    }
     if (!(await canAccessChantier(supabase, user.id, chantierId))) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
@@ -43,6 +46,8 @@ export async function GET(request: Request) {
     if (role !== "administrateur") {
       return NextResponse.json({ error: "Export global réservé aux administrateurs" }, { status: 403 });
     }
+  } else {
+    return NextResponse.json({ error: "Paramètre scope invalide (chantier ou all)" }, { status: 400 });
   }
 
   const wb = XLSX.utils.book_new();

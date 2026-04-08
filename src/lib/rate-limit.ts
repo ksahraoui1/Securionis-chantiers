@@ -1,6 +1,7 @@
 // Simple in-memory rate limiter (no external dependency)
 // For production at scale, use Redis-based rate limiting (e.g. @upstash/ratelimit)
 
+const MAX_ENTRIES = 10000; // Limite mémoire pour éviter le memory exhaustion
 const requests = new Map<string, { count: number; resetAt: number }>();
 
 // Cleanup old entries every 5 minutes
@@ -27,6 +28,11 @@ export function checkRateLimit(
   const entry = requests.get(key);
 
   if (!entry || now > entry.resetAt) {
+    // Protection contre le memory exhaustion
+    if (requests.size >= MAX_ENTRIES) {
+      const oldest = requests.entries().next().value;
+      if (oldest) requests.delete(oldest[0]);
+    }
     requests.set(key, { count: 1, resetAt: now + windowMs });
     return true;
   }

@@ -60,11 +60,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "URL non autorisée" }, { status: 400 });
     }
 
-    // Download file
+    // Download file avec limite de taille (50 Mo)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
     const fileRes = await fetch(doc.fichier_url, { signal: AbortSignal.timeout(30000) });
     if (!fileRes.ok) throw new Error("Impossible de télécharger le fichier");
 
-    const fileBuffer = Buffer.from(await fileRes.arrayBuffer());
+    const fileContentLength = parseInt(fileRes.headers.get("content-length") ?? "0", 10);
+    if (fileContentLength > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "Fichier trop volumineux" }, { status: 400 });
+    }
+
+    const fileArrayBuffer = await fileRes.arrayBuffer();
+    if (fileArrayBuffer.byteLength > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "Fichier trop volumineux" }, { status: 400 });
+    }
+    const fileBuffer = Buffer.from(fileArrayBuffer);
 
     // Load sender profile + enterprise info
     const { data: profile } = await supabase
@@ -83,7 +93,9 @@ export async function POST(request: Request) {
       if (ent) entrepriseNom = ent.nom;
     }
 
-    const senderName = profile?.nom ?? "Securionis Chantiers";
+    const rawName = profile?.nom ?? "Securionis Chantiers";
+    // Nettoyer le nom d'expéditeur (pas de caractères spéciaux email)
+    const senderName = rawName.replace(/[<>"'\r\n]/g, "").trim() || "Securionis Chantiers";
 
     const resend = new Resend(getResendApiKey());
 

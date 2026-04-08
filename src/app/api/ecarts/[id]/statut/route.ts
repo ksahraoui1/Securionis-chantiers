@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { STATUTS_ECART } from "@/lib/utils/constants";
+import { canAccessChantier } from "@/lib/utils/security";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   [STATUTS_ECART.OUVERT]: [STATUTS_ECART.EN_COURS_CORRECTION, STATUTS_ECART.CORRIGE],
@@ -28,7 +29,7 @@ export async function PATCH(
     // Load current ecart
     const { data: ecart } = await supabase
       .from("ecarts")
-      .select("*")
+      .select("*, chantier_id")
       .eq("id", ecartId)
       .single();
 
@@ -36,6 +37,14 @@ export async function PATCH(
       return NextResponse.json(
         { error: "Ecart introuvable" },
         { status: 404 }
+      );
+    }
+
+    // Vérifier l'accès au chantier de l'écart
+    if (!(await canAccessChantier(supabase, user.id, ecart.chantier_id))) {
+      return NextResponse.json(
+        { error: "Accès non autorisé" },
+        { status: 403 }
       );
     }
 
@@ -80,6 +89,15 @@ export async function PATCH(
     if (updateError) {
       throw new Error(updateError.message);
     }
+
+    // Audit log
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "update_ecart_statut",
+      resource_type: "ecart",
+      resource_id: ecartId,
+      details: { old_statut: ecart.statut, new_statut: newStatut },
+    });
 
     return NextResponse.json(updated);
   } catch (err) {
