@@ -294,6 +294,7 @@ export type Database = {
           email_envoye: boolean;
           categorie_ids: string[] | null;
           renseignements_par: string | null;
+          remarques_generales: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -308,6 +309,7 @@ export type Database = {
           email_envoye?: boolean;
           categorie_ids?: string[] | null;
           renseignements_par?: string | null;
+          remarques_generales?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -319,6 +321,7 @@ export type Database = {
           email_envoye?: boolean;
           categorie_ids?: string[] | null;
           renseignements_par?: string | null;
+          remarques_generales?: string | null;
           updated_at?: string;
         };
       };

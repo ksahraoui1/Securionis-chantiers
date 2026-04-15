@@ -40,6 +40,7 @@ export function VisiteEnCours({
   const [currentEcartIndex, setCurrentEcartIndex] = useState(0);
   const [delaiInput, setDelaiInput] = useState("");
   const [renseignementsPar, setRenseignementsPar] = useState("");
+  const [remarquesGenerales, setRemarquesGenerales] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleValidate = useCallback(async () => {
@@ -150,12 +151,13 @@ export function VisiteEnCours({
         }
       }
 
-      // Update visite statut to terminee + renseignements_par
+      // Update visite statut to terminee + renseignements_par + remarques_generales
       const { error: updateError } = await supabase
         .from("visites")
         .update({
           statut: "terminee",
           renseignements_par: renseignementsPar.trim() || null,
+          remarques_generales: remarquesGenerales.trim() || null,
         })
         .eq("id", visiteId);
 
@@ -190,6 +192,31 @@ export function VisiteEnCours({
           onChange={(e) => setRenseignementsPar(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-[44px] text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
           placeholder="Nom de la personne"
+        />
+      </div>
+
+      <div className="mb-6 bg-white rounded-lg border border-gray-400 p-4">
+        <label
+          htmlFor="remarques_generales"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Remarques générales
+        </label>
+        <textarea
+          id="remarques_generales"
+          value={remarquesGenerales}
+          onChange={(e) => {
+            setRemarquesGenerales(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
+          onFocus={(e) => {
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
+          rows={3}
+          className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-none overflow-hidden"
+          placeholder="Observations générales sur la visite, à faire figurer dans le rapport..."
         />
       </div>
 

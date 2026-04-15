@@ -346,6 +346,14 @@ export function RapportVisite({
           ))}
         </View>
 
+        {/* Remarques générales */}
+        {visite.remarques_generales && (
+          <>
+            <Text style={styles.sectionTitle}>Remarques générales</Text>
+            <RemarqueText text={visite.remarques_generales} />
+          </>
+        )}
+
         {/* Constatations */}
         <Text style={styles.sectionTitle}>Constatations</Text>
         {nonConformeReponses.length === 0 ? (

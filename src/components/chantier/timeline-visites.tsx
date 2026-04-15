@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { LABELS_STATUT_VISITE } from "@/lib/utils/constants";
+import { DeleteVisiteButton } from "./delete-visite-button";
 
 interface VisiteForTimeline {
   id: string;
@@ -37,43 +38,49 @@ export function TimelineVisites({
             : `/chantiers/${chantierId}/visites/${visite.id}`;
 
         return (
-          <Link
-            key={visite.id}
-            href={href}
-            className="block bg-white rounded-lg border border-gray-400 p-4 hover:shadow-sm transition-shadow"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  {new Date(visite.date_visite).toLocaleDateString("fr-CH", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {visite.inspecteur_nom}
-                </p>
+          <div key={visite.id} className="relative">
+            <Link
+              href={href}
+              className="block bg-white rounded-lg border border-gray-400 p-4 hover:shadow-sm transition-shadow"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {new Date(visite.date_visite).toLocaleDateString("fr-CH", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {visite.inspecteur_nom}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {visite.nc_count > 0 && (
+                    <span className="text-xs font-medium text-red-600">
+                      {visite.nc_count} NC
+                    </span>
+                  )}
+                  <Badge variant={visite.statut}>
+                    {LABELS_STATUT_VISITE[visite.statut] ?? visite.statut}
+                  </Badge>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {visite.nc_count > 0 && (
-                  <span className="text-xs font-medium text-red-600">
-                    {visite.nc_count} NC
-                  </span>
-                )}
-                <Badge variant={visite.statut}>
-                  {LABELS_STATUT_VISITE[visite.statut] ?? visite.statut}
-                </Badge>
+              {visite.statut === "terminee" && (
+                <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">description</span>
+                  {visite.rapport_url ? "Voir le rapport" : "Générer le rapport"}
+                </p>
+              )}
+            </Link>
+            {visite.statut !== "terminee" && (
+              <div className="absolute top-2 right-2">
+                <DeleteVisiteButton visiteId={visite.id} chantierId={chantierId} />
               </div>
-            </div>
-            {visite.statut === "terminee" && (
-              <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
-                <span className="material-symbols-outlined text-xs">description</span>
-                {visite.rapport_url ? "Voir le rapport" : "Générer le rapport"}
-              </p>
             )}
-          </Link>
+          </div>
         );
       })}
     </div>
