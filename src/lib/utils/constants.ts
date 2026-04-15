@@ -2,12 +2,14 @@ export const VALEURS_REPONSE = {
   CONFORME: "conforme",
   NON_CONFORME: "non_conforme",
   PAS_NECESSAIRE: "pas_necessaire",
+  REMARQUES: "remarques",
 } as const;
 
 export const LABELS_REPONSE: Record<string, string> = {
   conforme: "Conforme",
   non_conforme: "Non-conforme",
   pas_necessaire: "Pas nécessaire",
+  remarques: "Remarques",
 };
 
 export const STATUTS_VISITE = {

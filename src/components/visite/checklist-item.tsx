@@ -29,6 +29,7 @@ interface ChecklistItemProps {
 const VALEUR_OPTIONS = [
   { value: VALEURS_REPONSE.CONFORME, color: "bg-green-600" },
   { value: VALEURS_REPONSE.NON_CONFORME, color: "bg-red-600" },
+  { value: VALEURS_REPONSE.REMARQUES, color: "bg-amber-500" },
   { value: VALEURS_REPONSE.PAS_NECESSAIRE, color: "bg-gray-500" },
 ];
 

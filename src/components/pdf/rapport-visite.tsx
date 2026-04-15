@@ -97,6 +97,14 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: "#dc2626",
   },
+  remarqueItem: {
+    marginBottom: 10,
+    padding: 8,
+    backgroundColor: "#fffbeb",
+    borderRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: "#d97706",
+  },
   constatationCorrigee: {
     marginBottom: 10,
     padding: 8,
@@ -277,6 +285,10 @@ export function RapportVisite({
     (r) => r.valeur === "non_conforme"
   );
 
+  const remarquesReponses = reponses.filter(
+    (r) => r.valeur === "remarques"
+  );
+
   // Map reponse_id → ecart pour afficher délai/statut sous chaque NC
   const ecartByReponseId = new Map(
     ecarts.map((e) => [e.reponse_id, e])
@@ -401,6 +413,28 @@ export function RapportVisite({
               </View>
             );
           })
+        )}
+
+        {/* Remarques */}
+        {remarquesReponses.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Remarques</Text>
+            {remarquesReponses.map((r) => (
+              <View key={r.id} style={styles.remarqueItem}>
+                <Text style={styles.constatationTitle}>
+                  {(r.points_controle as { intitule: string } | null)?.intitule ?? "Point de contrôle"}
+                </Text>
+                {r.remarque && <RemarqueText text={r.remarque} />}
+                {r.photos && r.photos.length > 0 && (
+                  <View style={styles.photosRow}>
+                    {r.photos.map((photoUrl, i) => (
+                      <Image key={i} src={photoUrl} style={styles.photoImage} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </>
         )}
 
         {/* Signature */}
