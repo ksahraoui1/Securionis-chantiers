@@ -330,7 +330,7 @@ export type Database = {
           id: string;
           visite_id: string;
           point_controle_id: string;
-          valeur: "conforme" | "non_conforme" | "pas_necessaire";
+          valeur: "conforme" | "non_conforme" | "pas_necessaire" | "remarques";
           remarque: string | null;
           photos: string[];
           created_at: string;
@@ -340,14 +340,14 @@ export type Database = {
           id?: string;
           visite_id: string;
           point_controle_id: string;
-          valeur: "conforme" | "non_conforme" | "pas_necessaire";
+          valeur: "conforme" | "non_conforme" | "pas_necessaire" | "remarques";
           remarque?: string | null;
           photos?: string[];
           created_at?: string;
           updated_at?: string;
         };
         Update: {
-          valeur?: "conforme" | "non_conforme" | "pas_necessaire";
+          valeur?: "conforme" | "non_conforme" | "pas_necessaire" | "remarques";
           remarque?: string | null;
           photos?: string[];
           updated_at?: string;
