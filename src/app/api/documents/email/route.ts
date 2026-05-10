@@ -99,7 +99,7 @@ export async function POST(request: Request) {
 
     const resend = new Resend(getResendApiKey());
 
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: `${senderName} <${getResendFromEmail()}>`,
       to: [to.trim()],
       subject: subject?.trim() || `Document : ${doc.titre}`,
@@ -119,11 +119,19 @@ export async function POST(request: Request) {
       ],
     });
 
-    return NextResponse.json({ success: true });
+    if (result.error) {
+      console.error("Resend error:", result.error);
+      return NextResponse.json(
+        { error: `Resend a refusé l'envoi : ${result.error.message}` },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json({ success: true, id: result.data?.id });
   } catch (err) {
     console.error("Document email error:", err);
     return NextResponse.json(
-      { error: "Erreur lors de l'envoi de l'email" },
+      { error: err instanceof Error ? err.message : "Erreur lors de l'envoi de l'email" },
       { status: 500 }
     );
   }

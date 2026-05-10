@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import { getResendApiKey, getResendFromEmail } from "@/lib/env";
-import { isAllowedSupabaseUrl, escapeHtml } from "@/lib/utils/security";
+import { escapeHtml } from "@/lib/utils/security";
 
 function getResend() {
   return new Resend(getResendApiKey());
@@ -16,34 +16,17 @@ interface EntrepriseInfo {
 }
 
 export async function sendRapport(
-  rapportUrl: string,
+  pdfBuffer: Buffer,
   destinataires: { nom: string; email: string }[],
   chantierAdresse: string,
   dateVisite: string,
   inspecteurNom?: string,
   entreprise?: EntrepriseInfo | null
 ): Promise<string[]> {
-  // SSRF protection: whitelist stricte du hostname Supabase
-  if (!isAllowedSupabaseUrl(rapportUrl)) {
-    throw new Error("URL de rapport non autorisée");
-  }
-
   const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50 Mo
-  const pdfResponse = await fetch(rapportUrl, { signal: AbortSignal.timeout(30000) });
-  if (!pdfResponse.ok) {
-    throw new Error("Impossible de telecharger le PDF depuis le stockage");
-  }
-
-  const pdfContentLength = parseInt(pdfResponse.headers.get("content-length") ?? "0", 10);
-  if (pdfContentLength > MAX_PDF_SIZE) {
+  if (pdfBuffer.byteLength > MAX_PDF_SIZE) {
     throw new Error("Le PDF est trop volumineux pour l'envoi par email");
   }
-
-  const pdfArrayBuffer = await pdfResponse.arrayBuffer();
-  if (pdfArrayBuffer.byteLength > MAX_PDF_SIZE) {
-    throw new Error("Le PDF est trop volumineux pour l'envoi par email");
-  }
-  const pdfBuffer = Buffer.from(pdfArrayBuffer);
 
   const dateFormatted = new Date(dateVisite).toLocaleDateString("fr-CH", {
     day: "numeric",
@@ -64,7 +47,7 @@ export async function sendRapport(
 
   try {
     const resend = getResend();
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: getResendFromEmail(),
       to: allEmails,
       subject,
@@ -77,10 +60,15 @@ export async function sendRapport(
       ],
     });
 
+    if (result.error) {
+      console.error("Resend error:", result.error);
+      throw new Error(`Resend a refusé l'envoi : ${result.error.message}`);
+    }
+
     return allEmails;
   } catch (err) {
     console.error("Failed to send email to all recipients:", err);
-    throw new Error("Erreur lors de l'envoi de l'email");
+    throw err instanceof Error ? err : new Error("Erreur lors de l'envoi de l'email");
   }
 }
 
