@@ -1,5 +1,92 @@
 # Corrections appliquées — Securionis-chantiers
 
+## Refactoring complet 3 hotspots — 2026-05-10
+
+Audit de complexité cyclomatique sur 3 composants critiques (`photo-annotator.tsx` Cyclo=55, `point-controle-form.tsx` Cyclo=35, `admin/documents/page.tsx` Cyclo=26) et plan de refactoring exécuté en 3 salves (P0/P1/P2).
+
+### Salve P0 — Extractions pures (faible risque)
+
+**P0-1 : `src/lib/utils/canvas-annotations.ts`** (nouveau, 134 l)
+Mutualisation de la boucle de rendu d'annotations entre `drawAll` (display) et `handleSave` (export haute résolution). La logique de tracé par type (arrow/circle/text/freehand) était dupliquée à 90 % dans `photo-annotator.tsx` (l. 67-113 et l. 273-328 avant refacto). Désormais une seule fonction `renderAnnotations(ctx, annotations, { scale })` qui gère les deux cas.
+
+**P0-2 : `src/lib/utils/storage-path.ts`** (nouveau, 22 l)
+- `buildStoragePath(prefix, ext)` : remplace les concat ad-hoc `${prefix}/${crypto.randomUUID()}.${ext}` dispersées dans 3 sites
+- `extractStoragePath(url, bucket)` : extrait avec garde anti path-traversal (anciennement `extractSafeStoragePath` dans `use-photo-upload.ts`, désormais partagée pour tous les buckets). Élimine le `split("/rapports/")[1]` fragile.
+- `validatePdfOrImageFile()` ajoutée dans `file-validation.ts` (whitelist PDF/JPG/PNG, 50 Mo).
+
+**P0-3 : Constantes métier extraites**
+- `src/lib/utils/document-sources.ts` (`DOCUMENT_SOURCES`, `DOCUMENT_SOURCE_LABELS`)
+- `src/lib/utils/format.ts` (`formatFileSize`)
+
+### Salve P1 — Découpage de composants (risque moyen)
+
+**P1-1 : `<CategorieThemeSelector>`** (`src/components/admin/categorie-theme-selector.tsx`, 206 l)
+Remplace 6 `useState` couplés dans `point-controle-form.tsx` par un état discriminé typé :
+```ts
+type CategorieSelection = { mode: "existing"; categorieId } | { mode: "new"; libelle };
+type ThemeSelection = { mode: "none" } | { mode: "existing"; themeId } | { mode: "new"; libelle };
+```
+La validation passe d'une expression composée à 5 conditions (`(!categorieId && !showNewCategorie) || ...`) à un simple `validateCategorieThemeState()`.
+
+**P1-2 : `<PointControleDocumentsUploader>`** (`src/components/admin/point-controle-documents-uploader.tsx`, 242 l)
+Sous-composant qui encapsule docs + pendingFiles + uploading + load/delete. Expose un `useImperativeHandle` avec `flushPending(pointId)` que le parent appelle après création du nouveau point.
+
+**P1-3 : Découpage `admin/documents/page.tsx`** (720 → 119 lignes)
+- `hooks/use-documents.ts` (60 l) — chargement + linkedCount + remove
+- `components/document-list.tsx` (175 l)
+- `components/document-upload-form.tsx` (174 l)
+- `components/edit-document-modal.tsx` (124 l)
+- `components/email-document-modal.tsx` (119 l)
+- `components/link-points-modal.tsx` (169 l, **+ fix race condition** au chargement, **+ fix tri non-mutant** sur `[...filtered].sort()`)
+
+**P1-4 : Fusion `useEffect` redondants** (`photo-annotator.tsx`)
+Les deux effets `drawAll()` et `drawAll(currentAnnotation)` fusionnés en un seul appel `drawAll(currentAnnotation)`.
+
+### Salve P2 — Architectural
+
+**P2-2 : `src/lib/utils/storage-upload.ts`** (49 l, nouveau)
+Helper `uploadFileToStorage(file, { bucket, pathPrefix, validate })` qui combine validation + upload + getPublicUrl. Utilisé dans `point-controle-documents-uploader.tsx` et `document-upload-form.tsx`.
+
+**P2-3 : `useReducer` pour la machine d'état du canvas** (`photo-annotator.tsx`)
+Machine d'état explicite à 3 phases (`idle` / `drawing` / `placing-text`) avec 6 actions typées. Remplace 3 `useState` (`drawing`, `currentAnnotation`, `textPosition`) par un seul `useReducer`. Comportement utilisateur strictement identique.
+
+**P2-1 : skip** (Server Components + Server Actions pour `admin/documents`) — repoussé à plus tard, mérite une PR dédiée vu la nature architecturale du changement.
+
+### Bilan chiffré
+
+| Hotspot | Avant | Après | Δ |
+|---|---:|---:|---:|
+| `photo-annotator.tsx` | 506 | 411 | −95 |
+| `point-controle-form.tsx` | 506 | 221 | −285 |
+| `admin/documents/page.tsx` | 720 | 119 | −601 |
+| **Total 3 hotspots** | **1 732** | **751** | **−981 (−57 %)** |
+
+12 nouveaux modules, build production OK (29/29 pages), `npx tsc --noEmit` clean.
+
+---
+
+## Bugs corrigés pendant la phase de test — 2026-05-10
+
+### Bug RLS sur `categories` — création de catégorie custom impossible
+
+**Symptôme** : Modal "Nouveau point de contrôle" + "+ Nouvelle catégorie" → "Erreur lors de l'enregistrement" sans détail.
+
+**Cause** : RLS sur `categories` n'avait qu'une policy `categories_select`. Aucune policy INSERT/UPDATE/DELETE → toute écriture bloquée par défaut. Bug préexistant non lié à la refacto P1-1.
+
+**Fix** : `supabase/migrations/033_categories_admin_writes.sql` — ajoute les policies admin INSERT/UPDATE/DELETE en `is_custom = true` (modèle identique à `pc_*_admin` sur `points_controle`). Bonus : amélioré le `catch` dans `point-controle-form.tsx` pour exposer le message d'erreur Supabase réel.
+
+### Bug Resend — emails "envoyés" mais jamais reçus
+
+**Symptôme** : Toast vert "Email envoyé avec succès" sur la base documentaire, mais aucun email reçu côté destinataire.
+
+**Cause** : Le SDK Resend renvoie `Promise<{ data, error }>` — quand l'envoi est refusé (domaine non vérifié, clé invalide, etc.), il met l'erreur dans `result.error` **sans throw**. Le code faisait `await resend.emails.send(...)` et arrivait au `return success: true` même en cas d'échec.
+
+**Fix** :
+- `src/app/api/documents/email/route.ts` et `src/lib/email/send-rapport.ts` : vérifier `result.error` après l'envoi, retourner 502 + message Resend précis si erreur.
+- `RESEND_FROM_EMAIL` était `rapports@chantiers.securionis.com` (sous-domaine), changé en `rapports@securionis.com` (domaine racine vérifié sur Resend). Les sous-domaines sont traités comme des domaines distincts par Resend.
+
+---
+
 ## Audit du 2026-03-20
 
 ### Bug corrigé : stale closure dans `handlePhotoRemove`

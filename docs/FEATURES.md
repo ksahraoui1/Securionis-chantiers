@@ -1,10 +1,10 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-03-23
+> Dernière mise à jour : 2026-05-10
 
 ## 1. Annotation des photos
 
-**Fichiers** : `src/components/visite/photo-annotator.tsx`, `photo-capture.tsx`
+**Fichiers** : `src/components/visite/photo-annotator.tsx`, `photo-capture.tsx`, `src/lib/utils/canvas-annotations.ts`
 
 Éditeur plein écran Canvas HTML5 intégré au flux de capture photo.
 
@@ -13,9 +13,13 @@
 - **3 épaisseurs** de trait
 - Undo (annulation dernière annotation)
 - Touch events pour tablette sur chantier
-- Export en pleine résolution (annotations rendues à l'échelle originale)
+- Export en pleine résolution (annotations rendues à l'échelle originale via `renderAnnotations(ctx, annotations, { scale })`)
 - S'ouvre automatiquement après chaque prise de photo
 - Ré-annotation possible sur photos déjà uploadées (hover → icône crayon)
+
+**Architecture interne (refacto 2026-05-10)** :
+- Fonction de rendu pure `renderAnnotations()` dans `src/lib/utils/canvas-annotations.ts`, mutualisée entre l'affichage écran et l'export haute résolution.
+- Machine d'état `useReducer` à 3 phases (`idle` / `drawing` / `placing-text`) avec 6 actions typées (`pointer-down/move/up`, `submit-text`, `cancel-text`, `undo`).
 
 ## 2. Export Excel (.xlsx)
 

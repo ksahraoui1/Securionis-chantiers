@@ -4,19 +4,7 @@ import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressPhoto, validatePhoto } from "@/lib/utils/photo-compress";
 import { MAX_PHOTOS } from "@/lib/utils/constants";
-
-/**
- * Extrait un chemin sûr depuis une URL storage, empêchant le path traversal.
- */
-function extractSafeStoragePath(url: string, bucket: string): string | null {
-  const marker = `/${bucket}/`;
-  const idx = url.indexOf(marker);
-  if (idx === -1) return null;
-  const path = url.substring(idx + marker.length);
-  // Bloquer path traversal
-  if (path.includes("..") || path.startsWith("/")) return null;
-  return path;
-}
+import { extractStoragePath } from "@/lib/utils/storage-path";
 
 interface UsePhotoUploadOptions {
   chantierId: string;
@@ -85,7 +73,7 @@ export function usePhotoUpload({
 
   const removePhoto = useCallback(
     async (url: string) => {
-      const path = extractSafeStoragePath(url, "visite-photos");
+      const path = extractStoragePath(url, "visite-photos");
       if (path) {
         const supabase = createClient();
         await supabase.storage.from("visite-photos").remove([path]);
@@ -101,7 +89,7 @@ export function usePhotoUpload({
       setUploading(true);
       try {
         // Remove old file from storage
-        const oldPath = extractSafeStoragePath(oldUrl, "visite-photos");
+        const oldPath = extractStoragePath(oldUrl, "visite-photos");
         const supabase = createClient();
         if (oldPath) {
           await supabase.storage.from("visite-photos").remove([oldPath]);

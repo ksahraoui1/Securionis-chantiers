@@ -1,26 +1,12 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
-
-type Tool = "arrow" | "circle" | "text" | "freehand";
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface Annotation {
-  type: Tool;
-  color: string;
-  strokeWidth: number;
-  start?: Point;
-  end?: Point;
-  center?: Point;
-  radius?: number;
-  position?: Point;
-  text?: string;
-  points?: Point[];
-}
+import { useRef, useState, useEffect, useCallback, useReducer } from "react";
+import {
+  renderAnnotations,
+  type Annotation,
+  type AnnotationPoint as Point,
+  type AnnotationTool as Tool,
+} from "@/lib/utils/canvas-annotations";
 
 interface PhotoAnnotatorProps {
   imageUrl: string;
@@ -31,6 +17,112 @@ interface PhotoAnnotatorProps {
 const COLORS = ["#F63A35", "#006E2D", "#131B2E", "#f59e0b", "#ffffff"];
 const STROKE_WIDTHS = [2, 4, 6];
 
+interface ToolSettings {
+  color: string;
+  strokeWidth: number;
+}
+
+type Phase =
+  | { kind: "idle" }
+  | { kind: "drawing"; current: Annotation }
+  | { kind: "placing-text"; position: Point };
+
+interface CanvasState {
+  annotations: Annotation[];
+  phase: Phase;
+}
+
+type CanvasAction =
+  | { type: "pointer-down"; tool: Tool; point: Point; settings: ToolSettings }
+  | { type: "pointer-move"; point: Point }
+  | { type: "pointer-up" }
+  | { type: "submit-text"; text: string; settings: ToolSettings }
+  | { type: "cancel-text" }
+  | { type: "undo" };
+
+const INITIAL_STATE: CanvasState = {
+  annotations: [],
+  phase: { kind: "idle" },
+};
+
+function canvasReducer(state: CanvasState, action: CanvasAction): CanvasState {
+  switch (action.type) {
+    case "pointer-down": {
+      if (action.tool === "text") {
+        return {
+          ...state,
+          phase: { kind: "placing-text", position: action.point },
+        };
+      }
+      const { point, settings } = action;
+      let current: Annotation;
+      switch (action.tool) {
+        case "arrow":
+          current = { type: "arrow", ...settings, start: point, end: point };
+          break;
+        case "circle":
+          current = { type: "circle", ...settings, center: point, radius: 0 };
+          break;
+        case "freehand":
+          current = { type: "freehand", ...settings, points: [point] };
+          break;
+        default:
+          return state;
+      }
+      return { ...state, phase: { kind: "drawing", current } };
+    }
+    case "pointer-move": {
+      if (state.phase.kind !== "drawing") return state;
+      const { current } = state.phase;
+      const p = action.point;
+      let updated: Annotation;
+      if (current.type === "arrow") {
+        updated = { ...current, end: p };
+      } else if (current.type === "circle" && current.center) {
+        const dx = p.x - current.center.x;
+        const dy = p.y - current.center.y;
+        updated = { ...current, radius: Math.sqrt(dx * dx + dy * dy) };
+      } else if (current.type === "freehand" && current.points) {
+        updated = { ...current, points: [...current.points, p] };
+      } else {
+        return state;
+      }
+      return { ...state, phase: { kind: "drawing", current: updated } };
+    }
+    case "pointer-up": {
+      if (state.phase.kind !== "drawing") return state;
+      return {
+        annotations: [...state.annotations, state.phase.current],
+        phase: { kind: "idle" },
+      };
+    }
+    case "submit-text": {
+      if (state.phase.kind !== "placing-text") return state;
+      const trimmed = action.text.trim();
+      if (!trimmed) return state;
+      return {
+        annotations: [
+          ...state.annotations,
+          {
+            type: "text",
+            ...action.settings,
+            position: state.phase.position,
+            text: trimmed,
+          },
+        ],
+        phase: { kind: "idle" },
+      };
+    }
+    case "cancel-text": {
+      if (state.phase.kind !== "placing-text") return state;
+      return { ...state, phase: { kind: "idle" } };
+    }
+    case "undo": {
+      return { ...state, annotations: state.annotations.slice(0, -1) };
+    }
+  }
+}
+
 export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -39,81 +131,35 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
   const [tool, setTool] = useState<Tool>("arrow");
   const [color, setColor] = useState(COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(STROKE_WIDTHS[1]);
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [drawing, setDrawing] = useState(false);
-  const [currentAnnotation, setCurrentAnnotation] = useState<Annotation | null>(null);
+  const [state, dispatch] = useReducer(canvasReducer, INITIAL_STATE);
   const [textInput, setTextInput] = useState("");
-  const [textPosition, setTextPosition] = useState<Point | null>(null);
   const [ready, setReady] = useState(false);
   const [canvasCss, setCanvasCss] = useState({ width: 300, height: 200 });
 
+  const settings: ToolSettings = { color, strokeWidth };
+  const currentAnnotation =
+    state.phase.kind === "drawing" ? state.phase.current : null;
+  const textPosition =
+    state.phase.kind === "placing-text" ? state.phase.position : null;
+
   // Draw everything onto the canvas
-  const drawAll = useCallback(
-    (extraAnnotation?: Annotation | null) => {
-      const canvas = canvasRef.current;
-      const img = imageRef.current;
-      if (!canvas || !img || sizeRef.current.width === 0) return;
+  const drawAll = useCallback(() => {
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    if (!canvas || !img || sizeRef.current.width === 0) return;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      const allAnnotations = extraAnnotation
-        ? [...annotations, extraAnnotation]
-        : annotations;
+    const allAnnotations = currentAnnotation
+      ? [...state.annotations, currentAnnotation]
+      : state.annotations;
 
-      for (const a of allAnnotations) {
-        ctx.strokeStyle = a.color;
-        ctx.fillStyle = a.color;
-        ctx.lineWidth = a.strokeWidth;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-
-        switch (a.type) {
-          case "arrow":
-            if (a.start && a.end) drawArrow(ctx, a.start, a.end, a.strokeWidth);
-            break;
-          case "circle":
-            if (a.center && a.radius) {
-              ctx.beginPath();
-              ctx.arc(a.center.x, a.center.y, a.radius, 0, Math.PI * 2);
-              ctx.stroke();
-            }
-            break;
-          case "text":
-            if (a.position && a.text) {
-              const fontSize = Math.max(16, a.strokeWidth * 6);
-              ctx.font = `bold ${fontSize}px Inter, sans-serif`;
-              const metrics = ctx.measureText(a.text);
-              const pad = 4;
-              ctx.fillStyle = "rgba(0,0,0,0.5)";
-              ctx.fillRect(
-                a.position.x - pad,
-                a.position.y - fontSize - pad,
-                metrics.width + pad * 2,
-                fontSize + pad * 2
-              );
-              ctx.fillStyle = a.color;
-              ctx.fillText(a.text, a.position.x, a.position.y);
-            }
-            break;
-          case "freehand":
-            if (a.points && a.points.length > 1) {
-              ctx.beginPath();
-              ctx.moveTo(a.points[0].x, a.points[0].y);
-              for (let i = 1; i < a.points.length; i++) {
-                ctx.lineTo(a.points[i].x, a.points[i].y);
-              }
-              ctx.stroke();
-            }
-            break;
-        }
-      }
-    },
-    [annotations]
-  );
+    renderAnnotations(ctx, allAnnotations);
+  }, [state.annotations, currentAnnotation]);
 
   // Load image and set up canvas in one effect
   useEffect(() => {
@@ -138,7 +184,6 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
       sizeRef.current = { width: w, height: h };
       setCanvasCss({ width: w, height: h });
 
-      // Directly set canvas dimensions and draw — no waiting for React re-render
       const canvas = canvasRef.current;
       if (canvas) {
         canvas.width = w;
@@ -156,7 +201,6 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
 
     img.onload = onLoad;
     img.onerror = () => {
-      // Retry without crossOrigin
       const retry = new Image();
       retry.onload = () => {
         img.crossOrigin = "";
@@ -168,15 +212,9 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
     img.src = imageUrl;
   }, [imageUrl]);
 
-  // Redraw when annotations change
   useEffect(() => {
     if (ready) drawAll();
   }, [ready, drawAll]);
-
-  // Also redraw with live annotation while drawing
-  useEffect(() => {
-    if (ready && currentAnnotation) drawAll(currentAnnotation);
-  }, [ready, currentAnnotation, drawAll]);
 
   function getCanvasPoint(e: React.MouseEvent | React.TouchEvent): Point {
     const canvas = canvasRef.current!;
@@ -201,59 +239,26 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
 
   function handlePointerDown(e: React.MouseEvent | React.TouchEvent) {
     if (!ready) return;
-    if (tool === "text") {
-      setTextPosition(getCanvasPoint(e));
-      return;
-    }
-
-    setDrawing(true);
-    const p = getCanvasPoint(e);
-
-    if (tool === "arrow") {
-      setCurrentAnnotation({ type: "arrow", color, strokeWidth, start: p, end: p });
-    } else if (tool === "circle") {
-      setCurrentAnnotation({ type: "circle", color, strokeWidth, center: p, radius: 0 });
-    } else if (tool === "freehand") {
-      setCurrentAnnotation({ type: "freehand", color, strokeWidth, points: [p] });
-    }
+    dispatch({ type: "pointer-down", tool, point: getCanvasPoint(e), settings });
   }
 
   function handlePointerMove(e: React.MouseEvent | React.TouchEvent) {
-    if (!drawing || !currentAnnotation) return;
-    const p = getCanvasPoint(e);
-
-    if (currentAnnotation.type === "arrow") {
-      setCurrentAnnotation({ ...currentAnnotation, end: p });
-    } else if (currentAnnotation.type === "circle" && currentAnnotation.center) {
-      const dx = p.x - currentAnnotation.center.x;
-      const dy = p.y - currentAnnotation.center.y;
-      setCurrentAnnotation({ ...currentAnnotation, radius: Math.sqrt(dx * dx + dy * dy) });
-    } else if (currentAnnotation.type === "freehand" && currentAnnotation.points) {
-      setCurrentAnnotation({ ...currentAnnotation, points: [...currentAnnotation.points, p] });
-    }
+    if (state.phase.kind !== "drawing") return;
+    dispatch({ type: "pointer-move", point: getCanvasPoint(e) });
   }
 
   function handlePointerUp() {
-    if (drawing && currentAnnotation) {
-      setAnnotations((prev) => [...prev, currentAnnotation]);
-      setCurrentAnnotation(null);
-    }
-    setDrawing(false);
+    if (state.phase.kind === "drawing") dispatch({ type: "pointer-up" });
   }
 
   function handleTextSubmit() {
-    if (textInput.trim() && textPosition) {
-      setAnnotations((prev) => [
-        ...prev,
-        { type: "text", color, strokeWidth, position: textPosition, text: textInput.trim() },
-      ]);
-      setTextInput("");
-      setTextPosition(null);
-    }
+    dispatch({ type: "submit-text", text: textInput, settings });
+    setTextInput("");
   }
 
-  function handleUndo() {
-    setAnnotations((prev) => prev.slice(0, -1));
+  function handleTextCancel() {
+    dispatch({ type: "cancel-text" });
+    setTextInput("");
   }
 
   function handleSave() {
@@ -269,71 +274,14 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
     ctx.drawImage(img, 0, 0);
 
     const fullScale = img.naturalWidth / sizeRef.current.width;
-
-    for (const a of annotations) {
-      ctx.strokeStyle = a.color;
-      ctx.fillStyle = a.color;
-      ctx.lineWidth = a.strokeWidth * fullScale;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-
-      switch (a.type) {
-        case "arrow":
-          if (a.start && a.end) {
-            const start = { x: a.start.x * fullScale, y: a.start.y * fullScale };
-            const end = { x: a.end.x * fullScale, y: a.end.y * fullScale };
-            drawArrow(ctx, start, end, a.strokeWidth * fullScale);
-          }
-          break;
-        case "circle":
-          if (a.center && a.radius) {
-            ctx.beginPath();
-            ctx.arc(
-              a.center.x * fullScale,
-              a.center.y * fullScale,
-              a.radius * fullScale,
-              0,
-              Math.PI * 2
-            );
-            ctx.stroke();
-          }
-          break;
-        case "text":
-          if (a.position && a.text) {
-            const fontSize = Math.max(16, a.strokeWidth * 6) * fullScale;
-            ctx.font = `bold ${fontSize}px Inter, sans-serif`;
-            const metrics = ctx.measureText(a.text);
-            const pad = 4 * fullScale;
-            ctx.fillStyle = "rgba(0,0,0,0.5)";
-            ctx.fillRect(
-              a.position.x * fullScale - pad,
-              a.position.y * fullScale - fontSize - pad,
-              metrics.width + pad * 2,
-              fontSize + pad * 2
-            );
-            ctx.fillStyle = a.color;
-            ctx.fillText(a.text, a.position.x * fullScale, a.position.y * fullScale);
-          }
-          break;
-        case "freehand":
-          if (a.points && a.points.length > 1) {
-            ctx.beginPath();
-            ctx.moveTo(a.points[0].x * fullScale, a.points[0].y * fullScale);
-            for (let i = 1; i < a.points.length; i++) {
-              ctx.lineTo(a.points[i].x * fullScale, a.points[i].y * fullScale);
-            }
-            ctx.stroke();
-          }
-          break;
-      }
-    }
+    renderAnnotations(ctx, state.annotations, { scale: fullScale });
 
     exportCanvas.toBlob(
       (blob) => {
         if (blob) onSave(blob);
       },
       "image/jpeg",
-      0.9
+      0.9,
     );
   }
 
@@ -401,7 +349,7 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
               className="flex-1 px-3 py-2 rounded-lg bg-gray-100 text-sm outline-none min-h-[44px]"
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleTextSubmit();
-                if (e.key === "Escape") setTextPosition(null);
+                if (e.key === "Escape") handleTextCancel();
               }}
             />
             <button
@@ -435,8 +383,8 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
           <div className="w-px h-8 bg-white/20 mx-1" />
 
           <button
-            onClick={handleUndo}
-            disabled={annotations.length === 0}
+            onClick={() => dispatch({ type: "undo" })}
+            disabled={state.annotations.length === 0}
             className="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-xl text-xs font-medium text-white/70 hover:text-white disabled:opacity-30"
           >
             <span className="material-symbols-outlined text-xl">undo</span>
@@ -480,27 +428,4 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
       </div>
     </div>
   );
-}
-
-function drawArrow(ctx: CanvasRenderingContext2D, start: Point, end: Point, lineWidth: number) {
-  const headLen = Math.max(lineWidth * 4, 12);
-  const angle = Math.atan2(end.y - start.y, end.x - start.x);
-
-  ctx.beginPath();
-  ctx.moveTo(start.x, start.y);
-  ctx.lineTo(end.x, end.y);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(end.x, end.y);
-  ctx.lineTo(
-    end.x - headLen * Math.cos(angle - Math.PI / 6),
-    end.y - headLen * Math.sin(angle - Math.PI / 6)
-  );
-  ctx.lineTo(
-    end.x - headLen * Math.cos(angle + Math.PI / 6),
-    end.y - headLen * Math.sin(angle + Math.PI / 6)
-  );
-  ctx.closePath();
-  ctx.fill();
 }

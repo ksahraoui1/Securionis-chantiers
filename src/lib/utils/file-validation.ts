@@ -7,6 +7,8 @@ const ALLOWED_DOCUMENT_EXTENSIONS = [
   "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png",
 ];
 
+const ALLOWED_PDF_OR_IMAGE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png"];
+
 const ALLOWED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"];
 
 const ALLOWED_MIME_TYPES: Record<string, string[]> = {
@@ -35,6 +37,14 @@ export interface FileValidationResult {
  */
 export function validateDocumentFile(file: File): FileValidationResult {
   return validateFile(file, ALLOWED_DOCUMENT_EXTENSIONS, MAX_DOCUMENT_SIZE);
+}
+
+/**
+ * Valide un fichier PDF ou image (JPG/PNG) — 50 Mo max.
+ * Utilisé pour la base documentaire et les pièces jointes des points de contrôle.
+ */
+export function validatePdfOrImageFile(file: File): FileValidationResult {
+  return validateFile(file, ALLOWED_PDF_OR_IMAGE_EXTENSIONS, MAX_DOCUMENT_SIZE);
 }
 
 /**
