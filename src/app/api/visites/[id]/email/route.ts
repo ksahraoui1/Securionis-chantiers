@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendRapport } from "@/lib/email/send-rapport";
-import { canAccessVisite, getUserRole } from "@/lib/utils/security";
+import { canAccessVisite, getUserRole, extractRapportStoragePath } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getLimits } from "@/lib/stripe/limits";
 
@@ -43,6 +43,23 @@ export async function POST(
       );
     }
 
+    // Optional body: { destinataireIds?: string[] } pour restreindre l'envoi
+    // Si absent, envoie à tous les destinataires du chantier (comportement historique).
+    let selectedIds: string[] | null = null;
+    try {
+      const text = await request.text();
+      if (text) {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed?.destinataireIds)) {
+          selectedIds = parsed.destinataireIds.filter(
+            (id: unknown): id is string => typeof id === "string",
+          );
+        }
+      }
+    } catch {
+      // Body absent ou invalide → fallback à tous
+    }
+
     // Load visite
     const { data: visite } = await supabase
       .from("visites")
@@ -71,15 +88,27 @@ export async function POST(
       .eq("id", visite.chantier_id)
       .single();
 
-    // Load destinataires
-    const { data: destinataires } = await supabase
+    // Load destinataires du chantier
+    const { data: allDestinataires } = await supabase
       .from("destinataires")
       .select("*")
       .eq("chantier_id", visite.chantier_id);
 
-    if (!destinataires || destinataires.length === 0) {
+    if (!allDestinataires || allDestinataires.length === 0) {
       return NextResponse.json(
         { error: "Aucun destinataire configure pour ce chantier" },
+        { status: 400 }
+      );
+    }
+
+    // Filtrer si une sélection a été demandée (anti-injection : on n'envoie qu'à des destinataires liés au chantier)
+    const destinataires = selectedIds
+      ? allDestinataires.filter((d) => selectedIds!.includes(d.id))
+      : allDestinataires;
+
+    if (destinataires.length === 0) {
+      return NextResponse.json(
+        { error: "Aucun destinataire sélectionné" },
         { status: 400 }
       );
     }
@@ -101,8 +130,24 @@ export async function POST(
       entreprise = data;
     }
 
+    // Télécharger les octets du PDF depuis le storage (bucket privé)
+    const serviceClient = await createServiceClient();
+    const storagePath = extractRapportStoragePath(visite.rapport_url);
+    const { data: pdfBlob, error: downloadError } = await serviceClient.storage
+      .from("rapports")
+      .download(storagePath);
+
+    if (downloadError || !pdfBlob) {
+      return NextResponse.json(
+        { error: "Impossible de télécharger le PDF depuis le stockage" },
+        { status: 500 }
+      );
+    }
+
+    const pdfBuffer = Buffer.from(await pdfBlob.arrayBuffer());
+
     const sentTo = await sendRapport(
-      visite.rapport_url,
+      pdfBuffer,
       destinataires,
       chantier?.adresse ?? "Chantier",
       visite.date_visite,

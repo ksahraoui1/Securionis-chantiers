@@ -1,5 +1,37 @@
 # Corrections appliquées — Securionis-chantiers
 
+## Sélection des destinataires avant envoi du rapport — 2026-05-11
+
+### Contexte
+
+L'envoi du rapport PDF de visite par email envoyait systématiquement à **tous** les destinataires du chantier, sans possibilité de choisir. L'inspecteur ne pouvait pas exclure ponctuellement un destinataire (CC absent, copie de courtoisie ciblée, etc.) sans modifier la liste du chantier.
+
+### Implémentation
+
+**UI** — `src/app/(dashboard)/chantiers/[id]/visites/[visiteId]/rapport/rapport-actions.tsx`
+- Le bouton « Envoyer par email » devient « Envoyer par email… » (suffixe ellipse pour signaler l'ouverture d'une modal).
+- Modal « Choisir les destinataires » avec une checkbox par destinataire (nom, organisation, email).
+- Tous cochés par défaut (préserve le comportement historique).
+- Compteur dynamique « N / Total sélectionnés ».
+- Bouton « Tout cocher » / « Tout décocher ».
+- Bouton « Envoyer (N) » désactivé si 0 sélectionné.
+- Re-cochage automatique à chaque réouverture de la modal (pas de mémorisation entre 2 envois).
+
+**API** — `src/app/api/visites/[id]/email/route.ts`
+- Accepte désormais `{ destinataireIds: string[] }` dans le body (optionnel).
+- **Sécurité** : filtrage côté serveur — on n'envoie qu'aux destinataires effectivement liés au chantier (`allDestinataires.filter((d) => selectedIds.includes(d.id))`). Impossible d'injecter un destinataire arbitraire.
+- Si body absent ou non parsable → fallback « envoi à tous » (rétro-compatibilité).
+- Retour 400 « Aucun destinataire sélectionné » si la liste filtrée est vide.
+
+**Page** — `rapport/page.tsx`
+- Passe désormais le tableau complet `destinataires` à `<RapportActions>` au lieu du booléen `hasDestinataires`.
+
+### Édition serveur
+
+L'audit log existant (`audit_logs` action `send_rapport_email`) conserve la liste des emails effectivement envoyés (`sent_to`) — utile pour vérifier *après coup* qui a reçu quoi.
+
+---
+
 ## Refactoring complet 3 hotspots — 2026-05-10
 
 Audit de complexité cyclomatique sur 3 composants critiques (`photo-annotator.tsx` Cyclo=55, `point-controle-form.tsx` Cyclo=35, `admin/documents/page.tsx` Cyclo=26) et plan de refactoring exécuté en 3 salves (P0/P1/P2).

@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-05-10
+> Dernière mise à jour : 2026-05-11
 
 ## 1. Annotation des photos
 
@@ -256,6 +256,19 @@ Centralisation de tous les documents liés à un chantier.
 - Prompts de l'analyse photo et de l'assistant juridique imposent le français avec accents
 - Fonction `stripMarkdown()` nettoie tout formatage markdown des réponses IA
 - Le bouton "Copier dans la remarque" de l'assistant juridique résume le texte en 2-3 phrases via l'IA
+
+## 13. Sélection des destinataires avant envoi du rapport (2026-05-11)
+
+**Fichiers** : `src/app/(dashboard)/chantiers/[id]/visites/[visiteId]/rapport/rapport-actions.tsx`, `src/app/api/visites/[id]/email/route.ts`
+
+Avant d'envoyer le PDF du rapport par email, l'inspecteur ouvre une modal listant tous les destinataires du chantier et **coche/décoche** ceux qui doivent recevoir l'envoi courant. Les choix ne sont **pas mémorisés** entre 2 envois (tous re-cochés par défaut à chaque ouverture).
+
+- Compteur dynamique « N / Total sélectionnés »
+- Boutons « Tout cocher » / « Tout décocher »
+- Bouton « Envoyer (N) » désactivé si 0 sélectionné
+- Filtrage **côté serveur** sur les destinataires liés au chantier (anti-injection : impossible d'envoyer à un destinataire arbitraire)
+- Rétro-compatibilité : si l'API est appelée sans corps, le comportement historique (envoi à tous) est conservé
+- Audit log (`send_rapport_email`) conserve la liste exacte des emails envoyés
 
 ## 12. Améliorations UX
 

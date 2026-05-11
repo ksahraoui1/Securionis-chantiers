@@ -1,6 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { RapportActions } from "./rapport-actions";
+import { extractRapportStoragePath } from "@/lib/utils/security";
 
 export default async function RapportPage({
   params,
@@ -54,6 +55,21 @@ export default async function RapportPage({
     .from("destinataires")
     .select("*")
     .eq("chantier_id", chantierId);
+
+  // Générer une signed URL pour le rapport PDF (bucket privé)
+  let signedRapportUrl: string | null = null;
+  if (visite.rapport_url) {
+    try {
+      const serviceClient = await createServiceClient();
+      const storagePath = extractRapportStoragePath(visite.rapport_url);
+      const { data: signedData } = await serviceClient.storage
+        .from("rapports")
+        .createSignedUrl(storagePath, 3600); // valide 1 heure
+      signedRapportUrl = signedData?.signedUrl ?? null;
+    } catch {
+      // Si extraction du chemin échoue (URL malformée), ignorer
+    }
+  }
 
   const ncCount =
     reponses?.filter((r) => r.valeur === "non_conforme").length ?? 0;
@@ -178,9 +194,9 @@ export default async function RapportPage({
       <RapportActions
         visiteId={visiteId}
         hasRapportUrl={!!visite.rapport_url}
-        rapportUrl={visite.rapport_url ?? null}
+        rapportUrl={signedRapportUrl}
         emailEnvoye={visite.email_envoye}
-        hasDestinataires={(destinataires?.length ?? 0) > 0}
+        destinataires={destinataires ?? []}
       />
     </div>
   );

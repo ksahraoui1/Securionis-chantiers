@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import type { Tables } from "@/types/database";
 
 interface RapportActionsProps {
   visiteId: string;
   hasRapportUrl: boolean;
   rapportUrl: string | null;
   emailEnvoye: boolean;
-  hasDestinataires: boolean;
+  destinataires: Tables<"destinataires">[];
 }
 
 export function RapportActions({
@@ -16,7 +18,7 @@ export function RapportActions({
   hasRapportUrl,
   rapportUrl,
   emailEnvoye,
-  hasDestinataires,
+  destinataires,
 }: RapportActionsProps) {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -26,6 +28,14 @@ export function RapportActions({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+
+  // Modal de sélection des destinataires
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(destinataires.map((d) => d.id)),
+  );
+
+  const hasDestinataires = destinataires.length > 0;
 
   async function handleGeneratePdf() {
     setGeneratingPdf(true);
@@ -48,16 +58,45 @@ export function RapportActions({
       setSuccessMessage(`PDF généré : ${data.filename}`);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Erreur lors de la génération"
+        err instanceof Error ? err.message : "Erreur lors de la génération",
       );
     } finally {
       setGeneratingPdf(false);
     }
   }
 
-  async function handleSendEmail() {
+  function openEmailModal() {
     if (!pdfGenerated) {
       setError("Veuillez d'abord générer le PDF.");
+      return;
+    }
+    setError(null);
+    setSuccessMessage(null);
+    // Re-cocher tous par défaut à chaque ouverture
+    setSelectedIds(new Set(destinataires.map((d) => d.id)));
+    setShowEmailModal(true);
+  }
+
+  function toggleDestinataire(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selectedIds.size === destinataires.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(destinataires.map((d) => d.id)));
+    }
+  }
+
+  async function handleSendEmail() {
+    if (selectedIds.size === 0) {
+      setError("Sélectionnez au moins un destinataire.");
       return;
     }
     setSendingEmail(true);
@@ -67,6 +106,8 @@ export function RapportActions({
     try {
       const res = await fetch(`/api/visites/${visiteId}/email`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ destinataireIds: Array.from(selectedIds) }),
       });
 
       const body = await res.json();
@@ -76,15 +117,19 @@ export function RapportActions({
       }
 
       setEmailSent(true);
-      setSuccessMessage(`Email envoyé à ${body.count} destinataire(s) : ${(body.sent_to ?? []).join(", ")}`);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Erreur lors de l'envoi"
+      setShowEmailModal(false);
+      setSuccessMessage(
+        `Email envoyé à ${body.count} destinataire(s) : ${(body.sent_to ?? []).join(", ")}`,
       );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur lors de l'envoi");
     } finally {
       setSendingEmail(false);
     }
   }
+
+  const allSelected =
+    destinataires.length > 0 && selectedIds.size === destinataires.length;
 
   return (
     <div className="space-y-3">
@@ -132,6 +177,7 @@ export function RapportActions({
           {showPreview && (
             <div className="border border-gray-400 rounded-lg overflow-hidden">
               <iframe
+                key={pdfUrl}
                 src={pdfUrl}
                 className="w-full"
                 style={{ height: "80vh" }}
@@ -146,11 +192,10 @@ export function RapportActions({
         size="lg"
         variant={!pdfGenerated || !hasDestinataires ? "secondary" : "primary"}
         className="w-full"
-        loading={sendingEmail}
-        disabled={sendingEmail || !pdfGenerated || !hasDestinataires}
-        onClick={handleSendEmail}
+        disabled={!pdfGenerated || !hasDestinataires}
+        onClick={openEmailModal}
       >
-        {emailSent ? "Renvoyer par email" : "Envoyer par email"}
+        {emailSent ? "Renvoyer par email…" : "Envoyer par email…"}
       </Button>
 
       {!hasDestinataires && (
@@ -158,6 +203,88 @@ export function RapportActions({
           Ajoutez des destinataires dans la fiche chantier pour envoyer le rapport.
         </p>
       )}
+
+      <Modal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        title="Choisir les destinataires"
+      >
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500">
+              {selectedIds.size} / {destinataires.length} sélectionné
+              {selectedIds.size > 1 ? "s" : ""}
+            </p>
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              {allSelected ? "Tout décocher" : "Tout cocher"}
+            </button>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1">
+            {destinataires.map((d) => {
+              const checked = selectedIds.has(d.id);
+              return (
+                <label
+                  key={d.id}
+                  className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                    checked
+                      ? "bg-blue-50 border border-blue-200"
+                      : "hover:bg-gray-50 border border-transparent"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleDestinataire(d.id)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex-1 min-w-0 text-sm">
+                    <p className="font-medium text-gray-900 truncate">
+                      {d.nom}
+                      {d.organisation && (
+                        <span className="font-normal text-gray-500">
+                          {" "}— {d.organisation}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">{d.email}</p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600">{error}</p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleSendEmail}
+              disabled={selectedIds.size === 0 || sendingEmail}
+              className="flex-1 py-3 min-h-[44px] bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined text-lg">send</span>
+              {sendingEmail
+                ? "Envoi..."
+                : `Envoyer (${selectedIds.size})`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEmailModal(false)}
+              disabled={sendingEmail}
+              className="px-4 py-3 min-h-[44px] bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
