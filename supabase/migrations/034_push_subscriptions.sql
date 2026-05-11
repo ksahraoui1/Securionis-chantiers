@@ -1,6 +1,10 @@
 -- Table des subscriptions Web Push (PWA notifications)
 -- Une entrée par device/navigateur d'un utilisateur.
 -- L'endpoint est unique : un utilisateur peut s'abonner depuis plusieurs devices.
+--
+-- Idempotente : tous les CREATE supportent IF NOT EXISTS et les policies sont
+-- DROP IF EXISTS avant CREATE (PostgreSQL ne supporte pas CREATE POLICY IF NOT
+-- EXISTS avant PG 17).
 
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -13,9 +17,14 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
 
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS push_subscriptions_select_own ON push_subscriptions;
+DROP POLICY IF EXISTS push_subscriptions_insert_own ON push_subscriptions;
+DROP POLICY IF EXISTS push_subscriptions_update_own ON push_subscriptions;
+DROP POLICY IF EXISTS push_subscriptions_delete_own ON push_subscriptions;
 
 -- Un utilisateur gère uniquement ses propres subscriptions.
 CREATE POLICY push_subscriptions_select_own ON push_subscriptions
