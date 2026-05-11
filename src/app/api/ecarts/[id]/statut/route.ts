@@ -94,7 +94,7 @@ export async function PATCH(
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "update_ecart_statut",
-      resource_type: "ecart",
+      resource: "ecart",
       resource_id: ecartId,
       details: { old_statut: ecart.statut, new_statut: newStatut },
     });

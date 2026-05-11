@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-05-11
+> Dernière mise à jour : 2026-05-11 (salve 2)
 
 ## 1. Annotation des photos
 
@@ -257,18 +257,36 @@ Centralisation de tous les documents liés à un chantier.
 - Fonction `stripMarkdown()` nettoie tout formatage markdown des réponses IA
 - Le bouton "Copier dans la remarque" de l'assistant juridique résume le texte en 2-3 phrases via l'IA
 
+## 14. Notifications push PWA (2026-05-11)
+
+**Fichiers** : `src/lib/push.ts`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/test/route.ts`, `src/hooks/use-push-notifications.ts`, `src/components/ui/push-notifications-card.tsx`, `public/sw.js`, `supabase/migrations/034_push_subscriptions.sql`
+
+Infrastructure Web Push complète :
+- Opt-in utilisateur depuis `/dashboard/notifications` (toggle « Activer les notifications »)
+- Test d'envoi de notification à soi-même
+- Stockage des subscriptions dans `push_subscriptions` (RLS user-scoped)
+- Cleanup automatique des subscriptions expirées (404/410) au prochain envoi
+- Helper `sendPushToUser(userId, {title, body, url, tag})` côté serveur
+- Service Worker étendu avec handlers `push` et `notificationclick` (focus la fenêtre existante si possible, sinon ouvre une nouvelle)
+
+**Configuration requise** : générer une paire de clés VAPID (`npx web-push generate-vapid-keys`) et renseigner `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` dans `.env`.
+
+**À venir** : triggers métier (notifier inspecteur lors d'un envoi de rapport reçu par les destinataires, lors de la création d'une NC critique, etc.).
+
 ## 13. Sélection des destinataires avant envoi du rapport (2026-05-11)
 
-**Fichiers** : `src/app/(dashboard)/chantiers/[id]/visites/[visiteId]/rapport/rapport-actions.tsx`, `src/app/api/visites/[id]/email/route.ts`
+**Fichiers** : `src/app/(dashboard)/chantiers/[id]/visites/[visiteId]/rapport/rapport-actions.tsx`, `src/app/(dashboard)/chantiers/[id]/visites/[visiteId]/rapport/email-history.tsx`, `src/app/api/visites/[id]/email/route.ts`
 
 Avant d'envoyer le PDF du rapport par email, l'inspecteur ouvre une modal listant tous les destinataires du chantier et **coche/décoche** ceux qui doivent recevoir l'envoi courant. Les choix ne sont **pas mémorisés** entre 2 envois (tous re-cochés par défaut à chaque ouverture).
 
-- Compteur dynamique « N / Total sélectionnés »
+- Compteur dynamique « N sélectionnés »
 - Boutons « Tout cocher » / « Tout décocher »
 - Bouton « Envoyer (N) » désactivé si 0 sélectionné
+- **Email ad-hoc** : champ « Ajouter un email ponctuel » qui ajoute un destinataire hors liste chantier (pill ambre, validation format + dedup)
 - Filtrage **côté serveur** sur les destinataires liés au chantier (anti-injection : impossible d'envoyer à un destinataire arbitraire)
 - Rétro-compatibilité : si l'API est appelée sans corps, le comportement historique (envoi à tous) est conservé
 - Audit log (`send_rapport_email`) conserve la liste exacte des emails envoyés
+- **Historique d'envoi** affiché sur la même page (lecture des `audit_logs` via service client, autorisation déjà vérifiée par accès à la page)
 
 ## 12. Améliorations UX
 

@@ -34,8 +34,12 @@ export function RapportActions({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     new Set(destinataires.map((d) => d.id)),
   );
+  const [adHocInput, setAdHocInput] = useState("");
+  const [adHocEmails, setAdHocEmails] = useState<string[]>([]);
+  const [adHocError, setAdHocError] = useState<string | null>(null);
 
   const hasDestinataires = destinataires.length > 0;
+  const totalSelected = selectedIds.size + adHocEmails.length;
 
   async function handleGeneratePdf() {
     setGeneratingPdf(true);
@@ -74,7 +78,41 @@ export function RapportActions({
     setSuccessMessage(null);
     // Re-cocher tous par défaut à chaque ouverture
     setSelectedIds(new Set(destinataires.map((d) => d.id)));
+    setAdHocEmails([]);
+    setAdHocInput("");
+    setAdHocError(null);
     setShowEmailModal(true);
+  }
+
+  function addAdHocEmail() {
+    const email = adHocInput.trim();
+    if (!email) return;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email) || /[\r\n]/.test(email)) {
+      setAdHocError("Format d'email invalide.");
+      return;
+    }
+
+    const lower = email.toLowerCase();
+    if (adHocEmails.some((e) => e.toLowerCase() === lower)) {
+      setAdHocError("Cet email est déjà ajouté.");
+      return;
+    }
+    if (destinataires.some((d) => d.email.toLowerCase() === lower)) {
+      setAdHocError(
+        "Cet email est déjà dans la liste des destinataires du chantier.",
+      );
+      return;
+    }
+
+    setAdHocEmails((prev) => [...prev, email]);
+    setAdHocInput("");
+    setAdHocError(null);
+  }
+
+  function removeAdHocEmail(email: string) {
+    setAdHocEmails((prev) => prev.filter((e) => e !== email));
   }
 
   function toggleDestinataire(id: string) {
@@ -95,7 +133,7 @@ export function RapportActions({
   }
 
   async function handleSendEmail() {
-    if (selectedIds.size === 0) {
+    if (totalSelected === 0) {
       setError("Sélectionnez au moins un destinataire.");
       return;
     }
@@ -107,7 +145,10 @@ export function RapportActions({
       const res = await fetch(`/api/visites/${visiteId}/email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ destinataireIds: Array.from(selectedIds) }),
+        body: JSON.stringify({
+          destinataireIds: Array.from(selectedIds),
+          extraEmails: adHocEmails,
+        }),
       });
 
       const body = await res.json();
@@ -212,50 +253,115 @@ export function RapportActions({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">
-              {selectedIds.size} / {destinataires.length} sélectionné
-              {selectedIds.size > 1 ? "s" : ""}
+              {totalSelected} sélectionné{totalSelected > 1 ? "s" : ""}
+              {destinataires.length > 0 && (
+                <>
+                  {" "}({selectedIds.size}/{destinataires.length} de la liste
+                  {adHocEmails.length > 0 ? ` + ${adHocEmails.length} ajouté${adHocEmails.length > 1 ? "s" : ""}` : ""})
+                </>
+              )}
             </p>
-            <button
-              type="button"
-              onClick={toggleAll}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              {allSelected ? "Tout décocher" : "Tout cocher"}
-            </button>
+            {destinataires.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                {allSelected ? "Tout décocher" : "Tout cocher"}
+              </button>
+            )}
           </div>
 
-          <div className="max-h-80 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1">
-            {destinataires.map((d) => {
-              const checked = selectedIds.has(d.id);
-              return (
-                <label
-                  key={d.id}
-                  className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                    checked
-                      ? "bg-blue-50 border border-blue-200"
-                      : "hover:bg-gray-50 border border-transparent"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleDestinataire(d.id)}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1 min-w-0 text-sm">
-                    <p className="font-medium text-gray-900 truncate">
-                      {d.nom}
-                      {d.organisation && (
-                        <span className="font-normal text-gray-500">
-                          {" "}— {d.organisation}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">{d.email}</p>
-                  </div>
-                </label>
-              );
-            })}
+          {destinataires.length > 0 && (
+            <div className="max-h-60 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1">
+              {destinataires.map((d) => {
+                const checked = selectedIds.has(d.id);
+                return (
+                  <label
+                    key={d.id}
+                    className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                      checked
+                        ? "bg-blue-50 border border-blue-200"
+                        : "hover:bg-gray-50 border border-transparent"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleDestinataire(d.id)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0 text-sm">
+                      <p className="font-medium text-gray-900 truncate">
+                        {d.nom}
+                        {d.organisation && (
+                          <span className="font-normal text-gray-500">
+                            {" "}— {d.organisation}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">{d.email}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Email ad-hoc */}
+          <div className="border-t pt-3 space-y-2">
+            <label className="text-xs font-medium text-gray-500 block">
+              Ajouter un email ponctuel
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={adHocInput}
+                onChange={(e) => {
+                  setAdHocInput(e.target.value);
+                  setAdHocError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addAdHocEmail();
+                  }
+                }}
+                placeholder="nom@exemple.com"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[44px]"
+              />
+              <button
+                type="button"
+                onClick={addAdHocEmail}
+                disabled={!adHocInput.trim()}
+                className="px-3 py-2 min-h-[44px] bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
+              >
+                + Ajouter
+              </button>
+            </div>
+            {adHocError && (
+              <p className="text-xs text-red-600">{adHocError}</p>
+            )}
+            {adHocEmails.length > 0 && (
+              <ul className="flex flex-wrap gap-1">
+                {adHocEmails.map((email) => (
+                  <li
+                    key={email}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs text-amber-800"
+                  >
+                    {email}
+                    <button
+                      type="button"
+                      onClick={() => removeAdHocEmail(email)}
+                      className="text-amber-600 hover:text-amber-800"
+                      aria-label={`Retirer ${email}`}
+                    >
+                      <span className="material-symbols-outlined text-sm">close</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {error && (
@@ -266,13 +372,13 @@ export function RapportActions({
             <button
               type="button"
               onClick={handleSendEmail}
-              disabled={selectedIds.size === 0 || sendingEmail}
+              disabled={totalSelected === 0 || sendingEmail}
               className="flex-1 py-3 min-h-[44px] bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
             >
               <span className="material-symbols-outlined text-lg">send</span>
               {sendingEmail
                 ? "Envoi..."
-                : `Envoyer (${selectedIds.size})`}
+                : `Envoyer (${totalSelected})`}
             </button>
             <button
               type="button"

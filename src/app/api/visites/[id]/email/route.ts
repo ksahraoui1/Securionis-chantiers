@@ -43,9 +43,12 @@ export async function POST(
       );
     }
 
-    // Optional body: { destinataireIds?: string[] } pour restreindre l'envoi
-    // Si absent, envoie à tous les destinataires du chantier (comportement historique).
+    // Optional body:
+    //   - destinataireIds?: string[]  — restreindre aux destinataires sélectionnés du chantier
+    //   - extraEmails?: string[]      — emails ad-hoc hors liste chantier
+    // Si destinataireIds absent : envoi à tous les destinataires du chantier (rétro-compat).
     let selectedIds: string[] | null = null;
+    let extraEmails: string[] = [];
     try {
       const text = await request.text();
       if (text) {
@@ -54,6 +57,13 @@ export async function POST(
           selectedIds = parsed.destinataireIds.filter(
             (id: unknown): id is string => typeof id === "string",
           );
+        }
+        if (Array.isArray(parsed?.extraEmails)) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          extraEmails = parsed.extraEmails
+            .filter((e: unknown): e is string => typeof e === "string")
+            .map((e: string) => e.trim())
+            .filter((e: string) => e.length > 0 && !/[\r\n]/.test(e) && emailRegex.test(e));
         }
       }
     } catch {
@@ -94,17 +104,18 @@ export async function POST(
       .select("*")
       .eq("chantier_id", visite.chantier_id);
 
-    if (!allDestinataires || allDestinataires.length === 0) {
-      return NextResponse.json(
-        { error: "Aucun destinataire configure pour ce chantier" },
-        { status: 400 }
-      );
-    }
-
     // Filtrer si une sélection a été demandée (anti-injection : on n'envoie qu'à des destinataires liés au chantier)
-    const destinataires = selectedIds
-      ? allDestinataires.filter((d) => selectedIds!.includes(d.id))
-      : allDestinataires;
+    const baseDestinataires = selectedIds
+      ? (allDestinataires ?? []).filter((d) => selectedIds!.includes(d.id))
+      : (allDestinataires ?? []);
+
+    // Construire des destinataires virtuels pour les emails ad-hoc (déduplication sur l'email)
+    const knownEmails = new Set(baseDestinataires.map((d) => d.email.toLowerCase()));
+    const adHocDestinataires = extraEmails
+      .filter((email) => !knownEmails.has(email.toLowerCase()))
+      .map((email) => ({ nom: email, email, organisation: null }));
+
+    const destinataires = [...baseDestinataires, ...adHocDestinataires];
 
     if (destinataires.length === 0) {
       return NextResponse.json(
@@ -165,7 +176,7 @@ export async function POST(
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "send_rapport_email",
-      resource_type: "visite",
+      resource: "visite",
       resource_id: visiteId,
       details: { sent_to: sentTo, count: sentTo.length },
     });

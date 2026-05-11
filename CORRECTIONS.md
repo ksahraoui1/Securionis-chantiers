@@ -1,5 +1,49 @@
 # Corrections appliquées — Securionis-chantiers
 
+## Améliorations infra + features — 2026-05-11 (salve 2)
+
+### CI GitHub Actions
+`.github/workflows/ci.yml` : exécute `npx tsc --noEmit` + `npm run build` à chaque push/PR sur `main`. Variables d'env factices fournies dans le workflow (les getters env sont lazy donc les valeurs réelles ne sont pas requises au build statique). Évite les builds cassés sur le VPS — l'incident `extractRapportStoragePath` aurait été détecté au push.
+
+### Fix ESLint 9 + Next.js 16
+- `next lint` est supprimé dans Next.js 16. Remplacé par `eslint .` dans `package.json`.
+- `eslint.config.mjs` migré de `FlatCompat` (crashait avec "Converting circular structure to JSON") vers les exports flat directs de `eslint-config-next` 16+.
+- `npm run lint` retrouve des problèmes (33 errors, 27 warnings) qui étaient masqués — à attaquer dans une autre passe.
+
+### Bug audit_logs silencieux
+3 inserts utilisaient `resource_type` alors que la colonne s'appelle `resource` (migration 022). Les inserts échouaient silencieusement. Corrigé dans :
+- `src/app/api/visites/[id]/email/route.ts` (send_rapport_email)
+- `src/app/api/visites/[id]/route.ts` (delete_visite)
+- `src/app/api/ecarts/[id]/statut/route.ts` (update_ecart_statut)
+
+Indispensable pour que l'historique d'envoi du rapport (ci-dessous) se remplisse.
+
+### Historique d'envoi du rapport
+Sur la page `chantiers/[id]/visites/[visiteId]/rapport`, nouveau composant `EmailHistory` qui lit les `audit_logs` (action `send_rapport_email`, resource_id = visiteId) via `serviceClient` (l'autorisation est déjà vérifiée par l'accès à la page). Affiche pour chaque envoi : date+heure, expéditeur (join `profiles`), badges des emails destinataires.
+
+### Email ad-hoc dans le sélecteur de destinataires
+Extension de la modal "Choisir les destinataires" : champ "Ajouter un email ponctuel" + bouton "+ Ajouter". Les emails ad-hoc apparaissent en pills ambres (différenciés des destinataires du chantier en bleu). Validation côté client (regex + dedup avec destinataires existants + dedup interne). Côté serveur, l'API accepte `extraEmails: string[]`, valide format + anti header-injection (`\r\n`), construit des destinataires virtuels `{nom: email, email, organisation: null}` concaténés aux destinataires filtrés.
+
+### Sentry (monitoring d'erreurs)
+Installation et configuration de `@sentry/nextjs` 10.x :
+- `sentry.client.config.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts`
+- `instrumentation.ts` (hook Next.js 16) avec `captureRequestError as onRequestError`
+- `next.config.ts` wrappé par `withSentryConfig` + CSP étendue (`*.sentry.io`, `*.ingest.sentry.io`)
+- **Code no-op si `SENTRY_DSN` absent** : la prod continue de marcher sans config. À activer en créant un projet sur sentry.io et en renseignant `NEXT_PUBLIC_SENTRY_DSN` + `SENTRY_DSN` dans `.env`.
+
+### Notifications push PWA (MVP)
+Infra complète Web Push :
+- Migration `034_push_subscriptions.sql` (table avec RLS user-scoped)
+- `src/lib/push.ts` : `sendPushToUser(userId, payload)` avec cleanup automatique des subscriptions expirées (404/410)
+- API `/api/push/subscribe` (POST/DELETE) et `/api/push/test`
+- Hook `usePushNotifications()` (status, subscribe, unsubscribe, sendTest)
+- Composant `<PushNotificationsCard>` exposé sur `/dashboard/notifications`
+- Service Worker étendu (events `push` et `notificationclick`, cache version `v5`)
+- **Configuration requise** : générer les clés VAPID avec `npx web-push generate-vapid-keys`, renseigner `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` dans `.env`.
+- **Triggers métier non implémentés** : pour cette MVP, seul le test depuis la page notifications fonctionne. À étendre selon les besoins produit (notifier inspecteur lors d'un envoi de rapport, lors d'une NC critique, etc.).
+
+---
+
 ## Sélection des destinataires avant envoi du rapport — 2026-05-11
 
 ### Contexte

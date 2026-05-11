@@ -67,7 +67,7 @@ export async function DELETE(
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "delete_visite",
-      resource_type: "visite",
+      resource: "visite",
       resource_id: visiteId,
       details: { chantier_id: visite.chantier_id, statut: visite.statut },
     });

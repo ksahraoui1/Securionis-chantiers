@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { RapportActions } from "./rapport-actions";
+import { EmailHistory } from "./email-history";
 import { extractRapportStoragePath } from "@/lib/utils/security";
 
 export default async function RapportPage({
@@ -55,6 +56,44 @@ export default async function RapportPage({
     .from("destinataires")
     .select("*")
     .eq("chantier_id", chantierId);
+
+  // Load email history (bypass RLS via serviceClient — autorisation déjà vérifiée
+  // par l'accès à cette page via le chantier_id)
+  const serviceClientForHistory = await createServiceClient();
+  const { data: rawLogs } = await serviceClientForHistory
+    .from("audit_logs")
+    .select("id, user_id, created_at, details")
+    .eq("action", "send_rapport_email")
+    .eq("resource_id", visiteId)
+    .order("created_at", { ascending: false });
+
+  const senderIds = Array.from(
+    new Set((rawLogs ?? []).map((l) => l.user_id).filter((id): id is string => !!id)),
+  );
+  const sendersById = new Map<string, string>();
+  if (senderIds.length > 0) {
+    const { data: senders } = await serviceClientForHistory
+      .from("profiles")
+      .select("id, nom")
+      .in("id", senderIds);
+    (senders ?? []).forEach((s) => sendersById.set(s.id, s.nom));
+  }
+
+  const emailHistory = (rawLogs ?? []).map((log) => {
+    const details = log.details as { sent_to?: unknown } | null;
+    const sentTo = Array.isArray(details?.sent_to)
+      ? (details.sent_to as unknown[]).filter(
+          (e): e is string => typeof e === "string",
+        )
+      : [];
+    return {
+      id: log.id,
+      createdAt: log.created_at,
+      senderName:
+        (log.user_id && sendersById.get(log.user_id)) ?? "Utilisateur supprimé",
+      sentTo,
+    };
+  });
 
   // Générer une signed URL pour le rapport PDF (bucket privé)
   let signedRapportUrl: string | null = null;
@@ -198,6 +237,8 @@ export default async function RapportPage({
         emailEnvoye={visite.email_envoye}
         destinataires={destinataires ?? []}
       />
+
+      <EmailHistory entries={emailHistory} />
     </div>
   );
 }

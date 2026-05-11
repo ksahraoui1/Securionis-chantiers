@@ -1,7 +1,7 @@
 // Service Worker — Securionis Chantiers
 // Stratégie : Network-first pour les pages, Cache-first pour les assets statiques.
 
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const STATIC_CACHE = `securionis-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `securionis-pages-${CACHE_VERSION}`;
 
@@ -103,6 +103,52 @@ async function cacheFirst(request, cacheName) {
     return new Response("Offline", { status: 503 });
   }
 }
+
+// ============================================================
+// Web Push notifications
+// ============================================================
+
+self.addEventListener("push", (event) => {
+  let payload = { title: "Securionis", body: "" };
+  if (event.data) {
+    try {
+      payload = { ...payload, ...event.data.json() };
+    } catch {
+      payload.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      tag: payload.tag,
+      data: { url: payload.url ?? "/dashboard" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url ?? "/dashboard";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        // Focus une fenêtre existante si possible
+        for (const client of clients) {
+          if (client.url.includes(targetUrl) && "focus" in client) {
+            return client.focus();
+          }
+        }
+        // Sinon ouvrir une nouvelle fenêtre
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      })
+  );
+});
 
 async function networkFirst(request, cacheName) {
   try {

@@ -1,19 +1,20 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+// ESLint 9 flat config + Next.js 16.
+// eslint-config-next 16+ exporte directement un tableau de configs flat
+// — plus besoin de FlatCompat (qui crashait avec "Converting circular
+// structure to JSON" sur ESLint 9).
+import nextConfig from "eslint-config-next";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+export default [
+  ...nextConfig,
   {
-    ignores: ["node_modules/", ".next/", "dist/", "build/", "coverage/"],
+    ignores: [
+      "node_modules/",
+      ".next/",
+      "dist/",
+      "build/",
+      "coverage/",
+      "public/sw.js",
+      "supabase/",
+    ],
   },
 ];
-
-export default eslintConfig;
