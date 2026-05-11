@@ -105,6 +105,29 @@ export function isAllowedSupabaseUrl(url: string): boolean {
 }
 
 /**
+ * Extrait le chemin de stockage depuis une rapport_url.
+ * Supporte l'ancien format (URL publique) et le nouveau format (chemin seul).
+ * Ancien: https://xxx.supabase.co/storage/v1/object/public/rapports/CHANTIER/FILE
+ * Nouveau: CHANTIER/FILE
+ */
+export function extractRapportStoragePath(rapportUrl: string): string {
+  if (!rapportUrl.startsWith("http")) {
+    return rapportUrl;
+  }
+  const publicMarker = "/object/public/rapports/";
+  const publicIdx = rapportUrl.indexOf(publicMarker);
+  if (publicIdx !== -1) {
+    return rapportUrl.slice(publicIdx + publicMarker.length);
+  }
+  const signedMarker = "/object/sign/rapports/";
+  const signedIdx = rapportUrl.indexOf(signedMarker);
+  if (signedIdx !== -1) {
+    return rapportUrl.slice(signedIdx + signedMarker.length).split("?")[0];
+  }
+  throw new Error("Format URL rapport non reconnu");
+}
+
+/**
  * Valide la complexité d'un mot de passe.
  * Retourne null si valide, un message d'erreur sinon.
  */
