@@ -1,13 +1,16 @@
 name: CI
+
 on:
     push:
       branches: [main]
     pull_request:
       branches: [main]
+ 
 jobs:
     typecheck-and-build:
       name: Type-check & build
       runs-on: ubuntu-latest
+
       steps:
         - name: Checkout
           uses: actions/checkout@v4
@@ -17,10 +20,13 @@ jobs:
           with:
             node-version: 22
             cache: npm
-          - name: Install dependencies
+
+        - name: Install dependencies
           run: npm ci
+
         - name: Type-check
           run: npx tsc --noEmit
+
         - name: Build (with dummy env vars)
           env:
             NEXT_PUBLIC_SUPABASE_URL: https://ci.dummy.supabase.co
