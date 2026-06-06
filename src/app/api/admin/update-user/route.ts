@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const VALID_ROLES = ["invité", "inspecteur", "administrateur"];
 
@@ -21,6 +22,11 @@ export async function PATCH(request: Request) {
 
   if (profile?.role !== "administrateur") {
     return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+  }
+
+  // Rate limit: 30 modifications par heure
+  if (!checkRateLimit(`admin-update-user:${user.id}`, 30, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 
   const { userId, nom, email, role } = await request.json();

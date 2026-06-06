@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function DELETE(request: Request) {
   const supabase = await createClient();
@@ -19,6 +20,11 @@ export async function DELETE(request: Request) {
 
   if (profile?.role !== "administrateur") {
     return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+  }
+
+  // Rate limit: 10 suppressions par heure
+  if (!checkRateLimit(`admin-delete-user:${user.id}`, 10, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 
   const { userId } = await request.json();

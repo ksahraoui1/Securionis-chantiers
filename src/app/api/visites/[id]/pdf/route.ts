@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { canAccessVisite, getUserRole } from "@/lib/utils/security";
 import { getLimits } from "@/lib/stripe/limits";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(
   request: NextRequest,
@@ -19,6 +20,11 @@ export async function POST(
 
     if (!user) {
       return NextResponse.json({ error: "Non autorise" }, { status: 401 });
+    }
+
+    // Rate limit: 5 générations de PDF par heure
+    if (!checkRateLimit(`pdf-gen:${user.id}`, 5, 60 * 60 * 1000)) {
+      return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 
     // Vérification d'autorisation
@@ -57,57 +63,34 @@ export async function POST(
       );
     }
 
-    // Load chantier
-    const { data: chantier } = await supabase
-      .from("chantiers")
-      .select("*")
-      .eq("id", visite.chantier_id)
-      .single();
-
-    // Load inspecteur profile
-    const { data: inspecteur } = await supabase
-      .from("profiles")
-      .select("nom, email")
-      .eq("id", visite.inspecteur_id)
-      .single();
-
-    // Load reponses with point_controle details
-    const { data: reponses } = await supabase
-      .from("reponses")
-      .select("*, points_controle:point_controle_id(intitule, critere, objet)")
-      .eq("visite_id", visiteId);
-
-    // Load ecarts (historical for this chantier)
-    const { data: ecarts } = await supabase
-      .from("ecarts")
-      .select("*")
-      .eq("chantier_id", visite.chantier_id)
-      .order("created_at", { ascending: false });
-
-    // Load destinataires
-    const { data: destinataires } = await supabase
-      .from("destinataires")
-      .select("*")
-      .eq("chantier_id", visite.chantier_id);
-
-    // Load entreprise (logo + nom + coordonnées)
-    const { data: entreprise } = await supabase
-      .from("entreprises")
-      .select("nom, logo_url, adresse, npa, ville, telephone, email")
-      .limit(1)
-      .maybeSingle();
-
-    // Load signature image as data URI
-    const fs = await import("fs/promises");
-    const path = await import("path");
-    let signatureDataUri: string | null = null;
-    try {
-      const sigPath = path.join(process.cwd(), "public", "signature-inspecteur.png");
-      const sigBuffer = await fs.readFile(sigPath);
-      signatureDataUri = `data:image/png;base64,${sigBuffer.toString("base64")}`;
-    } catch {
-      // Signature file not found, skip
-    }
+    // Charger toutes les données en parallèle
+    const [
+      { data: chantier },
+      { data: inspecteur },
+      { data: reponses },
+      { data: ecarts },
+      { data: destinataires },
+      { data: entreprise },
+      signatureDataUri,
+    ] = await Promise.all([
+      supabase.from("chantiers").select("*").eq("id", visite.chantier_id).single(),
+      supabase.from("profiles").select("nom, email").eq("id", visite.inspecteur_id).single(),
+      supabase.from("reponses").select("*, points_controle:point_controle_id(intitule, critere, objet)").eq("visite_id", visiteId),
+      supabase.from("ecarts").select("*").eq("chantier_id", visite.chantier_id).order("created_at", { ascending: false }),
+      supabase.from("destinataires").select("*").eq("chantier_id", visite.chantier_id),
+      supabase.from("entreprises").select("nom, logo_url, adresse, npa, ville, telephone, email").limit(1).maybeSingle(),
+      (async () => {
+        try {
+          const fs = await import("fs/promises");
+          const path = await import("path");
+          const sigPath = path.join(process.cwd(), "public", "signature-inspecteur.png");
+          const sigBuffer = await fs.readFile(sigPath);
+          return `data:image/png;base64,${sigBuffer.toString("base64")}`;
+        } catch {
+          return null;
+        }
+      })(),
+    ]);
 
     // Dynamically import react-pdf to avoid SSR issues
     const { renderToBuffer } = await import("@react-pdf/renderer");
@@ -153,18 +136,18 @@ export async function POST(
       throw new Error(`Upload error: ${uploadError.message}`);
     }
 
-    // Get public URL
-    const {
-      data: { publicUrl },
-    } = serviceClient.storage.from("rapports").getPublicUrl(storagePath);
-
-    // Update visite with rapport URL (service client to bypass RLS)
+    // Stocker le chemin (pas la public URL) — bucket privé
     await serviceClient
       .from("visites")
-      .update({ rapport_url: publicUrl })
+      .update({ rapport_url: storagePath })
       .eq("id", visiteId);
 
-    return NextResponse.json({ url: publicUrl, filename });
+    // Générer une signed URL valide 1 heure pour usage immédiat
+    const { data: signedData } = await serviceClient.storage
+      .from("rapports")
+      .createSignedUrl(storagePath, 3600);
+
+    return NextResponse.json({ url: signedData?.signedUrl ?? null, filename });
   } catch (err) {
     console.error("PDF generation error:", err);
     return NextResponse.json(

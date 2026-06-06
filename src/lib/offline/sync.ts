@@ -11,18 +11,21 @@ import {
   deletePendingPhoto,
 } from "./db";
 
-export async function syncPendingData(): Promise<{
+export type SyncResult = {
   syncedResponses: number;
   syncedPhotos: number;
+  conflicts: number;
   errors: number;
-}> {
+};
+
+export async function syncPendingData(): Promise<SyncResult> {
   const supabase = createClient();
   let syncedResponses = 0;
   let syncedPhotos = 0;
+  let conflicts = 0;
   let errors = 0;
 
   // 1. Sync pending photos first (responses may reference uploaded URLs)
-  // Collect all visite IDs from pending responses to find their photos
   const pendingResponses = await getUnsyncedResponses();
   const visiteIds = [...new Set(pendingResponses.map((r) => r.visite_id))];
 
@@ -38,8 +41,14 @@ export async function syncPendingData(): Promise<{
             upsert: false,
           });
 
-        if (error && !error.message.includes("already exists")) {
-          errors++;
+        if (error) {
+          if (error.message.includes("already exists")) {
+            // Photo déjà présente sur le serveur — supprimer du pending sans erreur
+            await deletePendingPhoto(photo.id);
+            syncedPhotos++;
+          } else {
+            errors++;
+          }
           continue;
         }
 
@@ -51,9 +60,41 @@ export async function syncPendingData(): Promise<{
     }
   }
 
-  // 2. Sync pending responses
+  // 2. Sync pending responses avec détection de conflits
+  // Pré-charger en une seule requête les timestamps serveur des réponses concernées
+  // (évite un SELECT par réponse — problème N+1).
+  const serverUpdatedAt = new Map<string, string>();
+  if (visiteIds.length > 0) {
+    const { data: serverRecords } = await supabase
+      .from("reponses")
+      .select("visite_id, point_controle_id, updated_at")
+      .in("visite_id", visiteIds);
+
+    for (const rec of serverRecords ?? []) {
+      serverUpdatedAt.set(`${rec.visite_id}:${rec.point_controle_id}`, rec.updated_at);
+    }
+  }
+
   for (const response of pendingResponses) {
     try {
+      // Vérifier si une version plus récente existe déjà sur le serveur
+      const serverTimestamp = serverUpdatedAt.get(
+        `${response.visite_id}:${response.point_controle_id}`
+      );
+
+      if (serverTimestamp) {
+        const serverTime = new Date(serverTimestamp).getTime();
+        const localTime = new Date(response.updated_at).getTime();
+
+        if (serverTime > localTime) {
+          // Conflit : le serveur est plus récent — ne pas écraser
+          // Marquer comme synchronisé pour nettoyer le pending (la version serveur prime)
+          await markResponseSynced(response.key);
+          conflicts++;
+          continue;
+        }
+      }
+
       const { error } = await supabase.from("reponses").upsert(
         {
           visite_id: response.visite_id,
@@ -78,5 +119,5 @@ export async function syncPendingData(): Promise<{
     }
   }
 
-  return { syncedResponses, syncedPhotos, errors };
+  return { syncedResponses, syncedPhotos, conflicts, errors };
 }

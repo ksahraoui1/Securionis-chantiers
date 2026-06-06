@@ -228,6 +228,7 @@ export function ChecklistItem({
       {photoUpload.photos.length > 0 && (
         <PhotoAiAnalysis
           photoUrl={photoUpload.photos[photoUpload.photos.length - 1]}
+          visiteId={visiteId}
           pointControle={pointControle.intitule}
           critere={pointControle.critere ?? undefined}
           onApplyRemarque={handleAiRemarque}

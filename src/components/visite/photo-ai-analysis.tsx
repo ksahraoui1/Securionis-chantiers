@@ -19,6 +19,7 @@ interface AnalysisResult {
 
 interface PhotoAiAnalysisProps {
   photoUrl: string;
+  visiteId: string;
   pointControle?: string;
   critere?: string;
   onApplyRemarque: (remarque: string) => void;
@@ -39,6 +40,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 export function PhotoAiAnalysis({
   photoUrl,
+  visiteId,
   pointControle,
   critere,
   onApplyRemarque,
@@ -64,7 +66,7 @@ export function PhotoAiAnalysis({
       const res = await fetch("/api/photos/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: photoUrl, pointControle, critere }),
+        body: JSON.stringify({ imageUrl: photoUrl, visiteId, pointControle, critere }),
       });
 
       const data = await res.json();

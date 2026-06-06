@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canAccessVisite } from "@/lib/utils/security";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET /api/visites/compare?visiteA=xxx&visiteB=xxx
@@ -18,6 +19,11 @@ export async function GET(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  // Rate limit: 20 comparaisons par heure
+  if (!checkRateLimit(`visite-compare:${user.id}`, 20, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 
   const url = new URL(request.url);
