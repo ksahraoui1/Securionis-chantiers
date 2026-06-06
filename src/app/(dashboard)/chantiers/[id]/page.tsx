@@ -35,33 +35,18 @@ export default async function ChantierDetailPage({
     notFound();
   }
 
-  const { data: destinataires } = await supabase
-    .from("destinataires")
-    .select("*")
-    .eq("chantier_id", chantierId)
-    .order("nom");
-
-  // Load visites with inspecteur name
-  const { data: visites } = await supabase
-    .from("visites")
-    .select("*, profiles:inspecteur_id(nom)")
-    .eq("chantier_id", chantierId)
-    .order("date_visite", { ascending: false });
-
-  // Load ecarts
-  const { data: ecarts } = await supabase
-    .from("ecarts")
-    .select("*")
-    .eq("chantier_id", chantierId)
-    .order("created_at", { ascending: false });
-
-  // Load documents
-  const { data: documents } = await supabase
-    .from("documents")
-    .select("*")
-    .eq("chantier_id", chantierId)
-    .order("categorie")
-    .order("nom");
+  // Charger les données dépendantes du chantier en parallèle
+  const [
+    { data: destinataires },
+    { data: visites },
+    { data: ecarts },
+    { data: documents },
+  ] = await Promise.all([
+    supabase.from("destinataires").select("*").eq("chantier_id", chantierId).order("nom"),
+    supabase.from("visites").select("*, profiles:inspecteur_id(nom)").eq("chantier_id", chantierId).order("date_visite", { ascending: false }),
+    supabase.from("ecarts").select("*").eq("chantier_id", chantierId).order("created_at", { ascending: false }),
+    supabase.from("documents").select("*").eq("chantier_id", chantierId).order("categorie").order("nom"),
+  ]);
 
   // Count NC per visite + detect corrected visits for timeline
   const visiteIds = visites?.map((v) => v.id) ?? [];

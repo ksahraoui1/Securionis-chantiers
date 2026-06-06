@@ -45,11 +45,15 @@ export async function POST(request: Request) {
     imageUrl: string;
     pointControle?: string;
     critere?: string;
-    visiteId?: string;
+    visiteId: string;
   };
 
   if (!imageUrl) {
     return NextResponse.json({ error: "imageUrl requis" }, { status: 400 });
+  }
+
+  if (!visiteId) {
+    return NextResponse.json({ error: "visiteId requis" }, { status: 400 });
   }
 
   // SSRF protection: whitelist stricte du hostname Supabase
@@ -57,12 +61,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "URL non autorisée" }, { status: 400 });
   }
 
-  // Vérifier l'accès à la visite si fourni
-  if (visiteId) {
-    const { canAccessVisite } = await import("@/lib/utils/security");
-    if (!(await canAccessVisite(supabase, user.id, visiteId))) {
-      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
-    }
+  // Vérifier l'accès à la visite (obligatoire)
+  const { canAccessVisite } = await import("@/lib/utils/security");
+  if (!(await canAccessVisite(supabase, user.id, visiteId))) {
+    return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
   }
 
   // Fetch the image and convert to base64

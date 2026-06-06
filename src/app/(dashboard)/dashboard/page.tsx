@@ -24,34 +24,33 @@ export default async function DashboardPage() {
     .order("updated_at", { ascending: false });
 
   const chantierIds = chantiers?.map((c) => c.id) ?? [];
+  const chantierFilter = chantierIds.length > 0 ? chantierIds : [""];
 
-  // --- Toutes les visites ---
-  const { data: allVisites } = await supabase
-    .from("visites")
-    .select("id, chantier_id, date_visite, statut")
-    .in("chantier_id", chantierIds.length > 0 ? chantierIds : [""]);
+  // --- Visites + NC en parallèle (dépendent seulement de chantierIds) ---
+  const [{ data: allVisites }, { data: allEcarts }] = await Promise.all([
+    supabase
+      .from("visites")
+      .select("id, chantier_id, date_visite, statut")
+      .in("chantier_id", chantierFilter),
+    supabase
+      .from("ecarts")
+      .select("id, chantier_id, statut, delai, created_at, reponse_id")
+      .in("chantier_id", chantierFilter),
+  ]);
 
-  // --- Toutes les NC ---
-  const { data: allEcarts } = await supabase
-    .from("ecarts")
-    .select("id, chantier_id, statut, delai, created_at, reponse_id")
-    .in("chantier_id", chantierIds.length > 0 ? chantierIds : [""]);
-
-  // --- Toutes les réponses (pour taux de conformité) ---
   const visiteIds = allVisites?.map((v) => v.id) ?? [];
-  const { data: allReponses } = await supabase
-    .from("reponses")
-    .select("id, valeur, visite_id")
-    .in("visite_id", visiteIds.length > 0 ? visiteIds : [""]);
-
-  // --- NC par thème : réponses NC → point_controle → theme ---
   const ecartReponseIds = allEcarts?.map((e) => e.reponse_id).filter(Boolean) ?? [];
-  const { data: ncReponses } = ecartReponseIds.length > 0
-    ? await supabase
-        .from("reponses")
-        .select("id, point_controle_id")
-        .in("id", ecartReponseIds)
-    : { data: [] };
+
+  // --- Réponses + réponses NC en parallèle ---
+  const [{ data: allReponses }, { data: ncReponses }] = await Promise.all([
+    supabase
+      .from("reponses")
+      .select("id, valeur, visite_id")
+      .in("visite_id", visiteIds.length > 0 ? visiteIds : [""]),
+    ecartReponseIds.length > 0
+      ? supabase.from("reponses").select("id, point_controle_id").in("id", ecartReponseIds)
+      : Promise.resolve({ data: [] as { id: string; point_controle_id: string }[] }),
+  ]);
 
   const ncPointIds = [...new Set(ncReponses?.map((r) => r.point_controle_id) ?? [])];
   const { data: ncPoints } = ncPointIds.length > 0
