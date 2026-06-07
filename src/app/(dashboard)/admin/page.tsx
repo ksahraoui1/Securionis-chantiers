@@ -1,6 +1,7 @@
 import { PhotosExportButton } from "@/components/admin/photos-export-button";
+import { RapportsExportButton } from "@/components/admin/rapports-export-button";
 import Link from "next/link";
-import { Users, FileText, Building2, CheckSquare, Images } from "lucide-react";
+import { Users, FileText, Building2, CheckSquare, Images, File } from "lucide-react";
 
 export default function AdminPage() {
   return (
@@ -99,6 +100,27 @@ export default function AdminPage() {
             <div className="mt-4">
               <PhotosExportButton />
             </div>
+
+      {/* Export des rapports */}
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
+        <div className="flex items-start gap-4">
+          <div className="rounded-lg bg-red-100 p-3">
+            <File className="h-6 w-6 text-red-600" />
+          </div>
+          <div className="flex-1">
+            <h2 className="font-semibold text-gray-900">Export des rapports</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Téléchargez tous les rapports de tous les chantiers et visites au
+              format ZIP. Les fichiers sont organisés par chantier et date de
+              visite.
+            </p>
+            <div className="mt-4">
+              <RapportsExportButton />
+            </div>
+          </div>
+        </div>
+      </div>
+
           </div>
         </div>
       </div>
