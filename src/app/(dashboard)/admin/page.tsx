@@ -84,43 +84,45 @@ export default function AdminPage() {
         </Link>
       </div>
 
-      {/* Export des photos */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-        <div className="flex items-start gap-4">
-          <div className="rounded-lg bg-indigo-100 p-3">
-            <Images className="h-6 w-6 text-indigo-600" />
-          </div>
-          <div className="flex-1">
-            <h2 className="font-semibold text-gray-900">Export des photos</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Téléchargez toutes les photos de tous les chantiers et visites au
-              format ZIP. Les fichiers sont organisés par chantier, visite et
-              point de contrôle.
-            </p>
-            <div className="mt-4">
-              <PhotosExportButton />
+      {/* Grille des exports */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Export des photos */}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
+          <div className="flex items-start gap-4">
+            <div className="rounded-lg bg-indigo-100 p-3">
+              <Images className="h-6 w-6 text-indigo-600" />
             </div>
-
-      {/* Export des rapports */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-        <div className="flex items-start gap-4">
-          <div className="rounded-lg bg-red-100 p-3">
-            <File className="h-6 w-6 text-red-600" />
-          </div>
-          <div className="flex-1">
-            <h2 className="font-semibold text-gray-900">Export des rapports</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Téléchargez tous les rapports de tous les chantiers et visites au
-              format ZIP. Les fichiers sont organisés par chantier et date de
-              visite.
-            </p>
-            <div className="mt-4">
-              <RapportsExportButton />
+            <div className="flex-1">
+              <h2 className="font-semibold text-gray-900">Export des photos</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Téléchargez toutes les photos de tous les chantiers et visites au
+                format ZIP. Les fichiers sont organisés par chantier, visite et
+                point de contrôle.
+              </p>
+              <div className="mt-4">
+                <PhotosExportButton />
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
+        {/* Export des rapports */}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
+          <div className="flex items-start gap-4">
+            <div className="rounded-lg bg-red-100 p-3">
+              <File className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-gray-900">Export des rapports</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Téléchargez tous les rapports de tous les chantiers et visites au
+                format ZIP. Les fichiers sont organisés par chantier et date de
+                visite.
+              </p>
+              <div className="mt-4">
+                <RapportsExportButton />
+              </div>
+            </div>
           </div>
         </div>
       </div>
