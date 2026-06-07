@@ -263,6 +263,34 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 
 ---
 
+## Nouvelles Features
+
+### Export des photos en ZIP (2026-06-07)
+
+**API Route** : `GET /api/photos/export`
+- Télécharge toutes les photos de tous les chantiers en un seul fichier ZIP
+- **Réservé aux administrateurs uniquement** (vérification RLS)
+- Authentification obligatoire
+- Timeout : 5 minutes
+- Organisation des fichiers : `chantier-id/date-visite/point-controle-id/photo.jpg`
+
+**Interface Admin** : `/admin`
+- Nouvelle page d'accueil admin avec grille des options
+- Bouton "Télécharger toutes les photos (ZIP)" dans section dédiée
+- Composant : `src/components/admin/photos-export-button.tsx`
+
+**Dépendances ajoutées** :
+- `jszip` (^3.10.1) — génération du ZIP en mémoire (compatible serverless)
+- `lucide-react` (^1.17.0) — icônes UI
+
+**Requête Supabase** :
+```ts
+.select(`id, photos, visite_id, point_controle_id, visites (...), points_controle (...)`)
+.not("photos", "is", null)
+```
+
+---
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`** dans `audit_logs` : la colonne s'appelle `resource` (depuis migration 022). `resource_type` provoque des inserts silencieusement ignorés.
