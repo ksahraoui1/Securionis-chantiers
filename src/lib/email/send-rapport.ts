@@ -102,6 +102,7 @@ function buildEmailHtml(
   }
 
   return `
+    <p><strong>Ne veuille pas répondre à cette email ! Utilisez : ks.aigle@gmail.com</strong></p>
     <p>Bonjour,</p>
     <p>Veuillez trouver ci-joint le rapport de visite du ${dateFormatted}.</p>
     <p>Excellente journée<br/>Portez-vous bien<br/>Bien à vous</p>

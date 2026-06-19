@@ -104,6 +104,7 @@ export async function POST(request: Request) {
       to: [to.trim()],
       subject: subject?.trim() || `Document : ${doc.titre}`,
       html: `
+        <p><strong>Ne veuille pas répondre à cette email ! Utilisez : ks.aigle@gmail.com</strong></p>
         <p>Bonjour,</p>
         <p>Veuillez trouver ci-joint le document : <strong>${escapeHtml(doc.titre)}</strong></p>
         ${doc.description ? `<p>${escapeHtml(doc.description)}</p>` : ""}

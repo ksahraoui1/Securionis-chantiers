@@ -289,6 +289,17 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 .not("photos", "is", null)
 ```
 
+### Avertissement "Ne pas répondre à cet email" (2026-06-19)
+
+**Modification** : Tous les emails envoyés (rapports de visite + documents) contiennent maintenant un avertissement en début de message :
+> **Ne veuille pas répondre à cette email ! Utilisez : ks.aigle@gmail.com**
+
+**Fichiers modifiés** :
+- `src/lib/email/send-rapport.ts` — Rapports de visite
+- `src/app/api/documents/email/route.ts` — Envoi de documents de la base documentaire
+
+**Raison** : Clarifier aux destinataires que la boîte mail d'envoi n'est pas supervisée et les orienter vers l'adresse de contact directe.
+
 ---
 
 ## Pièges connus et gotchas
