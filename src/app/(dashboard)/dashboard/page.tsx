@@ -243,56 +243,104 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Visites ce mois */}
-      <Card title={`Visites ce mois (${visitesCeMois})`}>
-        <div id="visites-mois">
-          {visitesCeMoisList.length === 0 ? (
+      {/* Visites ce mois + NC en attente (2 colonnes) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Visites ce mois */}
+        <Card title={`Visites ce mois (${visitesCeMois})`}>
+          <div id="visites-mois">
+            {visitesCeMoisList.length === 0 ? (
+              <p className="text-gray-500 text-sm py-4 text-center">
+                Aucune visite ce mois
+              </p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {(() => {
+                  // Group visits by chantier
+                  const visitesParChantier: Record<string, typeof visitesCeMoisList> = {};
+                  for (const v of visitesCeMoisList) {
+                    if (!visitesParChantier[v.chantier_id]) {
+                      visitesParChantier[v.chantier_id] = [];
+                    }
+                    visitesParChantier[v.chantier_id].push(v);
+                  }
+
+                  return Object.entries(visitesParChantier).map(([chantier_id, visites]) => {
+                    const chantier = chantierMap.get(chantier_id);
+                    const visitesSortees = visites.sort((a, b) => b.date_visite.localeCompare(a.date_visite));
+
+                    return (
+                      <div key={chantier_id} className="py-3 px-2 hover:bg-gray-50 rounded-lg">
+                        <p className="font-medium text-gray-900 mb-2">
+                          {chantier?.nom ?? chantier?.adresse ?? "Chantier"}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {visitesSortees.map((v) => {
+                            const href = v.statut === "terminee"
+                              ? `/chantiers/${chantier_id}/visites/${v.id}/rapport`
+                              : `/chantiers/${chantier_id}/visites/${v.id}`;
+                            const dateStr = new Date(v.date_visite).toLocaleDateString("fr-CH", {
+                              day: "numeric",
+                              month: "short",
+                            });
+
+                            return (
+                              <Link
+                                key={v.id}
+                                href={href}
+                                className={`text-xs px-2 py-1 rounded transition-colors ${
+                                  v.statut === "terminee"
+                                    ? "bg-green-100 text-green-700 hover:bg-green-200"
+                                    : v.statut === "en_cours"
+                                      ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }`}
+                              >
+                                {dateStr}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* NC en attente */}
+        <Card title="NC en attente">
+          {chantiersUrgents.length === 0 && chantiersAvecNc.length === 0 ? (
             <p className="text-gray-500 text-sm py-4 text-center">
-              Aucune visite ce mois
+              Aucune non-conformité en attente
             </p>
           ) : (
             <div className="divide-y divide-gray-100">
-              {visitesCeMoisList
-                .sort((a, b) => b.date_visite.localeCompare(a.date_visite))
-                .map((v) => {
-                  const chantier = chantierMap.get(v.chantier_id);
-                  const href = v.statut === "terminee"
-                    ? `/chantiers/${v.chantier_id}/visites/${v.id}/rapport`
-                    : `/chantiers/${v.chantier_id}/visites/${v.id}`;
-                  return (
-                    <Link
-                      key={v.id}
-                      href={href}
-                      className="flex items-center justify-between py-3 px-2 hover:bg-gray-50 rounded-lg min-h-touch"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-900 truncate">
-                          {chantier?.nom ?? chantier?.adresse ?? "Chantier"}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {new Date(v.date_visite).toLocaleDateString("fr-CH", {
-                            weekday: "short",
-                            day: "numeric",
-                            month: "long",
-                          })}
-                        </p>
-                      </div>
-                      <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${
-                        v.statut === "terminee"
-                          ? "bg-green-100 text-green-800"
-                          : v.statut === "en_cours"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-gray-100 text-gray-600"
-                      }`}>
-                        {v.statut === "terminee" ? "Terminée" : v.statut === "en_cours" ? "En cours" : "Brouillon"}
-                      </span>
-                    </Link>
-                  );
-                })}
+              {chantiersUrgents.map((c) => (
+                <ChantierNcRow
+                  key={c.id}
+                  id={c.id}
+                  nom={c.nom}
+                  adresse={c.adresse}
+                  ncOuvertes={c.ncOuvertes}
+                  ncUrgentes={c.ncUrgentes}
+                />
+              ))}
+              {chantiersAvecNc.map((c) => (
+                <ChantierNcRow
+                  key={c.id}
+                  id={c.id}
+                  nom={c.nom}
+                  adresse={c.adresse}
+                  ncOuvertes={c.ncOuvertes}
+                  ncUrgentes={0}
+                />
+              ))}
             </div>
           )}
-        </div>
-      </Card>
+        </Card>
+      </div>
 
       {/* NC par thème */}
       <Card title="Non-conformités par thème">
@@ -302,38 +350,6 @@ export default async function DashboardPage() {
           <p className="text-gray-500 text-sm py-8 text-center">
             Aucune non-conformité enregistrée
           </p>
-        )}
-      </Card>
-
-      {/* Chantiers urgents */}
-      <Card title="Chantiers avec NC en attente">
-        {chantiersUrgents.length === 0 && chantiersAvecNc.length === 0 ? (
-          <p className="text-gray-500 text-sm py-4 text-center">
-            Aucune non-conformité en attente
-          </p>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {chantiersUrgents.map((c) => (
-              <ChantierNcRow
-                key={c.id}
-                id={c.id}
-                nom={c.nom}
-                adresse={c.adresse}
-                ncOuvertes={c.ncOuvertes}
-                ncUrgentes={c.ncUrgentes}
-              />
-            ))}
-            {chantiersAvecNc.map((c) => (
-              <ChantierNcRow
-                key={c.id}
-                id={c.id}
-                nom={c.nom}
-                adresse={c.adresse}
-                ncOuvertes={c.ncOuvertes}
-                ncUrgentes={0}
-              />
-            ))}
-          </div>
         )}
       </Card>
     </div>
