@@ -300,6 +300,25 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 
 **Raison** : Clarifier aux destinataires que la boîte mail d'envoi n'est pas supervisée et les orienter vers l'adresse de contact directe.
 
+### Refactoring Dashboard et mise à jour branding (2026-06-21)
+
+**Dashboard simplifié** :
+- Tableau "Visites ce mois" : grouper par chantier, afficher dates en badges compacts (au lieu d'une ligne par visite)
+- Mise en page 2 colonnes : "Visites ce mois" + "NC en attente" côte à côte (responsive mobile)
+- Graphique NC reste en pleine largeur en-dessous
+
+**Branding FWN** :
+- Copyright mis à jour en `©2026 - FWN - Securionis` partout :
+  - `src/app/(auth)/layout.tsx` — Page login
+  - `src/app/(dashboard)/layout.tsx` — Footer dashboard
+  - `src/app/api/docs/manual/route.ts` — Manuel utilisateur (2 occurrences)
+
+**Fichiers modifiés** :
+- `src/app/(dashboard)/dashboard/page.tsx` — Refactoring tableau visites + grille 2 colonnes
+- `src/app/(auth)/layout.tsx` — Copyright FWN
+- `src/app/(dashboard)/layout.tsx` — Copyright FWN
+- `src/app/api/docs/manual/route.ts` — Copyright FWN (page couverture + footer)
+
 ---
 
 ## Pièges connus et gotchas
