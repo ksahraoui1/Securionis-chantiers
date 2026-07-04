@@ -21,7 +21,10 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              // 'unsafe-inline' reste requis par les scripts RSC inline de Next.js
+              // (Turbopack ne propage pas le nonce). 'unsafe-eval' RETIRÉ : inutile
+              // en production et vecteur d'escalade XSS (eval/Function).
+              "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' https: data: blob:",
               "font-src 'self' https://fonts.gstatic.com",
@@ -32,6 +35,7 @@ const nextConfig: NextConfig = {
               "base-uri 'self'",
               "form-action 'self'",
               "worker-src 'self' blob:",
+              "object-src 'none'",
             ].join("; "),
           },
           {
