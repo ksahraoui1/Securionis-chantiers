@@ -30,12 +30,31 @@ export function ImportExcelPoints({ onImported }: ImportExcelPointsProps) {
     setResult(null);
 
     try {
-      // Dynamic import xlsx
-      const XLSX = await import("xlsx");
+      // Dynamic import exceljs (lecture)
+      const ExcelJS = (await import("exceljs")).default;
       const buffer = await selectedFile.arrayBuffer();
-      const wb = XLSX.read(buffer);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1 });
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
+      const ws = wb.worksheets[0];
+
+      // Convertir en tableau de tableaux (équivalent header:1), aligné par colonne
+      const cellToString = (v: unknown): string => {
+        if (v == null) return "";
+        if (typeof v === "object") {
+          const o = v as { text?: string; result?: unknown; richText?: { text: string }[] };
+          if (Array.isArray(o.richText)) return o.richText.map((t) => t.text).join("");
+          if (typeof o.text === "string") return o.text;
+          if (o.result != null) return String(o.result);
+          return "";
+        }
+        return String(v);
+      };
+
+      const raw: string[][] = [];
+      ws?.eachRow({ includeEmpty: false }, (row) => {
+        const values = row.values as unknown[]; // index 0 inutilisé (1-indexé par colonne)
+        raw.push(values.slice(1).map(cellToString));
+      });
 
       if (raw.length < 2) {
         setError("Le fichier doit contenir au moins un en-tête et une ligne de données.");

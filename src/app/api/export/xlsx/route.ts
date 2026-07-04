@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { canAccessChantier, getUserRole } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Paramètre scope invalide (chantier ou all)" }, { status: 400 });
   }
 
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
 
   if (scope === "chantier" && chantierId) {
     await buildChantierExport(supabase, wb, chantierId);
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
     await buildGlobalExport(supabase, wb);
   }
 
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  const buf = await wb.xlsx.writeBuffer();
 
   const filename =
     scope === "chantier" && chantierId
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function buildGlobalExport(supabase: any, wb: XLSX.WorkBook) {
+async function buildGlobalExport(supabase: any, wb: ExcelJS.Workbook) {
   // --- Chantiers ---
   const { data: chantiers } = await supabase
     .from("chantiers")
@@ -93,9 +93,7 @@ async function buildGlobalExport(supabase: any, wb: XLSX.WorkBook) {
     Contact: c.contact_nom ?? "",
     "Dernière modification": formatDate(c.updated_at as string),
   }));
-  const wsChantiers = XLSX.utils.json_to_sheet(chantierRows);
-  autoWidth(wsChantiers, chantierRows);
-  XLSX.utils.book_append_sheet(wb, wsChantiers, "Chantiers");
+  appendSheet(wb, "Chantiers", chantierRows);
 
   const chantierIds = (chantiers ?? []).map((c: Record<string, unknown>) => c.id as string);
 
@@ -117,9 +115,7 @@ async function buildGlobalExport(supabase: any, wb: XLSX.WorkBook) {
       "Rapport envoyé": v.email_envoye ? "Oui" : "Non",
     };
   });
-  const wsVisites = XLSX.utils.json_to_sheet(visiteRows);
-  autoWidth(wsVisites, visiteRows);
-  XLSX.utils.book_append_sheet(wb, wsVisites, "Visites");
+  appendSheet(wb, "Visites", visiteRows);
 
   // --- Écarts ---
   const { data: ecarts } = await supabase
@@ -138,9 +134,7 @@ async function buildGlobalExport(supabase: any, wb: XLSX.WorkBook) {
       "Date création": formatDate(e.created_at as string),
     };
   });
-  const wsEcarts = XLSX.utils.json_to_sheet(ecartRows);
-  autoWidth(wsEcarts, ecartRows);
-  XLSX.utils.book_append_sheet(wb, wsEcarts, "Écarts NC");
+  appendSheet(wb, "Écarts NC", ecartRows);
 
   // --- Statistiques ---
   const { data: allReponses } = await supabase
@@ -182,13 +176,11 @@ async function buildGlobalExport(supabase: any, wb: XLSX.WorkBook) {
       }),
     },
   ];
-  const wsStats = XLSX.utils.json_to_sheet(statsRows);
-  autoWidth(wsStats, statsRows);
-  XLSX.utils.book_append_sheet(wb, wsStats, "Statistiques");
+  appendSheet(wb, "Statistiques", statsRows);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function buildChantierExport(supabase: any, wb: XLSX.WorkBook, chantierId: string) {
+async function buildChantierExport(supabase: any, wb: ExcelJS.Workbook, chantierId: string) {
   const { data: chantier } = await supabase
     .from("chantiers")
     .select("*")
@@ -208,9 +200,7 @@ async function buildChantierExport(supabase: any, wb: XLSX.WorkBook, chantierId:
     { Champ: "N° ECA", Valeur: chantier.numero_eca ?? "" },
     { Champ: "Contact", Valeur: chantier.contact_nom ?? "" },
   ];
-  const wsInfo = XLSX.utils.json_to_sheet(infoRows);
-  autoWidth(wsInfo, infoRows);
-  XLSX.utils.book_append_sheet(wb, wsInfo, "Chantier");
+  appendSheet(wb, "Chantier", infoRows);
 
   // --- Visites ---
   const { data: visites } = await supabase
@@ -246,9 +236,7 @@ async function buildChantierExport(supabase: any, wb: XLSX.WorkBook, chantierId:
       "Rapport envoyé": v.email_envoye ? "Oui" : "Non",
     };
   });
-  const wsVisites = XLSX.utils.json_to_sheet(visiteRows);
-  autoWidth(wsVisites, visiteRows);
-  XLSX.utils.book_append_sheet(wb, wsVisites, "Visites");
+  appendSheet(wb, "Visites", visiteRows);
 
   // --- Écarts ---
   const { data: ecarts } = await supabase
@@ -264,9 +252,7 @@ async function buildChantierExport(supabase: any, wb: XLSX.WorkBook, chantierId:
     "Date création": formatDate(e.created_at as string),
     "Dernière mise à jour": formatDate(e.updated_at as string),
   }));
-  const wsEcarts = XLSX.utils.json_to_sheet(ecartRows);
-  autoWidth(wsEcarts, ecartRows);
-  XLSX.utils.book_append_sheet(wb, wsEcarts, "Écarts NC");
+  appendSheet(wb, "Écarts NC", ecartRows);
 
   // --- Réponses détaillées ---
   if (visiteIds.length > 0) {
@@ -286,9 +272,7 @@ async function buildChantierExport(supabase: any, wb: XLSX.WorkBook, chantierId:
     });
 
     if (reponseRows.length > 0) {
-      const wsReponses = XLSX.utils.json_to_sheet(reponseRows);
-      autoWidth(wsReponses, reponseRows);
-      XLSX.utils.book_append_sheet(wb, wsReponses, "Réponses détaillées");
+      appendSheet(wb, "Réponses détaillées", reponseRows);
     }
   }
 }
@@ -335,14 +319,25 @@ function labelValeur(v: string): string {
   return map[v] ?? v;
 }
 
-function autoWidth(ws: XLSX.WorkSheet, data: Record<string, unknown>[]) {
+/**
+ * Ajoute une feuille au classeur à partir d'un tableau d'objets.
+ * Reproduit json_to_sheet + auto-width + en-tête gras (remplace SheetJS).
+ */
+function appendSheet(
+  wb: ExcelJS.Workbook,
+  name: string,
+  data: Record<string, unknown>[]
+) {
+  const ws = wb.addWorksheet(name);
   if (data.length === 0) return;
   const keys = Object.keys(data[0]);
-  ws["!cols"] = keys.map((k) => {
+  ws.columns = keys.map((k) => {
     const maxLen = Math.max(
       k.length,
       ...data.map((row) => String(row[k] ?? "").length)
     );
-    return { wch: Math.min(maxLen + 2, 50) };
+    return { header: k, key: k, width: Math.min(maxLen + 2, 50) };
   });
+  ws.addRows(data);
+  ws.getRow(1).font = { bold: true };
 }
