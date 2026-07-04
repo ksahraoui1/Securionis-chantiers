@@ -336,6 +336,10 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 
 **Aucune migration SQL** : les colonnes `updated_at` existaient déjà sur `ecarts` et `visites`, seul le rafraîchissement explicite manquait.
 
+### Date de visite dans le bandeau NC corrigées — page rapport (2026-07-04)
+
+Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la page rapport (`src/app/(dashboard)/chantiers/[id]/visites/[visiteId]/rapport/page.tsx`) affiche désormais la date de la visite : « Toutes les non-conformités **de la visite du JJ.MM.AAAA** ont été corrigées ». Le bandeau équivalent de la page chantier affichait déjà la date. Le message de `ecart-list.tsx` porte sur l'ensemble des NC d'un chantier (multi-visites) et reste sans date volontairement.
+
 ### Audit de sécurité v3 + durcissement infra (2026-07-04)
 
 **Vulnérabilités de dépendances corrigées** : `ws` 8.19.0 → 8.21.0 (CVE-2026-48779, DoS), `next` 16.2.0 → 16.2.10 (CVE-2026-45109, contournement middleware sous Turbopack).
