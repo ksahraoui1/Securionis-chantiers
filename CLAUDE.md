@@ -336,6 +336,27 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 
 **Aucune migration SQL** : les colonnes `updated_at` existaient déjà sur `ecarts` et `visites`, seul le rafraîchissement explicite manquait.
 
+### Audit de sécurité v3 + durcissement infra (2026-07-04)
+
+**Vulnérabilités de dépendances corrigées** : `ws` 8.19.0 → 8.21.0 (CVE-2026-48779, DoS), `next` 16.2.0 → 16.2.10 (CVE-2026-45109, contournement middleware sous Turbopack).
+
+**Durcissement applicatif** :
+- `next.config.ts` : `poweredByHeader: false` (ne plus divulguer la stack Next.js)
+- Rate-limit ajouté sur `/api/docs/manual`, `DELETE /api/visites/[id]`, `/api/ecarts/[id]/statut`
+- `validateFileSignature()` dans `file-validation.ts` : vérification des magic bytes (PDF/JPEG/PNG/Office), branchée dans `uploadFileToStorage`. NB : côté client donc défense en profondeur — le contrôle autoritaire est la config bucket.
+- Buckets Storage `rapports` (PDF, 50 Mo) et `visite-photos` (JPEG/PNG, 10 Mo) : `allowed_mime_types` + `file_size_limit` désormais définis.
+
+**Durcissement infra VPS** :
+- **Firewall UFW actif** : deny incoming par défaut, `22/tcp` autorisé (SSH), port `80` restreint aux plages IP Cloudflare uniquement. L'accès direct à l'IP du VPS (contournement Cloudflare) est bloqué.
+- **Docker bind local** : `docker-compose.yml` → `127.0.0.1:3000:3000` (le port 3000 n'est plus exposé publiquement, Nginx proxifie en local).
+- **SSH durci** : `PasswordAuthentication no`, `PermitRootLogin prohibit-password` (clé uniquement), drop-in `/etc/ssh/sshd_config.d/99-hardening.conf`. `fail2ban` installé (jail sshd, ban 1h / 5 échecs).
+
+**Reste à traiter (non appliqué)** :
+- Cloudflare SSL est en mode **Flexible** (CF→origine en HTTP clair). Passer en **Full (Strict)** avec certificat d'origine Cloudflare (nécessite config dashboard Cloudflare + Nginx 443).
+- Buckets Storage encore `public: true` — passer `rapports` en privé nécessite de vérifier que tout l'affichage passe par des URLs signées.
+- `xlsx` : vulnérabilité haute sans correctif amont (prototype pollution / ReDoS) — envisager migration vers `exceljs`.
+- CSP `script-src` contient `'unsafe-inline' 'unsafe-eval'` — durcir via nonces si possible.
+
 ---
 
 ## Pièges connus et gotchas
