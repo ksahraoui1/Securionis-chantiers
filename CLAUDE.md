@@ -353,9 +353,13 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 - **Cloudflare Full (Strict)** : certificat Let's Encrypt sur l'origine (`/etc/letsencrypt/live/chantiers.securionis.com/`), Nginx en 443, port 443 ouvert dans UFW pour les IP Cloudflare. Renouvellement auto via `certbot.timer` (dry-run OK à travers firewall+CF). Le trafic Cloudflare→origine est désormais chiffré et validé (vérifié : CF se connecte en 443, réponse 200 sans erreur 526).
 
 **Reste à traiter (non appliqué)** :
-- Buckets Storage encore `public: true` — passer `rapports` en privé nécessite de vérifier que tout l'affichage passe par des URLs signées.
-- `xlsx` : vulnérabilité haute sans correctif amont (prototype pollution / ReDoS) — envisager migration vers `exceljs`.
-- CSP `script-src` contient `'unsafe-inline' 'unsafe-eval'` — durcir via nonces si possible.
+- Buckets Storage encore `public: true` — voir décision ci-dessous.
+
+### Suivi audit v3 — traitement des points résiduels (2026-07-04)
+
+- **`xlsx` → `exceljs` (FAIT)** : SheetJS retiré (vuln high sans patch). Export `/api/export/xlsx` réécrit (helper `appendSheet`), import `import-excel-points.tsx` migré vers `exceljs.xlsx.load`. Round-trip write/read vérifié.
+- **CSP `'unsafe-eval'` retiré (FAIT)** : `script-src 'self' 'unsafe-inline'` + `object-src 'none'`. ⚠️ **`'unsafe-inline'` doit rester** : l'approche nonce + `strict-dynamic` a été testée et **écarte** — Turbopack ne propage pas le nonce aux scripts RSC inline (`self.__next_f.push`), ce qui bloque l'hydratation React (page non interactive). Ne pas re-tenter le nonce sans changer de bundler.
+- **Buckets privés (NON FAIT — décision)** : conservés `public: true`. Risque réel faible (aucune policy RLS `anon` → pas de listing/énumération ; chemins UUID non devinables). Passer en privé casserait la prod : le bucket `rapports` stocke aussi le **logo embarqué dans les emails** (une URL signée expire en 1h → logo cassé dans un email ouvert plus tard) + migration de toutes les URLs stockées en base (photos `reponses.photos`, documents, logos). Nécessite une ré-architecture (bucket privé sensible + bucket public assets email) à planifier séparément.
 
 ---
 
