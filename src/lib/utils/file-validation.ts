@@ -101,6 +101,45 @@ function validateFile(
 }
 
 /**
+ * Vérifie la signature binaire réelle (magic bytes) d'un fichier.
+ * Défense en profondeur contre les fichiers dont l'extension/MIME déclaré
+ * ne correspond pas au contenu réel. Le contrôle autoritaire reste la
+ * configuration `allowed_mime_types` des buckets Supabase Storage.
+ *
+ * Retourne null si valide, un message d'erreur sinon.
+ */
+export async function validateFileSignature(file: File): Promise<string | null> {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+
+  const startsWith = (sig: number[]) =>
+    sig.every((byte, i) => header[i] === byte);
+
+  switch (ext) {
+    case "pdf":
+      // %PDF
+      return startsWith([0x25, 0x50, 0x44, 0x46]) ? null : "Le contenu du fichier ne correspond pas à un PDF";
+    case "png":
+      return startsWith([0x89, 0x50, 0x4e, 0x47]) ? null : "Le contenu du fichier ne correspond pas à un PNG";
+    case "jpg":
+    case "jpeg":
+      return startsWith([0xff, 0xd8, 0xff]) ? null : "Le contenu du fichier ne correspond pas à un JPEG";
+    case "docx":
+    case "xlsx":
+      // Conteneur ZIP (PK..)
+      return startsWith([0x50, 0x4b, 0x03, 0x04]) || startsWith([0x50, 0x4b, 0x05, 0x06])
+        ? null
+        : "Le contenu du fichier ne correspond pas au format Office attendu";
+    case "doc":
+    case "xls":
+      // Conteneur OLE2
+      return startsWith([0xd0, 0xcf, 0x11, 0xe0]) ? null : "Le contenu du fichier ne correspond pas au format Office attendu";
+    default:
+      return null;
+  }
+}
+
+/**
  * Extrait une extension sûre d'un nom de fichier.
  * Retourne uniquement des extensions de la whitelist.
  */

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { STATUTS_ECART } from "@/lib/utils/constants";
 import { canAccessChantier } from "@/lib/utils/security";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   [STATUTS_ECART.OUVERT]: [STATUTS_ECART.EN_COURS_CORRECTION, STATUTS_ECART.CORRIGE],
@@ -24,6 +25,11 @@ export async function PATCH(
 
     if (!user) {
       return NextResponse.json({ error: "Non autorise" }, { status: 401 });
+    }
+
+    // Rate limit: 60 changements de statut par heure
+    if (!checkRateLimit(`ecart-statut:${user.id}`, 60, 60 * 60 * 1000)) {
+      return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 
     // Load current ecart

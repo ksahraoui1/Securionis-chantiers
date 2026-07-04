@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import {
   validatePdfOrImageFile,
+  validateFileSignature,
   type FileValidationResult,
 } from "./file-validation";
 import { buildStoragePath } from "./storage-path";
@@ -31,6 +32,10 @@ export async function uploadFileToStorage(
 ): Promise<UploadedFile> {
   const validation = validate(file);
   if (!validation.valid) throw new Error(validation.error!);
+
+  // Défense en profondeur : vérifier la signature binaire réelle
+  const signatureError = await validateFileSignature(file);
+  if (signatureError) throw new Error(signatureError);
 
   const ext = validation.sanitizedExtension!;
   const path = buildStoragePath(pathPrefix, ext);
