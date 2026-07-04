@@ -81,7 +81,11 @@ export async function PATCH(
     // Update ecart
     const { data: updated, error: updateError } = await supabase
       .from("ecarts")
-      .update({ statut: newStatut, updated_by: user.id })
+      .update({
+        statut: newStatut,
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", ecartId)
       .select()
       .single();

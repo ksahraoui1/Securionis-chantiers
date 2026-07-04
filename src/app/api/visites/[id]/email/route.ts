@@ -169,7 +169,7 @@ export async function POST(
     // Update visite
     await supabase
       .from("visites")
-      .update({ email_envoye: true })
+      .update({ email_envoye: true, updated_at: new Date().toISOString() })
       .eq("id", visiteId);
 
     // Audit log

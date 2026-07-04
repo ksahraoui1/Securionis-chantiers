@@ -139,7 +139,7 @@ export async function POST(
     // Stocker le chemin (pas la public URL) — bucket privé
     await serviceClient
       .from("visites")
-      .update({ rapport_url: storagePath })
+      .update({ rapport_url: storagePath, updated_at: new Date().toISOString() })
       .eq("id", visiteId);
 
     // Générer une signed URL valide 1 heure pour usage immédiat

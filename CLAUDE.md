@@ -319,6 +319,23 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 - `src/app/(dashboard)/layout.tsx` — Copyright FWN
 - `src/app/api/docs/manual/route.ts` — Copyright FWN (page couverture + footer)
 
+### Bandeau "NC corrigées" masqué une fois le rapport à jour (2026-07-04)
+
+**Problème** : sur la page chantier, le bandeau vert "Toutes les NC de la visite sont corrigées → Générer le rapport" restait affiché indéfiniment, même après génération/envoi du rapport mis à jour.
+
+**Solution** : comparaison de timestamps plutôt qu'un simple flag booléen — le bandeau ne s'affiche que si une correction de NC est plus récente que le dernier rapport généré/envoyé pour la visite.
+- `ecarts.updated_at` est maintenant explicitement rafraîchi à chaque changement de statut (aucun trigger DB ne le faisait — colonne existait mais restait figée à `created_at`)
+- `visites.updated_at` est explicitement rafraîchi à la génération du PDF (`/api/visites/[id]/pdf`) et à l'envoi de l'email (`/api/visites/[id]/email`)
+- Nouvelle fonction `isRapportAJour(visiteId, visiteUpdatedAt)` dans `src/app/(dashboard)/chantiers/[id]/page.tsx` : compare `visite.updated_at` au max des `ecarts.updated_at` des NC de la visite
+
+**Fichiers modifiés** :
+- `src/app/(dashboard)/chantiers/[id]/page.tsx` — logique `isRapportAJour` + filtre du bandeau
+- `src/app/api/ecarts/[id]/statut/route.ts` — `updated_at` explicite sur update
+- `src/app/api/visites/[id]/pdf/route.ts` — `updated_at` explicite sur update
+- `src/app/api/visites/[id]/email/route.ts` — `updated_at` explicite sur update
+
+**Aucune migration SQL** : les colonnes `updated_at` existaient déjà sur `ecarts` et `visites`, seul le rafraîchissement explicite manquait.
+
 ---
 
 ## Pièges connus et gotchas
@@ -332,6 +349,7 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 7. **Variables `NEXT_PUBLIC_*`** : inlinées par Next.js au build — les getters dans `env.ts` sont des fonctions (pas des constantes) pour préserver ce comportement.
 8. **Service Worker cache** : incrémenter `CACHE_VERSION` dans `public/sw.js` pour forcer la mise à jour chez les clients.
 9. **Migrations Supabase** : les migrations 001-015 sont hors tracking CLI. Ne pas utiliser `supabase db push` sans vérifier l'état réel de la base distante.
+10. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 

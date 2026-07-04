@@ -72,13 +72,23 @@ export default async function ChantierDetailPage({
 
   // Detect visits where ALL NC are corrected
   const ecartByReponseId = new Map(
-    (ecarts ?? []).map((e) => [e.reponse_id, e.statut])
+    (ecarts ?? []).map((e) => [e.reponse_id, e])
   );
 
   function isVisiteAllCorrected(visiteId: string): boolean {
     const ncIds = ncReponsesByVisite[visiteId];
     if (!ncIds || ncIds.length === 0) return false;
-    return ncIds.every((rId) => ecartByReponseId.get(rId) === "corrige");
+    return ncIds.every((rId) => ecartByReponseId.get(rId)?.statut === "corrige");
+  }
+
+  // Un rapport déjà généré/envoyé après la dernière correction n'a pas besoin d'être régénéré
+  function isRapportAJour(visiteId: string, visiteUpdatedAt: string): boolean {
+    const ncIds = ncReponsesByVisite[visiteId] ?? [];
+    const derniereCorrectionAt = ncIds.reduce((max, rId) => {
+      const t = new Date(ecartByReponseId.get(rId)?.updated_at ?? 0).getTime();
+      return t > max ? t : max;
+    }, 0);
+    return new Date(visiteUpdatedAt).getTime() >= derniereCorrectionAt;
   }
 
   const visitesForTimeline =
@@ -192,7 +202,14 @@ export default async function ChantierDetailPage({
       </Card>
 
       {/* Bandeau : NC corrigées → régénérer rapport */}
-      {visites?.filter((v) => v.statut === "terminee" && isVisiteAllCorrected(v.id)).map((v) => (
+      {visites
+        ?.filter(
+          (v) =>
+            v.statut === "terminee" &&
+            isVisiteAllCorrected(v.id) &&
+            !isRapportAJour(v.id, v.updated_at)
+        )
+        .map((v) => (
         <div key={`corrected-${v.id}`} className="rounded-xl bg-green-50 border border-green-200 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
