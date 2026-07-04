@@ -350,9 +350,9 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 - **Firewall UFW actif** : deny incoming par défaut, `22/tcp` autorisé (SSH), port `80` restreint aux plages IP Cloudflare uniquement. L'accès direct à l'IP du VPS (contournement Cloudflare) est bloqué.
 - **Docker bind local** : `docker-compose.yml` → `127.0.0.1:3000:3000` (le port 3000 n'est plus exposé publiquement, Nginx proxifie en local).
 - **SSH durci** : `PasswordAuthentication no`, `PermitRootLogin prohibit-password` (clé uniquement), drop-in `/etc/ssh/sshd_config.d/99-hardening.conf`. `fail2ban` installé (jail sshd, ban 1h / 5 échecs).
+- **Cloudflare Full (Strict)** : certificat Let's Encrypt sur l'origine (`/etc/letsencrypt/live/chantiers.securionis.com/`), Nginx en 443, port 443 ouvert dans UFW pour les IP Cloudflare. Renouvellement auto via `certbot.timer` (dry-run OK à travers firewall+CF). Le trafic Cloudflare→origine est désormais chiffré et validé (vérifié : CF se connecte en 443, réponse 200 sans erreur 526).
 
 **Reste à traiter (non appliqué)** :
-- Cloudflare SSL est en mode **Flexible** (CF→origine en HTTP clair). Passer en **Full (Strict)** avec certificat d'origine Cloudflare (nécessite config dashboard Cloudflare + Nginx 443).
 - Buckets Storage encore `public: true` — passer `rapports` en privé nécessite de vérifier que tout l'affichage passe par des URLs signées.
 - `xlsx` : vulnérabilité haute sans correctif amont (prototype pollution / ReDoS) — envisager migration vers `exceljs`.
 - CSP `script-src` contient `'unsafe-inline' 'unsafe-eval'` — durcir via nonces si possible.
