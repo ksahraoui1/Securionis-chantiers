@@ -156,7 +156,8 @@ export default async function RapportPage({
             <span className="material-symbols-outlined text-green-600 text-2xl">check_circle</span>
             <div>
               <p className="text-sm font-semibold text-green-800">
-                Toutes les non-conformités ont été corrigées
+                Toutes les non-conformités de la visite du{" "}
+                {new Date(visite.date_visite).toLocaleDateString("fr-CH")} ont été corrigées
               </p>
               <p className="text-xs text-green-700 mt-1">
                 Vous pouvez régénérer le rapport PDF mis à jour et l'envoyer par email aux destinataires.
