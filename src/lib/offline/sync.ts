@@ -16,6 +16,7 @@ export type SyncResult = {
   syncedPhotos: number;
   conflicts: number;
   errors: number;
+  discarded: number;
 };
 
 export async function syncPendingData(): Promise<SyncResult> {
@@ -24,14 +25,34 @@ export async function syncPendingData(): Promise<SyncResult> {
   let syncedPhotos = 0;
   let conflicts = 0;
   let errors = 0;
+  let discarded = 0;
 
   // 1. Sync pending photos first (responses may reference uploaded URLs)
   const pendingResponses = await getUnsyncedResponses();
   const visiteIds = [...new Set(pendingResponses.map((r) => r.visite_id))];
 
+  // Déterminer quelles visites existent encore côté serveur.
+  // Une modif en attente dont la visite a été supprimée ne pourra jamais
+  // être synchronisée (violation de clé étrangère) — il faut l'écarter
+  // pour ne pas bloquer indéfiniment le compteur « X modification en attente ».
+  const existingVisiteIds = new Set<string>();
+  if (visiteIds.length > 0) {
+    const { data: existingVisites } = await supabase
+      .from("visites")
+      .select("id")
+      .in("id", visiteIds);
+    for (const v of existingVisites ?? []) existingVisiteIds.add(v.id as string);
+  }
+
   for (const visiteId of visiteIds) {
     const photos = await getPendingPhotos(visiteId);
     for (const photo of photos) {
+      // Visite supprimée → photo orpheline : écarter sans erreur
+      if (!existingVisiteIds.has(visiteId)) {
+        await deletePendingPhoto(photo.id);
+        discarded++;
+        continue;
+      }
       try {
         const path = `${photo.chantier_id}/${photo.visite_id}/${photo.reponse_key}/${photo.filename}`;
         const { error } = await supabase.storage
@@ -76,6 +97,12 @@ export async function syncPendingData(): Promise<SyncResult> {
   }
 
   for (const response of pendingResponses) {
+    // Visite supprimée → réponse orpheline : écarter (impossible à synchroniser)
+    if (!existingVisiteIds.has(response.visite_id)) {
+      await markResponseSynced(response.key);
+      discarded++;
+      continue;
+    }
     try {
       // Vérifier si une version plus récente existe déjà sur le serveur
       const serverTimestamp = serverUpdatedAt.get(
@@ -119,5 +146,5 @@ export async function syncPendingData(): Promise<SyncResult> {
     }
   }
 
-  return { syncedResponses, syncedPhotos, conflicts, errors };
+  return { syncedResponses, syncedPhotos, conflicts, errors, discarded };
 }
