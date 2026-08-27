@@ -1,6 +1,6 @@
 -- 037 — Les administrateurs doivent voir les points de contrôle désactivés.
 --
--- ⚠️ NON APPLIQUÉE — en attente de validation explicite (change les droits d'accès).
+-- Appliquée le 2026-08-27 depuis le SQL Editor Supabase.
 --
 -- Problème : la policy `pc_select_active` limite la lecture à `actif = true`
 -- pour tous les rôles, administrateurs compris, et aucune autre policy SELECT
