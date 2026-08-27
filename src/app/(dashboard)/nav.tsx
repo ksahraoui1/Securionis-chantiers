@@ -90,7 +90,10 @@ export function DashboardNav({
           {/* Desktop user */}
           <div className={`hidden ${afficherBarre} items-center gap-3 shrink-0`}>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 truncate max-w-[150px]">
+              {/* Masqué sous lg : avec 3 liens, le badge « GRATUIT » et un nom
+                  long, la barre du rôle invité débordait de quelques pixels à
+                  768 px — la largeur d'une tablette en portrait. */}
+              <span className="hidden lg:block text-sm text-gray-600 truncate max-w-[110px] xl:max-w-[150px]">
                 {userName}
               </span>
               {userRole === "invité" && (
