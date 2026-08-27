@@ -257,7 +257,7 @@ Centralisation de tous les documents liés à un chantier.
 - Fonction `stripMarkdown()` nettoie tout formatage markdown des réponses IA
 - Le bouton "Copier dans la remarque" de l'assistant juridique résume le texte en 2-3 phrases via l'IA
 
-## 14. Notifications push PWA (2026-05-11)
+## 12. Notifications push PWA (2026-05-11)
 
 **Fichiers** : `src/lib/push.ts`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/test/route.ts`, `src/hooks/use-push-notifications.ts`, `src/components/ui/push-notifications-card.tsx`, `public/sw.js`, `supabase/migrations/034_push_subscriptions.sql`
 
@@ -288,7 +288,7 @@ Avant d'envoyer le PDF du rapport par email, l'inspecteur ouvre une modal listan
 - Audit log (`send_rapport_email`) conserve la liste exacte des emails envoyés
 - **Historique d'envoi** affiché sur la même page (lecture des `audit_logs` via service client, autorisation déjà vérifiée par accès à la page)
 
-## 12. Améliorations UX
+## 14. Améliorations UX
 
 - Champ remarque auto-extensible (s'agrandit avec le contenu)
 - Fonts Google (Inter + Material Symbols) restaurées dans le layout
