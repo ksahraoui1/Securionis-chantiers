@@ -2,6 +2,8 @@
 
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { familleDeCategorie } from "@/lib/utils/familles";
+import { genererMotsCles } from "@/lib/utils/mots-cles";
 
 interface ImportExcelPointsProps {
   onImported: () => void;
@@ -180,6 +182,8 @@ export function ImportExcelPoints({ onImported }: ImportExcelPointsProps) {
           intitule: r.intitule,
           base_legale: r.baseLegale || null,
           explications: r.explications || null,
+          famille: familleDeCategorie(r.categorie),
+          mots_cles: genererMotsCles(r.intitule, r.theme, r.categorie),
           is_custom: true,
           actif: true,
         };
