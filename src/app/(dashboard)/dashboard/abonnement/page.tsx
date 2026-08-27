@@ -40,7 +40,9 @@ export default function AbonnementPage() {
         .from("subscriptions")
         .select("status, plan, current_period_end, trial_end, cancel_at")
         .eq("user_id", user.id)
-        .single();
+        // maybeSingle : un compte sans abonnement est le cas nominal ici —
+        // single() faisait répondre PostgREST en 406 à chaque visite.
+        .maybeSingle();
       setSub(subscription);
       setLoading(false);
     }
