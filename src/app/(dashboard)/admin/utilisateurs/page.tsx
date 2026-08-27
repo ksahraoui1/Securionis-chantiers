@@ -7,6 +7,23 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import type { Tables } from "@/types/database";
 
+/**
+ * Libellés et couleurs des trois rôles. Un ternaire binaire étiquetait
+ * auparavant « Inspecteur » tout compte non administrateur, y compris les
+ * comptes « invité » — un admin ne pouvait pas distinguer les deux.
+ */
+const LIBELLE_ROLE: Record<string, string> = {
+  administrateur: "Admin",
+  inspecteur: "Inspecteur",
+  "invité": "Invité",
+};
+
+const COULEUR_ROLE: Record<string, string> = {
+  administrateur: "bg-purple-100 text-purple-700",
+  inspecteur: "bg-blue-100 text-blue-700",
+  "invité": "bg-amber-100 text-amber-700",
+};
+
 export default function AdminUtilisateursPage() {
   const [profiles, setProfiles] = useState<Tables<"profiles">[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,12 +136,10 @@ export default function AdminUtilisateursPage() {
               </div>
               <span
                 className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${
-                  profile.role === "administrateur"
-                    ? "bg-purple-100 text-purple-700"
-                    : "bg-blue-100 text-blue-700"
+                  COULEUR_ROLE[profile.role] ?? "bg-gray-100 text-gray-600"
                 }`}
               >
-                {profile.role === "administrateur" ? "Admin" : "Inspecteur"}
+                {LIBELLE_ROLE[profile.role] ?? profile.role}
               </span>
               <div className="flex items-center gap-1 shrink-0">
                 <button
