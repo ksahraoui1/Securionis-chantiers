@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       .from("subscriptions")
       .select("stripe_customer_id")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     let customerId = existingSub?.stripe_customer_id;
 
