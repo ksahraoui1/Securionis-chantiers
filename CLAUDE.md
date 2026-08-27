@@ -386,7 +386,7 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 
 **Miroirs applicatifs** (`src/lib/utils/familles.ts`, `src/lib/utils/mots-cles.ts`) : la correspondance catégorie → famille et la génération de mots-clés existent en TypeScript pour que les points créés depuis le formulaire admin ou l'import Excel soient renseignés comme ceux de la migration. Toute catégorie non répertoriée retombe sur « Autres ».
 
-> Il n'y a **pas** de trigger PostgreSQL sur `famille` : tout nouveau chemin d'écriture vers `points_controle` doit renseigner `famille` et `mots_cles` lui-même, sans quoi le point disparaît du filtre par famille.
+> Depuis la migration 038, un trigger `points_controle_famille_trg` renseigne `famille` en base quand elle est absente (déduite du libellé de la catégorie, « Autres » par défaut). Les miroirs applicatifs restent la source principale ; le trigger est le filet pour les écritures qui les contournent. `mots_cles` n'est en revanche **pas** couvert par le trigger et reste à la charge de l'appelant.
 
 **Recherche côté client** : la saisie est convertie en tsquery à préfixe (`echa:*`) ; le découpage sur les caractères non alphanumériques neutralise au passage les opérateurs de la syntaxe tsquery.
 
@@ -406,6 +406,13 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 
 **Vérifié** en session administrateur à 375 / 768 / 1024 / 1279 / 1280 / 1440 px : débordement nul et aucun élément écrasé partout, bascule exactement à 1280 px. Le cas inspecteur est établi par le calcul (577 px requis pour 736 px utiles à 768 px), faute de compte de test.
 
+### Suivi des points résiduels (2026-08-27)
+
+- **Trigger `famille` (FAIT, migration 038)** : `points_controle_famille_trg`, en `SECURITY INVOKER` (`categories` est lisible par tous les authentifiés, aucune élévation nécessaire). Testé par insertion réelle : catégorie « Grues & Levage » → `Engins & Levage`, catégorie nulle → `Autres`. Lignes de test supprimées, 487 points, 0 sans famille.
+- **Nav rôle inspecteur (VÉRIFIÉ)** : mesuré en simulant le DOM du rôle (2 liens, seuil `md`) à 768 px — barre en `display:flex`, burger en `display:none`, mutuellement exclusifs, débordement nul, aucun écrasement. Largeurs : 140 (logo) + 188 (liens) + 217 (utilisateur) = 545 px pour 736 px utiles.
+- **Worktree orphelin (NETTOYÉ)** : `.claude/worktrees/practical-buck` pointait vers un gitdir inexistant (`/Users/macbookairm4/…`), contenu figé au 29 mars, aucun fichier absent de `main`. Supprimé avec la branche locale `claude/practical-buck`.
+- **Policy SELECT admin (EN ATTENTE, migration 037 écrite mais NON APPLIQUÉE)** : `pc_select_active` limite la lecture à `actif = true` pour tous, administrateurs compris. Désactiver un point le fait disparaître de l'admin sans moyen de le réactiver, et le filtre « Désactivés uniquement » reste vide. Aucun point n'est désactivé à ce jour (487/487 actifs), le piège ne s'est donc jamais déclenché. La migration ajoute une policy SELECT permissive pour `user_role() = 'administrateur'` — elle modifie les droits d'accès en production et demande une validation explicite avant application.
+
 ---
 
 ## Pièges connus et gotchas
@@ -419,14 +426,14 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 7. **Variables `NEXT_PUBLIC_*`** : inlinées par Next.js au build — les getters dans `env.ts` sont des fonctions (pas des constantes) pour préserver ce comportement.
 8. **Service Worker cache** : incrémenter `CACHE_VERSION` dans `public/sw.js` pour forcer la mise à jour chez les clients.
 9. **Migrations Supabase** : les migrations 001-015 sont hors tracking CLI. Ne pas utiliser `supabase db push` sans vérifier l'état réel de la base distante.
-10. **Familles des points de contrôle** : aucun trigger DB ne remplit `points_controle.famille` — les écritures passent par `familleDeCategorie()` / `genererMotsCles()` côté application (form admin + import Excel).
+10. **Familles des points de contrôle** : `famille` est renseignée par le trigger `points_controle_famille_trg` (migration 038) si l'appelant ne la fournit pas ; `mots_cles` n'a pas d'équivalent et doit être fourni par l'appelant (`genererMotsCles()`).
 11. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
 ## ESLint
 
-33 erreurs et 27 warnings connus (identifiés après migration vers ESLint 9 flat config). Ne pas bloquer le développement sur ces erreurs existantes — les corriger progressivement.
+20 erreurs et 15 warnings connus (relevé du 2026-08-27, après suppression d'un worktree orphelin `.claude/worktrees/practical-buck` qui faisait scanner le code en double et gonflait le total à 34/27). Ne pas bloquer le développement sur ces erreurs existantes — les corriger progressivement.
 
 ```bash
 npm run lint
