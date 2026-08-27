@@ -147,6 +147,8 @@ export type Database = {
           base_legale: string | null;
           objet: string | null;
           explications: string | null;
+          famille: string | null;
+          mots_cles: string[];
           is_custom: boolean;
           actif: boolean;
           created_by: string | null;
@@ -163,6 +165,8 @@ export type Database = {
           base_legale?: string | null;
           objet?: string | null;
           explications?: string | null;
+          famille?: string | null;
+          mots_cles?: string[];
           is_custom?: boolean;
           actif?: boolean;
           created_by?: string | null;
@@ -178,6 +182,8 @@ export type Database = {
           base_legale?: string | null;
           objet?: string | null;
           explications?: string | null;
+          famille?: string | null;
+          mots_cles?: string[];
           is_custom?: boolean;
           actif?: boolean;
           updated_at?: string;

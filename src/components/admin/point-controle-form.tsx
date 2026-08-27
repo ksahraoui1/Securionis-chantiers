@@ -11,6 +11,8 @@ import {
   PointControleDocumentsUploader,
   type PointControleDocumentsUploaderHandle,
 } from "./point-controle-documents-uploader";
+import { familleDeCategorie } from "@/lib/utils/familles";
+import { genererMotsCles } from "@/lib/utils/mots-cles";
 import type { Tables } from "@/types/database";
 
 interface PointControleFormProps {
@@ -91,6 +93,31 @@ export function PointControleForm({
         finalThemeId = newThemeData.id;
       }
 
+      // Libellés catégorie / thème : nécessaires pour la famille et les mots-clés
+      let categorieLibelle =
+        catThemeState.categorie.mode === "new"
+          ? catThemeState.categorie.libelle.trim()
+          : null;
+      if (!categorieLibelle && finalCategorieId) {
+        const { data } = await supabase
+          .from("categories")
+          .select("libelle")
+          .eq("id", finalCategorieId)
+          .single();
+        categorieLibelle = data?.libelle ?? null;
+      }
+
+      let themeLibelle =
+        catThemeState.theme.mode === "new" ? catThemeState.theme.libelle.trim() : null;
+      if (!themeLibelle && finalThemeId) {
+        const { data } = await supabase
+          .from("themes")
+          .select("libelle")
+          .eq("id", finalThemeId)
+          .single();
+        themeLibelle = data?.libelle ?? null;
+      }
+
       const payload = {
         phase_id: null,
         categorie_id: finalCategorieId,
@@ -99,6 +126,8 @@ export function PointControleForm({
         critere: critere.trim() || null,
         base_legale: baseLegale.trim() || null,
         explications: explications.trim() || null,
+        famille: familleDeCategorie(categorieLibelle),
+        mots_cles: genererMotsCles(intitule, themeLibelle, categorieLibelle),
         updated_at: new Date().toISOString(),
       };
 

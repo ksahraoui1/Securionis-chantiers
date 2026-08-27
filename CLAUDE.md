@@ -365,6 +365,47 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 - **CSP `'unsafe-eval'` retiré (FAIT)** : `script-src 'self' 'unsafe-inline'` + `object-src 'none'`. ⚠️ **`'unsafe-inline'` doit rester** : l'approche nonce + `strict-dynamic` a été testée et **écarte** — Turbopack ne propage pas le nonce aux scripts RSC inline (`self.__next_f.push`), ce qui bloque l'hydratation React (page non interactive). Ne pas re-tenter le nonce sans changer de bundler.
 - **Buckets privés (NON FAIT — décision)** : conservés `public: true`. Risque réel faible (aucune policy RLS `anon` → pas de listing/énumération ; chemins UUID non devinables). Passer en privé casserait la prod : le bucket `rapports` stocke aussi le **logo embarqué dans les emails** (une URL signée expire en 1h → logo cassé dans un email ouvert plus tard) + migration de toutes les URLs stockées en base (photos `reponses.photos`, documents, logos). Nécessite une ré-architecture (bucket privé sensible + bucket public assets email) à planifier séparément.
 
+### Familles + recherche full-text des points de contrôle (2026-08-27)
+
+**Objectif** : rendre `/admin/points-controle` utilisable malgré 487 points répartis sur 28 catégories.
+
+**Base de données** (migrations 035 et 036, table `points_controle` — attention : la table s'appelle bien `points_controle`, pas `points_de_controle`) :
+- `famille` (text) : regroupement métier des 28 catégories en **12 familles**, contraint par un CHECK. Répartition obtenue : Protections antichute 107, Fouilles & Terrasse 66, Engins & Levage 51, Accès & Circulation 51, Dispositions générales 45, Électricité & Énergies 42, Structures & Toitures 37, Démolition & Désamiantage 26, EPI & Santé 25, Machines & Outils 22, Produits & Incendie 14, Autres 1.
+- `mots_cles` (text[]) : mots-clés dérivés de l'intitulé + libellé du thème + libellé de la catégorie (mots ≥ 4 caractères, mots vides exclus). Permet de retrouver un point via le vocabulaire de son thème même s'il est absent de l'intitulé.
+- `search_vector` (tsvector **généré**, index GIN) : `intitule` et `mots_cles` en poids A, `famille` en B, `critere`/`objet`/`base_legale` en C, `explications` en D.
+- Configuration de recherche `french_unaccent` (`unaccent` + `french_stem`) : sans elle, « echa » ne remontait rien là où « écha » remontait 57 points.
+- `immutable_array_to_string()` : `array_to_string` est déclarée STABLE et ne peut pas être utilisée telle quelle dans une colonne générée.
+
+**Page `/admin/points-controle`** :
+- Barre de recherche en haut (icône loupe lucide, bouton d'effacement, spinner pendant la frappe), full-text Supabase avec debounce 250 ms — aucun rechargement de page.
+- Filtres en cascade : **Famille** (1er niveau, 12 options) → **Catégorie** (2e niveau, désactivée tant qu'aucune famille n'est choisie, limitée aux catégories de la famille) → **Thème** (3e niveau) → **Statut**.
+- Badge de famille coloré sur chaque point, en plus des badges catégorie / thème existants.
+- Le `select()` liste explicitement les colonnes pour ne pas rapatrier `search_vector`.
+- Les thèmes ne sont plus chargés tant qu'aucune catégorie n'est sélectionnée (auparavant les 442 thèmes partaient à chaque montage pour alimenter un select désactivé).
+- Le badge catégorie est masqué lorsqu'il porte le même libellé que la famille (Dispositions générales, Démolition & Désamiantage).
+
+**Miroirs applicatifs** (`src/lib/utils/familles.ts`, `src/lib/utils/mots-cles.ts`) : la correspondance catégorie → famille et la génération de mots-clés existent en TypeScript pour que les points créés depuis le formulaire admin ou l'import Excel soient renseignés comme ceux de la migration. Toute catégorie non répertoriée retombe sur « Autres ».
+
+> Il n'y a **pas** de trigger PostgreSQL sur `famille` : tout nouveau chemin d'écriture vers `points_controle` doit renseigner `famille` et `mots_cles` lui-même, sans quoi le point disparaît du filtre par famille.
+
+**Recherche côté client** : la saisie est convertie en tsquery à préfixe (`echa:*`) ; le découpage sur les caractères non alphanumériques neutralise au passage les opérateurs de la syntaxe tsquery.
+
+### Débordement de la nav dashboard en tablette (2026-08-27)
+
+**Problème** : sur toutes les pages du dashboard, un **administrateur** faisait déborder la page de 188 px à 768 px. La bascule barre horizontale / menu déroulant était fixée à `md` (768 px), alors que les 6 liens du rôle administrateur ne tiennent pas dans cette largeur. Les rôles `inspecteur` (2 liens) et `invité` (3 liens) n'ont jamais été concernés.
+
+**Mesures** (à 1024 px, largeur utile 986 px) : logo 140 px + liens **638 px** + zone utilisateur 217 px + gouttières 32 px = **1027 px requis**. Il manquait 41 px.
+
+**Correction** dans `src/app/(dashboard)/nav.tsx` — le seuil dépend désormais du nombre de liens du rôle :
+- `links.length > 3` (administrateur) → barre horizontale à partir de `xl` (1280 px), soit 221 px de marge
+- sinon (inspecteur, invité) → `md` (768 px) conservé, aucune régression pour eux
+- `whitespace-nowrap` sur les liens : sans lui, « Points de contrôle » se cassait sur trois lignes quand la barre serrait
+- `gap-4` entre les trois zones de la barre
+
+> Les classes responsives sont construites par ternaire (`barreChargee ? "xl:flex" : "md:flex"`). Tailwind scanne le source en texte brut : les littéraux doivent rester écrits en entier, jamais assemblés (`` `${bp}:flex` `` ne serait pas généré). Présence vérifiée dans le CSS compilé.
+
+**Vérifié** en session administrateur à 375 / 768 / 1024 / 1279 / 1280 / 1440 px : débordement nul et aucun élément écrasé partout, bascule exactement à 1280 px. Le cas inspecteur est établi par le calcul (577 px requis pour 736 px utiles à 768 px), faute de compte de test.
+
 ---
 
 ## Pièges connus et gotchas
@@ -378,7 +419,8 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 7. **Variables `NEXT_PUBLIC_*`** : inlinées par Next.js au build — les getters dans `env.ts` sont des fonctions (pas des constantes) pour préserver ce comportement.
 8. **Service Worker cache** : incrémenter `CACHE_VERSION` dans `public/sw.js` pour forcer la mise à jour chez les clients.
 9. **Migrations Supabase** : les migrations 001-015 sont hors tracking CLI. Ne pas utiliser `supabase db push` sans vérifier l'état réel de la base distante.
-10. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+10. **Familles des points de contrôle** : aucun trigger DB ne remplit `points_controle.famille` — les écritures passent par `familleDeCategorie()` / `genererMotsCles()` côté application (form admin + import Excel).
+11. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 

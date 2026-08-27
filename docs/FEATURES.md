@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-05-11 (salve 2)
+> Dernière mise à jour : 2026-08-27
 
 ## 1. Annotation des photos
 
@@ -208,7 +208,7 @@ Centralisation de tous les documents liés à un chantier.
 - Les nouveaux points sont chargés sans perdre les réponses déjà saisies
 
 ### Administration
-- Navigation par catégorie → thème → statut + recherche texte
+- Navigation par famille → catégorie → thème → statut + recherche full-text (cf. section 15)
 - Activer/désactiver tout point de contrôle
 - Modifier les points existants (intitulé, explications, base légale, critère)
 - Créer un **nouveau thème** directement dans le formulaire
@@ -296,19 +296,72 @@ Avant d'envoyer le PDF du rapport par email, l'inspecteur ouvre une modal listan
 - KPI du dashboard cliquables avec icônes et effet hover
 - Accentuation complète de tous les textes français de l'interface
 
+## 15. Familles et recherche full-text des points de contrôle (2026-08-27)
+
+**Fichiers** : migrations 035-036, `src/app/(dashboard)/admin/points-controle/page.tsx`, `src/lib/utils/familles.ts`, `src/lib/utils/mots-cles.ts`, `src/components/admin/point-controle-form.tsx`, `import-excel-points.tsx`
+
+Objectif : rendre la page d'administration exploitable malgré 487 points répartis sur 28 catégories.
+
+### Les 12 familles
+Regroupement métier des catégories, stocké dans `points_controle.famille` (contrainte CHECK) :
+
+| Famille | Catégories regroupées | Points |
+|---|---|---|
+| Protections antichute | Échafaudages, Échafaudages roulants, Filets & Retenue, Protections Chutes, Échelles | 107 |
+| Fouilles & Terrasse | Fouilles & Talus, Roches & Gravier, Souterrains, Coffrages | 66 |
+| Engins & Levage | Engins Chantier, Grues & Levage | 51 |
+| Accès & Circulation | Accès & Sols, Postes & Passages | 51 |
+| Dispositions générales | Dispositions générales | 45 |
+| Électricité & Énergies | Électricité, Installations & Énergie, Installations Thermiques, Laser | 42 |
+| Structures & Toitures | Toitures, Éléments Préfabriqués, Arbres | 37 |
+| Démolition & Désamiantage | Démolition & Désamiantage | 26 |
+| EPI & Santé | Santé et EPI, Milieu de travail | 25 |
+| Machines & Outils | Machines Electriques, Machines portatives | 22 |
+| Produits & Incendie | Produits & Inflammables | 14 |
+| Autres | Test, toute catégorie non répertoriée | 1 |
+
+### Recherche full-text
+- Colonne `mots_cles` (text[]) : mots-clés dérivés de l'intitulé, du thème et de la catégorie (mots ≥ 4 caractères, mots vides exclus). Permet de retrouver un point par le vocabulaire de son thème — « permis grutier » remonte le point « Cat A ou B », dont l'intitulé ne contient aucun des deux mots.
+- Colonne générée `search_vector` (tsvector, index GIN) : intitulé et mots-clés en poids A, famille en B, critère/objet/base légale en C, explications en D.
+- Configuration `french_unaccent` (unaccent + french_stem) : la recherche ignore les accents — « echa » et « écha » remontent les 57 mêmes points.
+- Recherche par préfixe : « echa » trouve « échafaudage » dès la 4ᵉ lettre.
+
+### Interface
+- Barre de recherche en haut avec icône loupe, bouton d'effacement et indicateur de frappe ; débounce 250 ms, aucun rechargement de page.
+- Filtres en cascade : **Famille** (12 options) → **Catégorie** (désactivée tant qu'aucune famille n'est choisie, limitée aux catégories de la famille) → **Thème** → **Statut**.
+- Bouton « Réinitialiser les filtres ».
+- Badge de famille coloré sur chaque point, masqué quand il ferait doublon avec le badge catégorie.
+
+### Écriture
+Il n'existe pas de trigger PostgreSQL : `famille` et `mots_cles` sont renseignés côté application par `familleDeCategorie()` et `genererMotsCles()`, appelés depuis le formulaire admin et l'import Excel. Tout nouveau chemin d'écriture vers `points_controle` doit faire de même.
+
+## 16. Correction du débordement de la nav en tablette (2026-08-27)
+
+**Fichiers** : `src/app/(dashboard)/nav.tsx`
+
+Sur toutes les pages du dashboard, un **administrateur** faisait déborder la page de 188 px à 768 px : la bascule barre horizontale / menu déroulant était fixée à `md`, alors que ses 6 liens réclament ~1030 px avec le logo et la zone utilisateur. Les rôles `inspecteur` (2 liens) et `invité` (3 liens) n'étaient pas concernés.
+
+Le seuil dépend désormais du nombre de liens du rôle : `xl` (1280 px) au-delà de 3 liens, `md` (768 px) sinon. Ajout de `whitespace-nowrap` sur les liens (« Points de contrôle » se cassait sur trois lignes) et d'un `gap-4` entre les zones.
+
+> Les classes responsives sont produites par ternaire ; Tailwind scanne le source en texte brut, donc les littéraux `"xl:flex"` / `"md:flex"` doivent rester écrits en entier.
+
 ## Déploiement
 
 ### Production
 - **URL** : https://chantiers.securionis.com
-- **Infrastructure** : Docker sur VPS Hostinger (72.61.187.90)
-- **SSL** : Let's Encrypt avec renouvellement automatique
-- **Reverse proxy** : Nginx (HTTP→HTTPS redirect)
-- **Process** : Docker Compose (securionis + nginx)
+- **Infrastructure** : Docker sur VPS Hostinger (31.97.36.92, hostname `srv842436`)
+- **SSL** : Cloudflare Full (Strict) — certificat Let's Encrypt sur l'origine, renouvellement auto via `certbot.timer`
+- **Reverse proxy** : Nginx (80 + 443 → `127.0.0.1:3000`, le port 80 restant ouvert pour les challenges ACME)
+- **Réseau** : UFW en deny incoming ; 80/443 restreints aux plages IP Cloudflare, Docker bindé sur `127.0.0.1:3000`
+- **Process** : Docker Compose, `env_file .env`, `restart unless-stopped`
 
 ### Mise à jour
 ```bash
-cd /app/securionis && git pull origin main && docker compose down && docker compose up -d --build
+cd /app/securionis && git pull && docker compose down && docker compose build --no-cache && docker compose up -d
 ```
+En cas d'erreur Docker « parent snapshot does not exist », intercaler `docker builder prune -f` avant le build.
+
+> Les migrations Supabase ne sont **pas** appliquées par le `git pull` : la base est sur Supabase Cloud, il faut les passer séparément.
 
 ### Variables d'environnement (`.env.local`)
 - `NEXT_PUBLIC_SUPABASE_URL` — URL du projet Supabase
