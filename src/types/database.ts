@@ -582,6 +582,68 @@ export type Database = {
           details?: Json | null;
         };
       };
+      comparaisons: {
+        Row: {
+          id: string;
+          chantier_id: string;
+          document_pe_id: string;
+          document_exe_id: string;
+          page_pe: number;
+          page_exe: number;
+          created_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          chantier_id: string;
+          document_pe_id: string;
+          document_exe_id: string;
+          page_pe?: number;
+          page_exe?: number;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          page_pe?: number;
+          page_exe?: number;
+        };
+      };
+      comparaison_annotations: {
+        Row: {
+          id: string;
+          comparaison_id: string;
+          type: "arrow" | "circle" | "rect" | "text" | "highlight";
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          color: "red" | "orange" | "green" | "yellow";
+          commentaire: string | null;
+          created_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          comparaison_id: string;
+          type: "arrow" | "circle" | "rect" | "text" | "highlight";
+          x: number;
+          y: number;
+          width?: number;
+          height?: number;
+          color?: "red" | "orange" | "green" | "yellow";
+          commentaire?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          x?: number;
+          y?: number;
+          width?: number;
+          height?: number;
+          color?: "red" | "orange" | "green" | "yellow";
+          commentaire?: string | null;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
