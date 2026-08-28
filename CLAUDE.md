@@ -581,11 +581,21 @@ Colonnes ajoutées à `ecarts` : `titre`, `type` (`'ecart_plan'`), `priorite` (`
 
 **Capture de la zone annotée** : le canevas OpenSeadragon est découpé autour de la boîte de l'annotation, avec marge, et le contour de la forme y est retracé (la couche SVG des annotations n'est pas dans ce canevas). Le visualiseur est passé en `crossOriginPolicy: "Anonymous"` pour que le canevas reste exportable.
 
-> ⚠️ **Bucket** : la capture PNG part dans **`visite-photos`**, pas `rapports`. Depuis le durcissement de juillet, `rapports` n'accepte que `application/pdf` — un PNG y est refusé avec un **400**. Le chantier est la première composante du chemin (`<chantierId>/comparaisons/<uuid>.png`), pour rester dans le périmètre de la policy de suppression du bucket.
->
-> Corollaire non corrigé : `document-manager.tsx` propose encore `.jpg/.png` à l'upload vers `rapports`, où ils seront rejetés. Cela explique probablement que les 24 documents en base soient tous des PDF.
+> **Bucket** : la capture PNG part dans **`visite-photos`**, avec le chantier en première composante du chemin (`<chantierId>/comparaisons/<uuid>.png`) pour rester dans le périmètre de la policy de suppression du bucket. C'était à l'origine une contrainte — `rapports` n'acceptait alors que les PDF — devenue un choix : une image reste à sa place dans le bucket d'images.
 
 **Page de détail d'une NC** : `/chantiers/[id]/nc/[ncId]` — elle n'existait pas, les NC n'étaient qu'une liste. Section « Plan comparé » avec les versions PE/EXE, la capture et un lien « Voir la comparaison » qui recharge le même couple via les paramètres `?pe=&exe=` lus par la page de comparaison.
+
+#### Types de fichiers acceptés par le bucket `rapports` (2026-08-28)
+
+Le durcissement de juillet (audit v3) avait restreint `rapports` à `application/pdf`. Or l'application autorise pdf, doc, docx, xls, xlsx, jpg, jpeg et png (`ALLOWED_MIME_TYPES` dans `file-validation.ts`) et écrit **tous** ces fichiers dans ce bucket. Conséquences, passées inaperçues pendant six semaines :
+
+- documents de chantier (`document-manager.tsx`) : seuls les PDF passaient, tout le reste était rejeté en 400 — ce qui explique que les 24 documents en base soient tous des PDF ;
+- base documentaire (`admin/documents`) : images rejetées ;
+- **logo d'entreprise** (`admin/entreprise`) : cassé depuis juillet, et d'autant plus difficile à voir que le `catch` y remplace le message réel par un « Erreur lors de l'upload du logo » générique.
+
+Migration 044 : le bucket accepte désormais exactement les sept types de la whitelist applicative. Le contrôle autoritaire reste la configuration du bucket ; il n'est pas relâché au-delà de ce que le code valide déjà (extension, type MIME, et magic bytes via `validateFileSignature`).
+
+> Vérifié par un envoi réel : un PNG déposé sur le chemin de `document-manager` répond 200 là où il répondait 400.
 
 ## Pièges connus et gotchas
 
@@ -604,7 +614,7 @@ Colonnes ajoutées à `ecarts` : `titre`, `type` (`'ecart_plan'`), `priorite` (`
 13. **Plans PE/EXE** : `plan_type`, `plan_version` et `parent_version_id` sont renseignés uniquement côté application (aucun trigger). Le chaînage `parent_version_id` est calculé au marquage à partir des documents déjà chargés.
 14. **pdf.js** : `destroy()` est porté par la tâche de chargement (`getDocument(...)`), pas par le document. Toute URL blob créée pour OpenSeadragon doit être révoquée au démontage.
 15. **Annotations de comparaison** : les coordonnées sont en unités monde OpenSeadragon, jamais en pixels. Une forme SVG qui doit être cliquable sur toute sa surface a besoin de `fill="transparent"`, pas `fill="none"`.
-16. **Bucket `rapports` = PDF uniquement** : toute image (PNG/JPEG) doit aller dans `visite-photos`, sinon l'upload répond 400.
+16. **Types acceptés par les buckets** : `rapports` accepte PDF, Word, Excel, JPEG et PNG (migration 044) ; `visite-photos` accepte JPEG et PNG. Un type hors liste est rejeté par le stockage avec un **400**, pas par le code — la configuration du bucket reste le contrôle autoritaire.
 17. **Une NC sans `reponse_id`** est forcément de type `ecart_plan` (contrainte `ecarts_origine_check`). Tout code qui joint `ecarts` à `reponses` doit tolérer l'absence de correspondance.
 18. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
