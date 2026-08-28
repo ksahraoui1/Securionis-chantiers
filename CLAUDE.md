@@ -413,6 +413,67 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 - **Worktree orphelin (NETTOYÉ)** : `.claude/worktrees/practical-buck` pointait vers un gitdir inexistant (`/Users/macbookairm4/…`), contenu figé au 29 mars, aucun fichier absent de `main`. Supprimé avec la branche locale `claude/practical-buck`.
 - **Policy SELECT admin (FAIT, migration 037, appliquée manuellement depuis le SQL Editor Supabase)** : `pc_select_active` limitait la lecture à `actif = true` pour tous, administrateurs compris — désactiver un point le faisait disparaître de l'admin sans moyen de le réactiver. La policy permissive `pc_select_admin` (`user_role() = 'administrateur'`) s'ajoute en OR : les non-administrateurs restent limités aux points actifs. Cycle complet validé en production sur un point de test temporaire (créé inactif → visible sous « Désactivés uniquement » → bouton « Réactiver » fonctionnel → point supprimé). Base revérifiée : 487 points, 487 actifs, 0 sans famille, 0 résidu.
 
+### Audit de sécurité v4 (2026-08-28)
+
+Audit complet : application, dépendances, base de données, en-têtes.
+
+**SSRF sur deux routes d'export (élevé, CORRIGÉ)** — `photos/export` et `rapports/export` téléchargeaient des URL issues de la base sans `isAllowedSupabaseUrl()`, alors que `documents/email` et `photos/analyze` l'appliquaient. Or `reponses.photos` et `visites.rapport_url` restent modifiables par un inspecteur via l'API REST : il pouvait y écrire une URL arbitraire et faire émettre au serveur une requête vers une cible interne, déclenchée à son insu par un administrateur lançant un export. Whitelist + timeout de 30 s ajoutés.
+
+**Dépendances (élevé, CORRIGÉ)** — 19 vulnérabilités dont 7 hautes ramenées à 3 modérées, **aucune haute ni critique**. `npm audit fix` + override ciblé dans `package.json` : `"overrides": { "minimatch@3": { "brace-expansion": "^1.1.18" } }` (DoS via eslint ; la 5.x transitive n'est pas concernée, d'où le ciblage). Les 3 modérées restantes (`@anthropic-ai/sdk`, `exceljs`/`uuid`) exigeraient un changement majeur — dont un **downgrade** d'exceljs qui réintroduirait la vulnérabilité SheetJS écartée en juillet. Écartées sciemment.
+
+**Cloisonnement multi-entreprise (moyen, CORRIGÉ)** — `targetProfile.entreprise_id !== profile.entreprise_id` était contournable : `null !== null` vaut `false`, donc un administrateur sans entreprise pouvait modifier ou supprimer tout profil sans entreprise, hors de son organisation. Garde explicite sur `update-user` et `delete-user`.
+
+**Écritures silencieuses (moyen, CORRIGÉ)** — `create-user` ne vérifiait ni l'upsert du profil ni le journal d'audit et renvoyait `success: true` quoi qu'il arrive ; un échec laissait un compte au rôle « invité » posé par `handle_new_user`. L'upsert est vérifié et le compte Auth supprimé en cas d'échec.
+
+**Rate limiting (moyen, CORRIGÉ)** — ajouté sur 7 routes : `photos/export` et `rapports/export` (5/h), `stripe/checkout` et `stripe/portal` (10/h), `stripe/setup` (3/j), `push/subscribe` (30/h), `push/test` (10/h).
+
+**`VAPID_PRIVATE_KEY` (faible, CORRIGÉ)** — lue via `process.env` sans la garde `requireServer()` ; passe par `getVapidPrivateKey()` dans `env.ts`.
+
+**Base de données (migrations 039 et 040, APPLIQUÉES)** — `search_path` fixé sur les trois fonctions `SECURITY DEFINER` (sans quoi un objet homonyme dans un schéma prioritaire permettrait un détournement avec les droits du propriétaire), et retrait de l'exposition RPC de `handle_new_user` et `prevent_user_self_role_change`, jusque-là appelables par `anon` via `/rest/v1/rpc/`.
+
+> La 040 corrige la 039 : `revoke ... from anon` seul est **sans effet**, le privilège venant du pseudo-rôle `PUBLIC` dont `anon` hérite. Il faut révoquer sur `PUBLIC` puis ré-accorder explicitement.
+
+Vérifié après application : triggers toujours activés (le privilège `EXECUTE` n'est contrôlé qu'à la création du trigger, pas à son déclenchement), RLS intacte, **advisors Supabase 10 → 2**.
+
+**Restant, assumé** :
+- `user_role()` reste exécutable par `authenticated` — le retirer casserait la RLS, les policies l'appellent dans le contexte de l'utilisateur.
+- Protection contre les mots de passe compromis : à activer dans le dashboard Supabase (Authentication → Password security).
+
+**Vérifié sain** : RLS active sur les 19 tables, toutes avec policies · signature du webhook Stripe · middleware à correspondance exacte · aucun `dangerouslySetInnerHTML`/`eval`/`innerHTML` · exports réservés aux administrateurs · validation des uploads · en-têtes complets (HSTS preload, `X-Frame-Options: DENY`, nosniff, Referrer-Policy, Permissions-Policy) · CSP stricte. `Permissions-Policy: camera=()` ne gêne pas la prise de photo : l'app utilise `capture="environment"` sur un `<input type="file">`, non soumis à cette politique.
+
+### Rattachement des profils à l'entreprise (2026-08-28)
+
+Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
+- `create-user` échouait systématiquement sur `if (!profile.entreprise_id)` — d'où l'**absence totale** de journaux `create_user` dans `audit_logs`, et le fait que les comptes existants avaient été créés via `/register` (donc en rôle « invité »).
+- Le durcissement du cloisonnement ci-dessus aurait rendu `update-user` et `delete-user` inopérants.
+
+Tous rattachés à FWN. ⚠️ L'`UPDATE` direct est **refusé par le trigger** `enforce_role_immutability` (« La modification de l'entreprise n'est pas autorisée ») : il faut passer par `set role service_role;`, l'exemption prévue par le trigger et déjà utilisée par les routes API côté serveur.
+
+### Incident 502 — buffers proxy Nginx (2026-08-28)
+
+**Symptôme** : 502 Bad Gateway pour les utilisateurs **connectés** uniquement. Un `curl` sans cookie répondait 200, le navigateur avec session tombait en 502 — d'où un diagnostic initial trompeur (« le site répond »).
+
+**Cause** : aucune directive `proxy_buffer_*` n'était définie dans `/etc/nginx/sites-available/securionis`. Nginx utilisait donc les valeurs par défaut (4k/8k), insuffisantes pour les en-têtes de Next.js combinés aux cookies de session Supabase (JWT volumineux) :
+
+```
+upstream sent too big header while reading response header from upstream
+```
+
+**Correctif** appliqué dans les deux blocs `location /` (sauvegarde `.bak-AAAAMMJJ-HHMMSS` créée avant) :
+
+```nginx
+proxy_buffer_size 32k;
+proxy_buffers 8 32k;
+proxy_busy_buffers_size 64k;
+```
+
+Puis `nginx -t` et `systemctl reload nginx` (rechargement sans coupure).
+
+**À savoir** :
+- L'incident était **antérieur** au déploiement de l'audit v4 (première erreur à 00:21, déploiement à 00:56) — la corrélation temporelle était trompeuse.
+- Après un `reload`, les anciens workers terminent leurs requêtes en cours avec l'**ancienne** configuration : quelques erreurs peuvent encore apparaître dans les secondes qui suivent, sans signifier que le correctif a échoué. Vérifier en générant du trafic authentifié puis en relisant l'horodatage de la dernière erreur.
+- Symptôme voisin possible si les en-têtes grossissent encore : augmenter à 64k.
+
 ---
 
 ## Pièges connus et gotchas
@@ -426,8 +487,10 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 7. **Variables `NEXT_PUBLIC_*`** : inlinées par Next.js au build — les getters dans `env.ts` sont des fonctions (pas des constantes) pour préserver ce comportement.
 8. **Service Worker cache** : incrémenter `CACHE_VERSION` dans `public/sw.js` pour forcer la mise à jour chez les clients.
 9. **Migrations Supabase** : les migrations 001-015 sont hors tracking CLI. Ne pas utiliser `supabase db push` sans vérifier l'état réel de la base distante.
-10. **Familles des points de contrôle** : `famille` est renseignée par le trigger `points_controle_famille_trg` (migration 038) si l'appelant ne la fournit pas ; `mots_cles` n'a pas d'équivalent et doit être fourni par l'appelant (`genererMotsCles()`).
-11. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+10. **`revoke ... from anon` est insuffisant** : les privilèges des fonctions viennent du pseudo-rôle `PUBLIC`, dont `anon` hérite. Révoquer sur `PUBLIC`, puis `grant` explicitement aux rôles nécessaires.
+11. **Modifier `profiles.role` ou `profiles.entreprise_id`** exige `set role service_role;` — le trigger `enforce_role_immutability` refuse toute autre origine.
+12. **Familles des points de contrôle** : `famille` est renseignée par le trigger `points_controle_famille_trg` (migration 038) si l'appelant ne la fournit pas ; `mots_cles` n'a pas d'équivalent et doit être fourni par l'appelant (`genererMotsCles()`).
+13. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
