@@ -616,7 +616,17 @@ Le canevas d'OpenSeadragon est **transparent** là où aucun plan ne couvre : le
 
 > La hauteur du cadre d'image est fixée **en points** (470). Avec `flexGrow: 1`, react-pdf avertit « Node of type IMAGE can't wrap between pages and it's bigger than available page height » : une image ne peut pas se couper entre deux pages et la hauteur du conteneur n'est pas résolue avant sa mise en page.
 
-**Impression** : un `<iframe srcdoc>` masqué contenant la capture et une ligne de contexte, `@page { size: landscape }`, puis `contentWindow.print()`. Le nettoyage (retrait de l'iframe, révocation de l'URL blob) attend `afterprint`, avec un filet à 120 s pour les navigateurs qui ne l'émettent pas. Vérifié : `about:srcdoc` n'est pas bloqué par la CSP `frame-src 'self'`.
+**Impression** (`src/lib/utils/comparaison-impression.ts`) : un `<iframe srcdoc>` masqué, puis `contentWindow.print()`. Le nettoyage (retrait de l'iframe, révocation de l'URL blob) attend `afterprint`, avec un filet à 120 s pour les navigateurs qui ne l'émettent pas. Vérifié : `about:srcdoc` n'est pas bloqué par la CSP `frame-src 'self'`.
+
+Le document imprimé tient sur **une page A4 paysage** (en-tête + capture), plus une seconde page pour le tableau des annotations quand il y en a.
+
+> ⚠️ **La capture doit être bornée sur ses deux dimensions.** La première version utilisait `img { width: 100%; height: auto }` : sur les 277 mm de large utiles et un ratio de capture 944/844, l'image réclame **248 mm de haut** pour 190 disponibles. Résultat imprimé : page 1 quasi vide (l'image ne tient pas sous le titre), image coupée entre les pages 2 et 3. `max-width: 100%` **et** `max-height` en millimètres.
+>
+> Valeur de rupture mesurée avec Chrome (`--headless --print-to-pdf`, en-têtes navigateur activés) : à **176 mm** la capture bascule sur une seconde page. La constante est fixée à **168 mm**, soit 8 mm de sécurité.
+>
+> `print-color-adjust: exact` est indispensable : sans lui les navigateurs suppriment les aplats à l'impression et les pastilles de couleur disparaissent.
+
+Les en-têtes et pieds de page du navigateur (date, URL, numéro de page) ne peuvent pas être désactivés depuis la page — c'est un réglage de la boîte d'impression. Le message de statut le rappelle à l'utilisateur.
 
 **Partage par email** : `POST /api/comparaisons/[id]/email` reprend le chemin de `documents/email` — capture PNG en pièce jointe, lien `?pe=&exe=` vers la même vue, garde-fous habituels (email valide, pas de CRLF, message ≤ 2000 caractères, `escapeHtml`), journal `send_comparaison_email`.
 

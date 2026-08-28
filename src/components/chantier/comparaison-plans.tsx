@@ -21,6 +21,11 @@ import {
 } from "@/components/chantier/nc-depuis-annotation";
 import { GroupeExport } from "@/components/chantier/comparaison-export";
 import { capturerVue } from "@/lib/utils/comparaison-capture";
+import {
+  HEX_COULEURS as HEX_IMPRESSION,
+  LIBELLES_COULEUR,
+  LIBELLES_TYPE,
+} from "@/lib/utils/comparaison-libelles";
 
 type OSDStatic = typeof OpenSeadragonNS;
 type Viewer = OpenSeadragonNS.Viewer;
@@ -663,6 +668,17 @@ export function ComparaisonPlans({
     setAnnotationNC(annotation);
   }
 
+  // Vue « rapport » des annotations : numérotées comme dans la liste et dans
+  // le PDF, avec les libellés français et le numéro de NC rattachée.
+  const annotationsImpression = annotations.map((annotation, index) => ({
+    numero: index + 1,
+    type: LIBELLES_TYPE[annotation.type] ?? annotation.type,
+    couleur: LIBELLES_COULEUR[annotation.color] ?? annotation.color,
+    hex: HEX_IMPRESSION[annotation.color] ?? "#6b7280",
+    commentaire: annotation.commentaire,
+    numeroNC: liensNC[annotation.id]?.numero ?? null,
+  }));
+
   // Les poignées de sélection ne doivent pas figurer dans l'export : on
   // désélectionne, puis on laisse React repeindre avant de lire le canevas.
   async function capturerComparaison(): Promise<Blob> {
@@ -934,7 +950,7 @@ export function ComparaisonPlans({
                   docEXE={docEXE}
                   pagePE={pagePE}
                   pageEXE={pageEXE}
-                  nbAnnotations={annotations.length}
+                  annotations={annotationsImpression}
                   onCapturer={capturerComparaison}
                 />
               </>
