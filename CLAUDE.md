@@ -1009,6 +1009,32 @@ L'image est **toujours** renvoyée : en échec, une copie non transformée du pl
 2. Le motif du refus remonte jusqu'à l'écran — « Plans trop différents »
 n'appelle pas la même vérification qu'une transformation aberrante.
 
+#### Diagnostic d'un échec de détection (2026-08-28)
+
+Le bandeau d'erreur porte la **cause** entre parenthèses, à la suite du message
+générique imposé par la spécification. D'où une règle de lecture utile :
+
+> **Un message sans parenthèse ne peut pas être un refus raisonné.** Les deux
+> modes fournissent toujours un motif quand ils renoncent — « Plans trop
+> différents », « la transformation replie le plan hors du cadre », « les deux
+> plans diffèrent sur une part trop importante de leur surface ». Un message nu
+> signale donc une **exception**, pas une incompatibilité de plans.
+
+Les points de panne de la capture lèvent une erreur nommée plutôt que de
+renvoyer `null` en silence — dont le cas où OpenSeadragon retombe sur son rendu
+HTML, sans canevas, quand le navigateur refuse WebGL **et** le canevas 2D : la
+comparaison est alors impossible.
+
+**Ce que les deux modes partagent** est court : `chargerOpenCv()`. Quand les
+deux échouent de la même façon, c'est là qu'il faut regarder d'abord.
+
+> Signalé en usage réel sur une paire qui fonctionne pourtant en local
+> (15 différences, échelle résiduelle 0,9). Trois pistes écartées par la
+> mesure : le SSIM tient jusqu'à 4,6 Mpx sans saturer le tas WebAssembly
+> (56 → 174 ms), `opencv.js` et `opencv_js.wasm` répondent 200 avec le bon type
+> MIME en production, et le Service Worker n'intercepte pas `/vendor` — ses
+> motifs ne couvrent ni `.js` ni `.wasm`.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -1041,7 +1067,8 @@ n'appelle pas la même vérification qu'une transformation aberrante.
 28. **Les écarts du rapport viennent du navigateur** : la détection est client-side, le serveur ne peut pas la recalculer. Les valeurs reçues sont bornées et typées avant d'entrer dans le document, et ne sont jamais écrites en base.
 29. **`resizeToSameDimensions` ne doit jamais déformer** : deux plans du même ouvrage sont couramment mis en page différemment (page carrée contre A-série). Étirer détruit les descripteurs ORB et rend l'alignement impossible. Mise à l'échelle isotrope puis fond blanc.
 30. **`setWidth` d'OpenSeadragon conserve le coin supérieur gauche** : tout redimensionnement de calque doit être recentré à la main, sinon la vue s'échappe.
-31. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+31. **Message de détection sans parenthèse** = exception, jamais un refus raisonné : les deux modes donnent toujours un motif quand ils renoncent. Les deux ne partagent que `chargerOpenCv()`.
+32. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
