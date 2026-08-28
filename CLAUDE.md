@@ -449,6 +449,31 @@ Les 3 profils de production avaient `entreprise_id = null` alors que l'entrepris
 
 Tous rattachés à FWN. ⚠️ L'`UPDATE` direct est **refusé par le trigger** `enforce_role_immutability` (« La modification de l'entreprise n'est pas autorisée ») : il faut passer par `set role service_role;`, l'exemption prévue par le trigger et déjà utilisée par les routes API côté serveur.
 
+### Incident 502 — buffers proxy Nginx (2026-08-28)
+
+**Symptôme** : 502 Bad Gateway pour les utilisateurs **connectés** uniquement. Un `curl` sans cookie répondait 200, le navigateur avec session tombait en 502 — d'où un diagnostic initial trompeur (« le site répond »).
+
+**Cause** : aucune directive `proxy_buffer_*` n'était définie dans `/etc/nginx/sites-available/securionis`. Nginx utilisait donc les valeurs par défaut (4k/8k), insuffisantes pour les en-têtes de Next.js combinés aux cookies de session Supabase (JWT volumineux) :
+
+```
+upstream sent too big header while reading response header from upstream
+```
+
+**Correctif** appliqué dans les deux blocs `location /` (sauvegarde `.bak-AAAAMMJJ-HHMMSS` créée avant) :
+
+```nginx
+proxy_buffer_size 32k;
+proxy_buffers 8 32k;
+proxy_busy_buffers_size 64k;
+```
+
+Puis `nginx -t` et `systemctl reload nginx` (rechargement sans coupure).
+
+**À savoir** :
+- L'incident était **antérieur** au déploiement de l'audit v4 (première erreur à 00:21, déploiement à 00:56) — la corrélation temporelle était trompeuse.
+- Après un `reload`, les anciens workers terminent leurs requêtes en cours avec l'**ancienne** configuration : quelques erreurs peuvent encore apparaître dans les secondes qui suivent, sans signifier que le correctif a échoué. Vérifier en générant du trafic authentifié puis en relisant l'horodatage de la dernière erreur.
+- Symptôme voisin possible si les en-têtes grossissent encore : augmenter à 64k.
+
 ---
 
 ## Pièges connus et gotchas
