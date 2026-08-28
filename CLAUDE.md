@@ -527,6 +527,22 @@ Page `/chantiers/[id]/comparaison` (`src/app/(dashboard)/chantiers/[id]/comparai
 > - OpenSeadragon zoome au **simple clic** par défaut. Insupportable pour un outil où l'on désigne des points : `gestureSettingsMouse/Touch: { clickToZoom: false }`, le double-clic et la molette suffisent.
 > - `requestFullscreen()` peut être refusé (`TypeError: Permissions check failed` dans certains navigateurs embarqués). Le refus est désormais rattrapé et affiché, sinon le bouton paraît simplement inerte. La `Permissions-Policy` de l'app ne bloque pas `fullscreen`.
 
+#### Réglage des opacités, recalage et compteur (2026-08-28)
+
+**Deux opacités indépendantes** (`opacitePE`, `opaciteEXE`, défaut 100 / 50) plutôt qu'une seule valeur sur le calque du dessus : les préréglages demandés (« PE 75 % / EXE 25 % ») supposent que les deux calques soient réglables. Conséquence à connaître : le fond du visualiseur est passé en `bg-gray-100`. Sur l'ancien fond sombre, un plan à 50 % virait au gris sale au lieu de s'estomper.
+
+Le panneau fournit la lecture en direct (« Plan PE : x % — Plan EXE : y % »), des boutons −/+ au pas de 5 % bornés à [0, 100], « Reset » (50/50), « Basculer » (alterne PE seul ↔ EXE seul) et cinq pastilles de préréglage qui s'activent quand les valeurs correspondent. En vue côte à côte, tout ce panneau est désactivé et le dit — les deux plans y sont à 100 %.
+
+**Le cadenas ne synchronise rien** : la synchronisation est structurelle (un seul viewer), rien ne peut dériver. Le bouton sert au **recalage** de deux plans qui ne se superposent pas exactement :
+- verrouillé (défaut) : le glissement déplace la vue, les deux plans ensemble ;
+- déverrouillé : le gestionnaire `canvas-drag` met `event.preventDefaultAction = true` et déplace le seul calque du dessus (`deltaPointsFromPixels` puis `setPosition`). Le décalage est mémorisé dans `decalageRef` pendant le glissement, puis commité en état sur `canvas-drag-end` — sans quoi `appliquerCalques()` le remettrait à zéro au prochain changement d'opacité. Un bouton de recentrage apparaît dès qu'un décalage existe.
+
+Le cadenas est désactivé en vue côte à côte. Le décalage s'applique toujours au calque du dessus : inverser les calques transfère donc le décalage à l'autre plan.
+
+> Les gestionnaires OpenSeadragon sont enregistrés **une seule fois**, à l'initialisation du viewer : ils lisent les réglages courants via `etatRef` (miroir de `synchro`, `split`, `inverse`), jamais via la fermeture, qui serait figée sur le premier rendu.
+
+**Compteur de différences** : simple entier de session (`+` et remise à zéro visible à partir de 1), affiché en haut à droite de la barre d'outils. Aucune détection automatique, aucune persistance en base.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`** dans `audit_logs` : la colonne s'appelle `resource` (depuis migration 022). `resource_type` provoque des inserts silencieusement ignorés.

@@ -27,14 +27,32 @@ interface ComparaisonPlansProps {
 const EXTENSIONS_IMAGE = /\.(jpe?g|png|webp|gif)$/i;
 const EXTENSION_PDF = /\.pdf$/i;
 
+const COULEUR_PE = "#2E7D32";
+const COULEUR_EXE = "#E67E22";
+const NAVY = "#002855";
+
 // Largeur de rendu d'une page PDF, en pixels : assez fin pour zoomer sur des
 // cotes, assez léger pour ne pas saturer la mémoire sur tablette.
 const LARGEUR_RENDU_PDF = 2400;
+
+const PAS_OPACITE = 5;
+
+const PRESETS: { label: string; pe: number; exe: number }[] = [
+  { label: "PE seul", pe: 100, exe: 0 },
+  { label: "PE 75 % / EXE 25 %", pe: 75, exe: 25 },
+  { label: "50 / 50", pe: 50, exe: 50 },
+  { label: "PE 25 % / EXE 75 %", pe: 25, exe: 75 },
+  { label: "EXE seul", pe: 0, exe: 100 },
+];
 
 interface SourcePlan {
   url: string;
   nbPages: number;
   liberer?: () => void;
+}
+
+function borner(valeur: number): number {
+  return Math.min(100, Math.max(0, valeur));
 }
 
 // OpenSeadragon n'affiche que des images : une page de PDF est donc rendue
@@ -113,9 +131,13 @@ export function ComparaisonPlans({
   const [pret, setPret] = useState(false);
   const [preparation, setPreparation] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [opacite, setOpacite] = useState(50);
+  const [opacitePE, setOpacitePE] = useState(100);
+  const [opaciteEXE, setOpaciteEXE] = useState(50);
   const [split, setSplit] = useState(false);
   const [inverse, setInverse] = useState(false);
+  const [synchro, setSynchro] = useState(true);
+  const [decalage, setDecalage] = useState({ x: 0, y: 0 });
+  const [differences, setDifferences] = useState(0);
   const [pleinEcran, setPleinEcran] = useState(false);
 
   const conteneurRef = useRef<HTMLDivElement>(null);
@@ -124,12 +146,17 @@ export function ComparaisonPlans({
   const osdRef = useRef<OSDStatic | null>(null);
   const itemPERef = useRef<TiledImage | null>(null);
   const itemEXERef = useRef<TiledImage | null>(null);
+  const decalageRef = useRef({ x: 0, y: 0 });
+
+  // Miroir des réglages, lu depuis les gestionnaires d'événements OpenSeadragon
+  // qui sont enregistrés une seule fois, à l'initialisation du visualiseur.
+  const etatRef = useRef({ synchro, split, inverse });
+  etatRef.current = { synchro, split, inverse };
 
   const docPE = plansPE.find((p) => p.id === idPE) ?? null;
   const docEXE = plansEXE.find((p) => p.id === idEXE) ?? null;
 
-  // Le calque du dessus reçoit l'opacité réglable ; par défaut c'est l'EXE.
-  const typeDessus = inverse ? "PE" : "EXE";
+  const recale = decalage.x !== 0 || decalage.y !== 0;
 
   const appliquerCalques = useCallback(() => {
     const viewer = viewerRef.current;
@@ -143,18 +170,22 @@ export function ComparaisonPlans({
 
     viewer.world.setItemIndex(dessous, 0);
     viewer.world.setItemIndex(dessus, 1);
-    dessous.setOpacity(1);
 
     if (split) {
-      dessus.setOpacity(1);
+      // Côte à côte : les deux plans sont pleinement visibles, l'opacité n'a
+      // plus de sens et le recalage non plus.
+      pe.setOpacity(1);
+      exe.setOpacity(1);
       dessous.setPosition(new OSD.Point(0, 0));
       dessus.setPosition(new OSD.Point(1.05, 0));
-    } else {
-      dessus.setOpacity(opacite / 100);
-      pe.setPosition(new OSD.Point(0, 0));
-      exe.setPosition(new OSD.Point(0, 0));
+      return;
     }
-  }, [inverse, split, opacite]);
+
+    pe.setOpacity(opacitePE / 100);
+    exe.setOpacity(opaciteEXE / 100);
+    dessous.setPosition(new OSD.Point(0, 0));
+    dessus.setPosition(new OSD.Point(decalage.x, decalage.y));
+  }, [inverse, split, opacitePE, opaciteEXE, decalage]);
 
   // Référence toujours à jour, pour l'appeler depuis l'effet d'initialisation
   const appliquerCalquesRef = useRef(appliquerCalques);
@@ -208,6 +239,28 @@ export function ComparaisonPlans({
         osdRef.current = OSD;
         viewerRef.current = viewer;
 
+        // Verrou ouvert : le glissement déplace le calque du dessus au lieu de
+        // déplacer la vue, ce qui permet de recaler deux plans mal superposés.
+        viewer.addHandler("canvas-drag", (event) => {
+          const { synchro: verrouille, split: cote, inverse: inv } = etatRef.current;
+          if (verrouille || cote) return;
+
+          const v = viewerRef.current;
+          const dessus = inv ? itemPERef.current : itemEXERef.current;
+          if (!v || !dessus) return;
+
+          event.preventDefaultAction = true;
+          const delta = v.viewport.deltaPointsFromPixels(event.delta, true);
+          const position = dessus.getBounds(true).getTopLeft().plus(delta);
+          dessus.setPosition(position, true);
+          decalageRef.current = { x: position.x, y: position.y };
+        });
+
+        viewer.addHandler("canvas-drag-end", () => {
+          if (etatRef.current.synchro || etatRef.current.split) return;
+          setDecalage(decalageRef.current);
+        });
+
         const ajouter = (
           url: string,
           index: number,
@@ -218,7 +271,6 @@ export function ComparaisonPlans({
             tileSource: { type: "image", url },
             index,
             width: 1,
-            opacity: index === 0 ? 1 : opacite / 100,
             success: (event) => {
               cible.current = (event as unknown as { item: TiledImage }).item;
               if (itemPERef.current && itemEXERef.current) {
@@ -260,11 +312,9 @@ export function ComparaisonPlans({
       aLiberer.forEach((liberer) => liberer());
       setPret(false);
     };
-    // L'opacité initiale est lue au montage : la changer ne doit pas tout reconstruire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [charge, docPE?.id, docEXE?.id, pagePE, pageEXE]);
+  }, [charge, docPE, docEXE, pagePE, pageEXE]);
 
-  // Opacité, ordre des calques, disposition
+  // Opacités, ordre des calques, disposition, recalage
   useEffect(() => {
     appliquerCalques();
   }, [appliquerCalques]);
@@ -310,6 +360,24 @@ export function ComparaisonPlans({
     });
   }
 
+  function reinitialiserRecalage() {
+    decalageRef.current = { x: 0, y: 0 };
+    setDecalage({ x: 0, y: 0 });
+  }
+
+  // Alterne entre « PE seul » et « EXE seul »
+  function basculerPlans() {
+    if (opacitePE >= opaciteEXE) {
+      setOpacitePE(0);
+      setOpaciteEXE(100);
+    } else {
+      setOpacitePE(100);
+      setOpaciteEXE(0);
+    }
+  }
+
+  const opaciteDesactivee = split;
+
   return (
     <div className="space-y-5">
       {/* Sélecteurs */}
@@ -318,7 +386,8 @@ export function ComparaisonPlans({
           <div>
             <label
               htmlFor="plan-pe"
-              className="block text-xs font-semibold text-[#2E7D32] mb-1"
+              className="block text-xs font-semibold mb-1"
+              style={{ color: COULEUR_PE }}
             >
               Plan d&apos;enquête publique (PE)
             </label>
@@ -341,7 +410,8 @@ export function ComparaisonPlans({
           <div>
             <label
               htmlFor="plan-exe"
-              className="block text-xs font-semibold text-[#E67E22] mb-1"
+              className="block text-xs font-semibold mb-1"
+              style={{ color: COULEUR_EXE }}
             >
               Plan d&apos;exécution (EXE)
             </label>
@@ -368,7 +438,8 @@ export function ComparaisonPlans({
             type="button"
             onClick={lancerComparaison}
             disabled={!docPE || !docEXE || preparation}
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#002855]/90 disabled:opacity-50 transition-colors text-sm"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity text-sm"
+            style={{ backgroundColor: NAVY }}
           >
             <span className="material-symbols-outlined text-lg">compare_arrows</span>
             {preparation ? "Préparation…" : "Charger la comparaison"}
@@ -385,7 +456,8 @@ export function ComparaisonPlans({
             <p className="text-sm text-red-800">{erreur}</p>
             <Link
               href={`/chantiers/${chantierId}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-[#002855] hover:underline mt-2"
+              className="inline-flex items-center gap-1 text-xs font-medium hover:underline mt-2"
+              style={{ color: NAVY }}
             >
               <span className="material-symbols-outlined text-sm">upload_file</span>
               Ajouter un plan
@@ -431,12 +503,31 @@ export function ComparaisonPlans({
               actif={inverse}
               onClick={() => setInverse((v) => !v)}
             />
+            <OutilBouton
+              icone={synchro ? "lock" : "lock_open"}
+              titre={
+                synchro
+                  ? "Zoom verrouillé : les deux plans bougent ensemble. Déverrouiller pour recaler le plan du dessus."
+                  : "Verrou ouvert : glissez pour recaler le plan du dessus. Cliquez pour reverrouiller."
+              }
+              libelle={synchro ? "Zoom verrouillé" : "Recalage libre"}
+              actif={!synchro}
+              desactive={split}
+              onClick={() => setSynchro((v) => !v)}
+            />
+            {!synchro && recale && (
+              <OutilBouton
+                icone="filter_center_focus"
+                titre="Remettre le plan du dessus dans sa position d'origine"
+                onClick={reinitialiserRecalage}
+              />
+            )}
 
             {/* Choix de page pour les PDF multi-pages */}
             <SelecteurPage
               id="page-pe"
               etiquette="Page PE"
-              couleur="#2E7D32"
+              couleur={COULEUR_PE}
               page={pagePE}
               nbPages={nbPagesPE}
               onChange={setPagePE}
@@ -444,57 +535,260 @@ export function ComparaisonPlans({
             <SelecteurPage
               id="page-exe"
               etiquette="Page EXE"
-              couleur="#E67E22"
+              couleur={COULEUR_EXE}
               page={pageEXE}
               nbPages={nbPagesEXE}
               onChange={setPageEXE}
             />
+
+            {/* Compteur de différences */}
+            <div className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2 py-1">
+              <span
+                className="material-symbols-outlined text-base"
+                style={{ color: COULEUR_EXE }}
+              >
+                difference
+              </span>
+              <span className="text-xs font-semibold" style={{ color: NAVY }}>
+                Différences repérées : {differences}
+              </span>
+              <button
+                type="button"
+                onClick={() => setDifferences((n) => n + 1)}
+                title="Ajouter une différence"
+                aria-label="Ajouter une différence"
+                className="inline-flex items-center justify-center min-h-touch min-w-touch rounded-lg text-white hover:opacity-90 transition-opacity w-8 h-8"
+                style={{ backgroundColor: NAVY }}
+              >
+                <span className="material-symbols-outlined text-base">add</span>
+              </button>
+              {differences > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDifferences(0)}
+                  title="Remettre le compteur à zéro"
+                  aria-label="Remettre le compteur à zéro"
+                  className="inline-flex items-center justify-center min-h-touch min-w-touch rounded-lg text-gray-500 hover:bg-gray-100 transition-colors w-8 h-8"
+                >
+                  <span className="material-symbols-outlined text-base">restart_alt</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Conteneur OpenSeadragon */}
           <div className="relative flex-1">
             <div
               ref={conteneurRef}
-              className={`w-full bg-gray-900 ${pleinEcran ? "h-full" : "h-[65vh] min-h-[380px]"}`}
+              className={`w-full bg-gray-100 ${
+                pleinEcran ? "h-full" : "h-[65vh] min-h-[380px]"
+              }`}
             />
             {!pret && !erreur && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <p className="text-sm text-white/80 bg-black/40 rounded-lg px-3 py-2">
+                <p className="text-sm text-gray-700 bg-white/90 border border-gray-300 rounded-lg px-3 py-2">
                   {preparation ? "Préparation des plans…" : "Chargement…"}
                 </p>
               </div>
             )}
+            {!synchro && !split && (
+              <p className="absolute bottom-2 left-2 text-[11px] text-white bg-black/60 rounded-lg px-2 py-1 pointer-events-none">
+                Recalage libre : glissez pour déplacer le plan{" "}
+                {inverse ? "PE" : "EXE"}
+              </p>
+            )}
           </div>
 
-          {/* Opacité */}
-          <div className="border-t border-gray-200 px-4 py-3 bg-gray-50">
-            <label
-              htmlFor="opacite-calque"
-              className="block text-xs font-semibold text-[#002855] mb-2"
-            >
-              Opacité du plan {typeDessus} : {opacite} %
-              {split && (
-                <span className="font-normal text-gray-500">
-                  {" "}
-                  — sans effet en vue côte à côte
-                </span>
-              )}
-            </label>
-            <input
-              id="opacite-calque"
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={opacite}
-              onChange={(e) => setOpacite(Number(e.target.value))}
-              disabled={split}
-              className="w-full accent-[#E67E22] disabled:opacity-50"
+          {/* Réglage des opacités */}
+          <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm font-semibold" style={{ color: NAVY }}>
+                <span style={{ color: COULEUR_PE }}>Plan PE : {opacitePE} %</span>
+                <span className="text-gray-400"> — </span>
+                <span style={{ color: COULEUR_EXE }}>Plan EXE : {opaciteEXE} %</span>
+                {opaciteDesactivee && (
+                  <span className="font-normal text-gray-500">
+                    {" "}
+                    — sans effet en vue côte à côte
+                  </span>
+                )}
+              </p>
+              <div className="flex items-center gap-2">
+                <BoutonSecondaire
+                  icone="restart_alt"
+                  libelle="Reset"
+                  titre="Revenir à 50 % / 50 %"
+                  desactive={opaciteDesactivee}
+                  onClick={() => {
+                    setOpacitePE(50);
+                    setOpaciteEXE(50);
+                  }}
+                />
+                <BoutonSecondaire
+                  icone="swap_horiz"
+                  libelle="Basculer"
+                  titre="Alterner entre PE seul et EXE seul"
+                  desactive={opaciteDesactivee}
+                  onClick={basculerPlans}
+                />
+              </div>
+            </div>
+
+            <LigneOpacite
+              id="opacite-pe"
+              etiquette="PE"
+              couleur={COULEUR_PE}
+              valeur={opacitePE}
+              desactive={opaciteDesactivee}
+              onChange={setOpacitePE}
             />
+            <LigneOpacite
+              id="opacite-exe"
+              etiquette="EXE"
+              couleur={COULEUR_EXE}
+              valeur={opaciteEXE}
+              desactive={opaciteDesactivee}
+              onChange={setOpaciteEXE}
+            />
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {PRESETS.map((preset) => {
+                const actif =
+                  opacitePE === preset.pe && opaciteEXE === preset.exe;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setOpacitePE(preset.pe);
+                      setOpaciteEXE(preset.exe);
+                    }}
+                    disabled={opaciteDesactivee}
+                    aria-pressed={actif}
+                    className={`px-3 py-1.5 min-h-touch rounded-full text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
+                      actif
+                        ? "text-white"
+                        : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                    }`}
+                    style={actif ? { backgroundColor: NAVY } : undefined}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function LigneOpacite({
+  id,
+  etiquette,
+  couleur,
+  valeur,
+  desactive,
+  onChange,
+}: {
+  id: string;
+  etiquette: string;
+  couleur: string;
+  valeur: number;
+  desactive: boolean;
+  onChange: (valeur: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <label
+        htmlFor={id}
+        className="text-xs font-bold w-10 shrink-0"
+        style={{ color: couleur }}
+      >
+        {etiquette}
+      </label>
+      <BoutonPas
+        icone="remove"
+        titre={`Diminuer l'opacité du plan ${etiquette} de ${PAS_OPACITE} %`}
+        desactive={desactive || valeur <= 0}
+        onClick={() => onChange(borner(valeur - PAS_OPACITE))}
+      />
+      <input
+        id={id}
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={valeur}
+        onChange={(e) => onChange(Number(e.target.value))}
+        disabled={desactive}
+        className="flex-1 disabled:opacity-50"
+        style={{ accentColor: couleur }}
+      />
+      <BoutonPas
+        icone="add"
+        titre={`Augmenter l'opacité du plan ${etiquette} de ${PAS_OPACITE} %`}
+        desactive={desactive || valeur >= 100}
+        onClick={() => onChange(borner(valeur + PAS_OPACITE))}
+      />
+      <span className="text-xs font-semibold text-gray-600 w-12 text-right tabular-nums">
+        {valeur} %
+      </span>
+    </div>
+  );
+}
+
+function BoutonPas({
+  icone,
+  titre,
+  desactive,
+  onClick,
+}: {
+  icone: string;
+  titre: string;
+  desactive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titre}
+      aria-label={titre}
+      disabled={desactive}
+      className="inline-flex items-center justify-center min-h-touch min-w-touch w-9 h-9 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 transition-colors shrink-0"
+    >
+      <span className="material-symbols-outlined text-base">{icone}</span>
+    </button>
+  );
+}
+
+function BoutonSecondaire({
+  icone,
+  libelle: texte,
+  titre,
+  desactive,
+  onClick,
+}: {
+  icone: string;
+  libelle: string;
+  titre: string;
+  desactive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titre}
+      disabled={desactive}
+      className="inline-flex items-center gap-1.5 min-h-touch px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-medium hover:bg-gray-100 disabled:opacity-50 transition-colors"
+      style={{ color: NAVY }}
+    >
+      <span className="material-symbols-outlined text-base">{icone}</span>
+      {texte}
+    </button>
   );
 }
 
@@ -517,11 +811,7 @@ function SelecteurPage({
 
   return (
     <div className="flex items-center gap-1 ml-1">
-      <label
-        htmlFor={id}
-        className="text-xs font-semibold"
-        style={{ color: couleur }}
-      >
+      <label htmlFor={id} className="text-xs font-semibold" style={{ color: couleur }}>
         {etiquette}
       </label>
       <select
@@ -545,12 +835,14 @@ function OutilBouton({
   titre,
   libelle: texte,
   actif = false,
+  desactive = false,
   onClick,
 }: {
   icone: string;
   titre: string;
   libelle?: string;
   actif?: boolean;
+  desactive?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -560,11 +852,11 @@ function OutilBouton({
       title={titre}
       aria-label={titre}
       aria-pressed={texte ? actif : undefined}
-      className={`inline-flex items-center gap-1.5 min-h-touch min-w-touch justify-center px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-        actif
-          ? "bg-[#002855] text-white"
-          : "text-[#002855] hover:bg-[#002855]/10"
+      disabled={desactive}
+      className={`inline-flex items-center gap-1.5 min-h-touch min-w-touch justify-center px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${
+        actif ? "text-white" : "hover:bg-[#002855]/10"
       }`}
+      style={actif ? { backgroundColor: NAVY } : { color: NAVY }}
     >
       <span className="material-symbols-outlined text-lg">{icone}</span>
       {texte && <span className="hidden sm:inline">{texte}</span>}
