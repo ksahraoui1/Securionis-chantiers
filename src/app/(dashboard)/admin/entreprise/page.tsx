@@ -82,8 +82,15 @@ export default function AdminEntreprisePage() {
       } = supabase.storage.from("rapports").getPublicUrl(path);
 
       setForm((prev) => ({ ...prev, logo_url: publicUrl }));
-    } catch {
-      setError("Erreur lors de l'upload du logo");
+    } catch (err) {
+      // Le message du stockage porte la cause réelle (type refusé, taille,
+      // droits). Le masquer derrière un texte générique avait laissé passer
+      // six semaines d'uploads de logo cassés.
+      setError(
+        `Le logo n'a pas pu être envoyé : ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     } finally {
       setUploading(false);
     }
