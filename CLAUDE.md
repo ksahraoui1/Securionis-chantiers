@@ -648,6 +648,275 @@ Migration 044 : le bucket accepte désormais exactement les sept types de la whi
 
 > Vérifié par un envoi réel : un PNG déposé sur le chemin de `document-manager` répond 200 là où il répondait 400.
 
+### Détection automatique des différences — OpenCV.js (2026-08-28)
+
+Bouton « Détecter les différences » dans la barre d'outils de la comparaison.
+Pipeline : chargement des deux plans → niveaux de gris → CLAHE → alignement ORB
++ RANSAC → différence absolue → seuillage → morphologie → contours →
+classification → filtrage du bruit.
+
+**Trois modules**, tous côté client :
+- `src/lib/opencv.ts` — chargement paresseux, mémorisé, réarmé après échec ; typage TypeScript de la surface utilisée (la bibliothèque n'en fournit aucun).
+- `src/lib/plan-preprocessing.ts` — `convertToGrayscale`, `resizeToSameDimensions`, `alignPlans`, `normalizeBrightness`, plus `libererTout()` pour les blocs `finally`.
+- `src/lib/plan-diff-detection.ts` — `detectStructuralDiffs`, `classifyDiff`, `filterNoise`, et le pipeline `analyserPlans()`.
+
+**Aucune migration.** Le résultat n'est pas persisté : c'est une analyse de session.
+
+#### Le CDN est impossible, et la copie locale ne suffisait pas
+
+`script-src 'self'` interdit `docs.opencv.org` ; l'autoriser reviendrait à
+exécuter du code tiers sur une page qui porte la session Supabase. La
+bibliothèque est donc **servie localement** depuis `/vendor/opencv`, préparée
+par `public/vendor/opencv/preparer.mjs` (script reproductible, empreintes
+vérifiées). Voir `public/vendor/opencv/LISEZ-MOI.md`.
+
+Trois obstacles ont été levés :
+
+1. **Le binaire WebAssembly était embarqué en `data:` URI** et Emscripten le
+   récupère par `fetch()` — bloqué par `connect-src`, contrairement à ce que
+   laisse croire le garde `!isDataURI(...)` d'une autre branche du code. Il est
+   extrait dans `opencv_js.wasm` et servi comme un fichier. Effet secondaire :
+   le JavaScript passe de 9,8 Mo à 217 Ko, le total de 9,8 à 7,4 Mo.
+2. **Le middleware redirigeait `.wasm` vers `/login`** : l'extension manquait au
+   `matcher` de `src/middleware.ts`. Le binaire n'aurait jamais pu se charger.
+3. **Embind fabrique ses fonctions à partir de chaînes.** Deux sites
+   (`createNamedFunction`, `makeDynCaller`) ont été remplacés par leurs
+   équivalents sans évaluation — ce que fait Emscripten avec
+   `-sDYNAMIC_EXECUTION=0`. Le troisième, `craftInvokerFunction` appelé via
+   `new_(Function, …)`, est la fabrique d'invocateurs elle-même : irréductible.
+   D'où `'unsafe-eval'` **sur la seule route de comparaison** (`next.config.ts`).
+
+> ⚠️ Les deux règles d'en-têtes de `next.config.ts` doivent rester **mutuellement
+> exclusives** : deux en-têtes CSP sur une même page s'appliquent en
+> **intersection**, ce qui rendrait la politique permissive inopérante. La règle
+> stricte porte donc une négation dans son motif.
+
+#### Le piège qui a coûté le plus cher : le module OpenCV est un *thenable*
+
+Emscripten donne une méthode `then` au module. `resolve(cv)` — ou un simple
+`return cv` depuis une fonction `async`, ce qui revient au même — déclenche la
+procédure de résolution des promesses, qui appelle `cv.then(resolve, …)`,
+lequel rappelle avec le module. **Adoption infinie : boucle de micro-tâches,
+onglet figé à 100 % de CPU, sans erreur, sans recouvrement, sans trace.** Le
+symptôme ne ressemble en rien à sa cause.
+
+`chargerOpenCv()` renvoie donc `Promise<void>` ; le module se récupère par
+`opencv()`, accesseur synchrone. Ce n'est pas cosmétique.
+
+#### Réglages et garde-fous
+
+| Constante | Valeur | Raison |
+|---|---|---|
+| `LARGEUR_ANALYSE` | 1600 px | au-delà, la finesse gagnée ne paie pas le temps |
+| `NB_POINTS_ORB` | 3000 | mesuré à 175 ms ; l'appariement n'est pas le goulot |
+| `SEUIL_DIFFERENCE` | 45 | seuil fixe plutôt qu'Otsu, qui amplifierait le bruit sur une page presque blanche |
+| `AIRE_MINIMALE_PX` | 40 | garde-fou de **coût** : mesurer l'encre de dizaines de milliers de contours parasites fige l'onglet |
+| `DISCORDANCE_MAX` | 0,06 | au-delà, les plans ne représentent pas la même chose |
+| `SEUIL_BRUIT_DETECTION` | 0,0005 | la valeur par défaut de `filterNoise` (0,01) vaut un carré de 150 px de côté, plus gros que la plupart des différences réelles |
+
+**La discordance résiduelle est le seul garde-fou fiable.** ORB trouve assez de
+correspondances fortuites entre deux pages d'un même dossier — même cartouche,
+même cadre, mêmes hachures — pour produire une homographie d'apparence
+plausible. Seule la part de surface qui diffère après recalage distingue « deux
+versions du même plan » de « deux plans différents ».
+
+Mesures sur les plans de production : plans identiques **0 %**, Villa D contre
+Villa C **27 %** (basculé en « Détection impossible », ce qui est correct).
+
+> ⚠️ **Le seuil de 6 % n'a pas pu être validé sur un vrai couple PE/EXE d'un
+> même plan** : la base n'en contient aucun, les quatre documents marqués étant
+> des dossiers de villas distinctes. À réévaluer dès qu'un couple réel existe.
+
+**Performance** : environ 400 ms par analyse une fois OpenCV chargé (mesuré
+362 ms et 379 ms sur les plans de production, à 1600 px). Le premier appel
+ajoute le téléchargement de 7,4 Mo. Le pipeline rend la main au navigateur
+entre chaque étape (`respirer()`), sinon l'indicateur « Analyse en cours… »
+n'est jamais peint.
+
+> Les zones détectées ne sont **pas encore dessinées** sur le visualiseur : le
+> résultat se limite au compte et à sa répartition. Les coordonnées sont
+> renvoyées en pixels dans le repère de l'image d'analyse, avec ses dimensions,
+> ce qui suffira à les convertir en unités monde OpenSeadragon.
+
+### Détection avancée et panneau des différences (2026-08-28)
+
+Le détecteur de base (`detectStructuralDiffs`) reste exporté ; le pipeline
+utilise désormais `detectStructuralDiffsAdvanced`, plus sélectif.
+
+**Ce que la version avancée ajoute** :
+- **Filtre bilatéral** avant tout : il atténue le grain de numérisation sans émousser les traits, contrairement à un flou gaussien qui les diluerait.
+- **Carte de dissimilarité SSIM** au lieu de la seule différence absolue. OpenCV ne fournit pas le SSIM : il est calculé selon la formule de Wang et al. par convolutions gaussiennes (moyennes, variances, covariance), puis ramené en `(1 − SSIM) / 2` sur 8 bits. Il voit ce qu'`absdiff` manque — un trait déplacé, un aplat de densité différente.
+- **Seuillage adaptatif** pour les masques d'encre, robuste à un éclairage inégal.
+- **`SimpleBlobDetector`** en appoint : la présence d'un blob compact dans une zone renforce sa confiance.
+- **Confiance de 0 à 1** par zone, moyenne pondérée de quatre indices concordants : dissimilarité (0,45), contraste d'encre entre les deux plans (0,30), blob (0,15), surface (0,10).
+
+> `cv.SimpleBlobDetector_Params` existe mais **n'a pas de constructeur
+> accessible** depuis JavaScript. Le seul chemin est
+> `new cv.SimpleBlobDetector()` puis `getParams()` / `setParams()`.
+
+> Pour ajouter une constante à une matrice, `convertTo(dst, type, alpha, beta)`
+> calcule `alpha·x + beta` sans allouer de matrice de remplissage. Une première
+> version passait par `cv.Mat.ones(...)` à chaque terme du SSIM : autant de
+> matrices jamais libérées, à chaque analyse.
+
+**`matchStructuralElements(contours1, contours2)`** apparie les contours des
+deux plans (coût mêlant distance des centres, écart d'aire et `matchShapes`) et
+qualifie chaque correspondance : `deplace`, `redimensionne`, `ajoute`,
+`supprime`, `identique`. Un élément à la fois déplacé et redimensionné est
+classé selon le changement dominant.
+
+**`estimateScale(img1, img2)`** compare les distances entre paires de points
+appariés et en prend la **médiane** — insensible aux appariements erronés,
+nombreux sur des plans aux motifs répétitifs. Une échelle dérivée de
+l'homographie mêlerait échelle, rotation et perspective.
+
+#### Panneau latéral
+
+`src/components/chantier/panneau-differences.tsx` : tableau #, Type, Confiance,
+Surface, Aperçu, Action. Triable par type, confiance et surface ; filtrable par
+confiance minimale (curseur 0–100 %). **Le numéro est figé sur l'ordre d'origine**
+(confiance décroissante) pour rester stable quand l'utilisateur change le tri.
+
+Les **aperçus** sont des vignettes « avant / après » côte à côte, découpées dans
+les images *effectivement comparées* — en niveaux de gris, après normalisation
+et recalage — et non dans les plans d'origine : ce que voit l'utilisateur est ce
+qu'a vu l'algorithme. Plafonnées à 60 vignettes.
+
+Le panneau se place à droite du visualiseur à partir de `lg`, en dessous sinon.
+Il est **hors de `zoneRef`** : sans cela, la capture PNG (`comparaison-capture.ts`)
+risquerait de composer le mauvais canevas.
+
+#### « Ajouter une annotation »
+
+Le bouton crée une annotation `rect` sur la vue. Conversion des coordonnées :
+les zones sont en **pixels dans le repère de l'image d'analyse**, les annotations
+en **unités monde OpenSeadragon** où le plan PE fait 1 de large — on divise donc
+**les deux axes par la largeur**, l'échelle étant isotrope.
+
+> **Pas de bleu.** La spécification demandait vert / rouge / jaune / bleu, mais
+> la contrainte `comparaison_annotations.color` (migration 042) n'accepte que
+> `red`, `orange`, `green` et `yellow`, et le bleu y est déjà réservé — non
+> stocké — à l'état « rattachée à une NC ». Ajout → vert, suppression → rouge,
+> modification → jaune.
+
+#### Indicateur de progression
+
+Cinq étapes rapportées par `onEtape` (`LIBELLES_ETAPE`) : analyse de l'image 1/2,
+2/2, alignement, détection, classification. Chaque étape rend la main au
+navigateur avant d'entamer son travail, sinon l'étiquette n'est jamais peinte.
+
+#### Ce qui reste à valider
+
+La sélectivité de la version avancée **n'a pas pu être éprouvée sur un vrai
+couple PE/EXE d'un même plan** : la base n'en contient aucun. Vérifié en
+revanche que deux plans identiques donnent 0 différence, et que deux villas
+distinctes (85,6 % de la page en écart) basculent en « Détection impossible ».
+Le panneau, le tri, le filtre et la création d'annotation ont été éprouvés en
+desserrant temporairement `DISCORDANCE_MAX`, puis le garde-fou a été rétabli et
+revérifié.
+
+### Calque des écarts sur le visualiseur (2026-08-28)
+
+`src/components/chantier/diff-overlay.tsx` (calque + légende) et
+`controles-ecarts.tsx` (barre de contrôle).
+
+**Même principe que la couche d'annotations** : un SVG en coordonnées monde
+OpenSeadragon dont le groupe porte le `transform` du viewport, recalculé sur
+`update-viewport` et `resize`. Le zoom et le déplacement sont donc suivis **par
+construction** — aucun rectangle n'est recalculé individuellement.
+
+Le SVG est `pointer-events: none`, seuls les rectangles captent le pointeur : le
+calque ne bloque ni le déplacement de la vue, ni la couche d'annotations posée
+au-dessus. Quand un outil de dessin est actif, cette dernière capte les
+pointeurs et le calque cesse d'être cliquable — c'est le comportement voulu.
+
+**Code couleur** (partagé par le calque, le panneau et les vignettes, via
+`HEX_TYPE`) : vert `#2E7D32` ajouté, rouge `#B41E1E` supprimé, jaune `#F59E0B`
+modifié, bleu `#002855` déplacé. Opacité 30 % par défaut, 60 % au survol.
+
+**Le quatrième type, `moved`, est produit par recherche de motif.** Une zone
+classée « modifiée » voit son gabarit du plan PE recherché dans son voisinage
+sur le plan EXE (`matchTemplate`, `TM_CCOEFF_NORMED`) : une corrélation forte à
+une position **décalée** signifie que l'élément n'a pas changé, il a bougé.
+`absdiff` et le SSIM en sont incapables — ils voient du tracé qui apparaît ici
+et disparaît là. Plafonné à 40 recherches par analyse.
+
+> **Le bleu n'existe pas en base.** La contrainte
+> `comparaison_annotations.color` n'accepte que red, orange, green et yellow, et
+> le bleu y est réservé — non stocké — à l'état « rattachée à une NC ». Une
+> annotation issue d'un écart `moved` est donc **orange**, alors que le calque
+> l'affiche en bleu. C'est le seul endroit où les deux palettes divergent.
+
+**Un seul seuil de confiance** gouverne le calque et le panneau. Deux curseurs
+indépendants finiraient par se contredire et l'utilisateur ne saurait plus lequel
+commande ce qu'il voit — l'état est donc remonté dans `ComparaisonPlans`.
+
+**L'infobulle est en `position: fixed`**, pas dans le SVG : une infobulle en
+coordonnées monde grossirait avec le zoom.
+
+**« Tout accepter »** crée une annotation par écart *affiché* (donc filtré), en
+série et sous confirmation. **« Tout rejeter »** écarte le résultat de la
+détection sans rien supprimer : les annotations déjà créées sont des données de
+l'utilisateur et restent en place.
+
+> Vérifié : masquage, opacité, filtres par type et par confiance, clic
+> ouvrant le panneau sur la bonne ligne, survol à 60 % avec infobulle (type,
+> confiance, surface, position), acceptation en masse et rejet. Le type
+> `moved` n'a en revanche **pas pu être observé sur les plans de production** —
+> aucune paire n'y présente d'élément simplement déplacé.
+
+### Rapport de comparaison automatique (2026-08-28)
+
+Bouton « Générer le rapport de comparaison » dans la ligne de résultat de la
+détection, puis une modale : format **PDF ou DOCX**, et envoi facultatif aux
+destinataires du chantier.
+
+**Route** : `POST /api/comparaisons/[id]/rapport-auto`. Elle reçoit du navigateur
+la **carte des écarts** (capture de la vue, calque compris), les **miniatures**
+des deux plans entiers et la **liste des écarts en JSON** — la détection tourne
+côté client, le serveur ne peut pas la refaire. Tout le reste — chantier,
+annotations, non-conformités, historique, entreprise, destinataires — est relu
+en base, donc autoritatif. Les écarts reçus sont typés et **bornés** avant
+d'entrer dans le document ; ils ne servent qu'à composer un fichier, jamais à
+écrire en base.
+
+**Six pages** : garde (logo ou nom de marque en repli, plans comparés, chargé de
+sécurité) · résumé exécutif (répartition par priorité, NC créées, confiance
+moyenne) · carte des écarts en A4 paysage avec légende · liste détaillée en
+paysage (N°, type, confiance, surface, position, priorité, recommandation, NC) ·
+annexes (miniatures PE et EXE) · annotations manuelles, historique et signature.
+
+**Priorité et recommandation** : `src/lib/utils/priorite-sst.ts`.
+
+> ⚠️ **Ce n'est pas une analyse SST**, et le rapport le dit en page de garde. Rien
+> ne « comprend » le plan : la détection est géométrique. La priorité est une
+> **règle déterministe** — la confiance domine, la surface pèse, et un élément
+> présent au PE mais absent à l'EXE gagne un cran, puisque c'est le cas où une
+> disposition a pu disparaître. Elle sert à ordonner les vérifications, pas à
+> conclure. Sur un document de sécurité, présenter cela comme une expertise
+> serait trompeur.
+
+**Après génération** : le fichier est déposé dans le bucket `rapports`, inscrit
+dans les **documents du chantier** (catégorie « autre »), journalisé en
+`audit_logs` sous `generate_comparaison_report`, et envoyé aux destinataires si
+la case est cochée. L'« historique des rapports » demandé, c'est cette entrée
+dans les documents du chantier — il n'existe pas de table dédiée et en créer une
+aurait doublonné.
+
+Un échec de classement ou d'envoi **ne fait pas échouer la génération** : le
+fichier est renvoyé quand même, l'avertissement voyageant dans l'en-tête
+`X-Rapport-Avertissement`.
+
+**DOCX** (`src/lib/comparaison/rapport-auto-docx.ts`) : mêmes données d'entrée
+que le PDF, un seul chargement côté route alimente les deux formats pour
+qu'aucun ne dérive de l'autre. La dépendance `docx` était déjà présente pour le
+manuel utilisateur.
+
+> La capture (`comparaison-capture.ts`) rasterise désormais **toutes** les
+> couches SVG de la zone, dans l'ordre du DOM, et non plus la seule couche
+> d'annotations : sans cela le calque des écarts serait absent de la carte — et
+> l'était aussi des exports PNG, PDF et de l'impression.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -670,7 +939,15 @@ Migration 044 : le bucket accepte désormais exactement les sept types de la whi
 18. **Icônes et traduction automatique** : les Material Symbols fonctionnent par **ligature** — le `<span>` contient le mot `arrow_back`, que la police remplace par le dessin. Si le navigateur traduit la page, ce mot devient « flèche_re » et l'icône disparaît au profit du texte. Tout `<span class="material-symbols-outlined">` doit donc porter `translate="no"` (145 occurrences marquées). `lang="fr"` sur `<html>` ne suffit pas : Chrome propose quand même la traduction, précisément parce que les noms d'icônes sont des mots anglais.
 19. **Capture de la comparaison** : ne pas rebrancher `html2canvas` — Tailwind v4 émet `oklch()`, qu'il ne sait pas analyser. La capture recompose directement le canevas OpenSeadragon et la couche SVG (`comparaison-capture.ts`). Un SVG étiré en CSS doit recevoir `width`/`height`/`viewBox` avant d'être rasterisé par un `<img>`.
 20. **Image dans un PDF react-pdf** : lui donner une hauteur en points, jamais `flexGrow: 1` — une image ne peut pas se couper entre deux pages et le moteur ne résout pas la hauteur du conteneur avant de la mettre en page.
-21. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+21. **Le module OpenCV.js est un *thenable*** : ne jamais le faire traverser une promesse (`resolve(cv)`, `return cv` dans une fonction `async`). Adoption infinie, onglet figé sans erreur. `chargerOpenCv()` renvoie `Promise<void>`, le module vient de `opencv()`.
+22. **Matrices OpenCV** : elles vivent dans le tas WebAssembly, que le ramasse-miettes de JavaScript ignore. Toute `Mat` doit être `delete()`. Utiliser `libererTout()` dans un `finally`.
+23. **CSP par route** : deux en-têtes `Content-Security-Policy` sur une même page s'appliquent en **intersection**. Les règles de `next.config.ts` doivent rester mutuellement exclusives, sinon l'exception de la page de comparaison est annulée par la règle stricte.
+24. **`SimpleBlobDetector_Params` n'est pas constructible** depuis JavaScript : passer par `new cv.SimpleBlobDetector()` puis `getParams()` / `setParams()`.
+25. **Ajouter une constante à une matrice** : `convertTo(dst, type, alpha, beta)` calcule `alpha·x + beta`. Ne pas fabriquer une matrice `ones()` par terme — elles ne seraient pas libérées.
+26. **Coordonnées des zones détectées** : en pixels dans le repère de l'image d'analyse. Vers les unités monde OpenSeadragon, diviser **les deux axes par la largeur** (le plan PE fait 1 de large, l'échelle est isotrope).
+27. **Palette des écarts vs couleurs d'annotation** : le calque affiche quatre types (dont `moved` en bleu), la base n'accepte que quatre couleurs sans bleu. `moved` devient orange à l'enregistrement. Toute évolution demande une migration de la contrainte `comparaison_annotations.color`.
+28. **Les écarts du rapport viennent du navigateur** : la détection est client-side, le serveur ne peut pas la recalculer. Les valeurs reçues sont bornées et typées avant d'entrer dans le document, et ne sont jamais écrites en base.
+29. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
