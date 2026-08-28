@@ -207,7 +207,7 @@ await supabase.from("audit_logs").insert({
   action: "send_rapport_email",
   resource: "visites",        // ← "resource", pas "resource_type" !
   resource_id: visiteId,
-  metadata: { sent_to: emails },
+  details: { sent_to: emails },   // ← "details", pas "metadata" !
 });
 ```
 
@@ -307,7 +307,7 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 - Mise en page 2 colonnes : "Visites ce mois" + "NC en attente" côte à côte (responsive mobile)
 - Graphique NC reste en pleine largeur en-dessous
 
-**Branding FWN** :
+**Branding FWN** (remplacé le 2026-08-28 par BTP-UP — voir plus bas) :
 - Copyright mis à jour en `©2026 - FWN - Securionis` partout :
   - `src/app/(auth)/layout.tsx` — Page login
   - `src/app/(dashboard)/layout.tsx` — Footer dashboard
@@ -585,6 +585,47 @@ Colonnes ajoutées à `ecarts` : `titre`, `type` (`'ecart_plan'`), `priorite` (`
 
 **Page de détail d'une NC** : `/chantiers/[id]/nc/[ncId]` — elle n'existait pas, les NC n'étaient qu'une liste. Section « Plan comparé » avec les versions PE/EXE, la capture et un lien « Voir la comparaison » qui recharge le même couple via les paramètres `?pe=&exe=` lus par la page de comparaison.
 
+### Branding BTP-UP (2026-08-28)
+
+Le pied de page passe de « FWN - Securionis » à **BTP-UP**, partout où la marque est affichée :
+
+| Fichier | Emplacement |
+|---|---|
+| `src/app/(dashboard)/layout.tsx` | pied de page des pages connectées |
+| `src/app/(auth)/layout.tsx` | pied de page de la page de connexion |
+| `src/app/api/docs/manual/route.ts` | page de garde et pied du manuel Word |
+| `src/app/(dashboard)/admin/entreprise/page.tsx` | exemple du champ « Nom de l'entreprise » |
+
+Deux occurrences de « FWN » restent volontairement :
+- le commentaire de `src/components/pdf/rapport-visite.tsx` (« comme le PDF FWN ») désigne le document dont le gabarit s'inspire, pas la marque affichée ;
+- le **nom de l'entreprise en base** (table `entreprises`), auquel les 3 profils sont rattachés. Il alimente la signature des emails et le pied des PDF de visite, et se modifie depuis `/admin/entreprise` — pas dans le code.
+
+#### Export, impression et partage de la comparaison (2026-08-28)
+
+Trois sorties depuis la barre d'outils de la comparaison : un menu **Exporter** (PNG / PDF), un bouton **Imprimer** et un bouton **Partager** par email.
+
+**La capture PNG est composée à la main**, pas prise par `html2canvas` (`src/lib/utils/comparaison-capture.ts`). Deux raisons de fond :
+- **Tailwind v4 écrit toute sa palette en `oklch()`**, que html2canvas 1.4.1 ne sait pas analyser — il lève « Attempting to parse an unsupported color function ». Le conteneur du visualiseur porte `bg-gray-100` : la capture échouerait dès le premier appel.
+- La vue n'est de toute façon que **deux éléments superposés** — le canevas d'OpenSeadragon (les deux plans avec leurs opacités) et la couche SVG des annotations. Les recomposer directement donne la **résolution native** du canevas (2× sur écran HiDPI) là où html2canvas rendrait au mieux à la résolution CSS.
+
+La couche SVG est rasterisée en la sérialisant vers une URL blob chargée dans un `<img>`. Elle est étirée en CSS et **n'a donc aucune dimension intrinsèque** : sans `width`, `height` et `viewBox` explicites posés sur le clone, un `<img>` ne sait pas à quelle taille la rendre. Une pile de polices générique est imposée sur le clone, les polices de la page n'étant pas chargées dans un SVG rendu par `<img>`.
+
+Le canevas d'OpenSeadragon est **transparent** là où aucun plan ne couvre : le fond est peint en blanc avant tout dessin, sans quoi l'image exportée serait illisible. Avant chaque capture, l'annotation sélectionnée est désélectionnée puis on attend deux `requestAnimationFrame` — les poignées de redimensionnement ne doivent pas figurer dans l'export.
+
+**Rapport PDF** : `POST /api/comparaisons/[id]/pdf` reçoit **uniquement l'image** ; les annotations sont **relues en base** côté serveur, jamais reprises du corps de la requête. Trois pages (`src/components/pdf/rapport-comparaison.tsx`) : page de garde, vue de la comparaison **en A4 paysage** (les plans sont larges), puis tableau des annotations, total, date de génération et signature.
+
+> La hauteur du cadre d'image est fixée **en points** (470). Avec `flexGrow: 1`, react-pdf avertit « Node of type IMAGE can't wrap between pages and it's bigger than available page height » : une image ne peut pas se couper entre deux pages et la hauteur du conteneur n'est pas résolue avant sa mise en page.
+
+**Impression** : un `<iframe srcdoc>` masqué contenant la capture et une ligne de contexte, `@page { size: landscape }`, puis `contentWindow.print()`. Le nettoyage (retrait de l'iframe, révocation de l'URL blob) attend `afterprint`, avec un filet à 120 s pour les navigateurs qui ne l'émettent pas. Vérifié : `about:srcdoc` n'est pas bloqué par la CSP `frame-src 'self'`.
+
+**Partage par email** : `POST /api/comparaisons/[id]/email` reprend le chemin de `documents/email` — capture PNG en pièce jointe, lien `?pe=&exe=` vers la même vue, garde-fous habituels (email valide, pas de CRLF, message ≤ 2000 caractères, `escapeHtml`), journal `send_comparaison_email`.
+
+**Contrôles côté serveur communs aux deux routes** (`src/lib/utils/comparaison-rapport.ts`) : capture ≤ 20 Mo et **signature PNG vérifiée** (le type MIME annoncé par le navigateur ne suffit pas), `canAccessChantier()` en plus de la RLS, limites du plan (`canGeneratePdf`, `canSendEmail`) et rate limiting (10/h chacune).
+
+Les libellés français des types et des couleurs d'annotation sont sortis dans `src/lib/utils/comparaison-libelles.ts` : le rapport PDF est généré côté serveur et **ne peut pas importer** `comparaison-annotations.tsx`, qui porte `"use client"`. La couche d'annotations consomme désormais ce module ; sa surface publique (`OUTILS`, `COULEURS`, `HEX_COULEURS`, `CouleurAnnotation`) est inchangée.
+
+> **Aucune migration** : la fonctionnalité ne fait que lire `comparaisons`, `comparaison_annotations` et `comparaison_nc_links`, et écrire une ligne d'`audit_logs`.
+
 #### Types de fichiers acceptés par le bucket `rapports` (2026-08-28)
 
 Le durcissement de juillet (audit v3) avait restreint `rapports` à `application/pdf`. Or l'application autorise pdf, doc, docx, xls, xlsx, jpg, jpeg et png (`ALLOWED_MIME_TYPES` dans `file-validation.ts`) et écrit **tous** ces fichiers dans ce bucket. Conséquences, passées inaperçues pendant six semaines :
@@ -599,7 +640,7 @@ Migration 044 : le bucket accepte désormais exactement les sept types de la whi
 
 ## Pièges connus et gotchas
 
-1. **`resource` vs `resource_type`** dans `audit_logs` : la colonne s'appelle `resource` (depuis migration 022). `resource_type` provoque des inserts silencieusement ignorés.
+1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
 2. **Resend ne throw pas** en cas d'erreur — toujours vérifier `result.error`.
 3. **Domaine Resend** : utiliser le domaine racine `securionis.com`, pas un sous-domaine.
 4. **`next lint` supprimé** dans Next.js 16 — utiliser `npm run lint` (`eslint .`).
@@ -617,7 +658,9 @@ Migration 044 : le bucket accepte désormais exactement les sept types de la whi
 16. **Types acceptés par les buckets** : `rapports` accepte PDF, Word, Excel, JPEG et PNG (migration 044) ; `visite-photos` accepte JPEG et PNG. Un type hors liste est rejeté par le stockage avec un **400**, pas par le code — la configuration du bucket reste le contrôle autoritaire.
 17. **Une NC sans `reponse_id`** est forcément de type `ecart_plan` (contrainte `ecarts_origine_check`). Tout code qui joint `ecarts` à `reponses` doit tolérer l'absence de correspondance.
 18. **Icônes et traduction automatique** : les Material Symbols fonctionnent par **ligature** — le `<span>` contient le mot `arrow_back`, que la police remplace par le dessin. Si le navigateur traduit la page, ce mot devient « flèche_re » et l'icône disparaît au profit du texte. Tout `<span class="material-symbols-outlined">` doit donc porter `translate="no"` (145 occurrences marquées). `lang="fr"` sur `<html>` ne suffit pas : Chrome propose quand même la traduction, précisément parce que les noms d'icônes sont des mots anglais.
-19. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+19. **Capture de la comparaison** : ne pas rebrancher `html2canvas` — Tailwind v4 émet `oklch()`, qu'il ne sait pas analyser. La capture recompose directement le canevas OpenSeadragon et la couche SVG (`comparaison-capture.ts`). Un SVG étiré en CSS doit recevoir `width`/`height`/`viewBox` avant d'être rasterisé par un `<img>`.
+20. **Image dans un PDF react-pdf** : lui donner une hauteur en points, jamais `flexGrow: 1` — une image ne peut pas se couper entre deux pages et le moteur ne résout pas la hauteur du conteneur avant de la mettre en page.
+21. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
