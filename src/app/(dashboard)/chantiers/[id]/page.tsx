@@ -228,7 +228,7 @@ export default async function ChantierDetailPage({
               )}
             </div>
           }
-          comparaison={<PlanComparaison />}
+          comparaison={<PlanComparaison chantierId={chantierId} />}
         />
       </Card>
 
