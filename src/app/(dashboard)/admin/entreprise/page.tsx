@@ -137,8 +137,15 @@ export default function AdminEntreprisePage() {
       }
 
       setSuccess("Configuration enregistrée");
-    } catch {
-      setError("Erreur lors de l'enregistrement");
+    } catch (err) {
+      // Même raison que pour le logo : un message générique masque la cause
+      // (droits refusés par la RLS, contrainte violée, réseau) et rend
+      // l'échec impossible à diagnostiquer depuis l'interface.
+      setError(
+        `La configuration n'a pas pu être enregistrée : ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     } finally {
       setSaving(false);
     }
