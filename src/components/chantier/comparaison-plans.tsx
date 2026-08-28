@@ -11,8 +11,14 @@ import {
   type Annotation,
   type CouleurAnnotation,
   type Geometrie,
+  type LienNC,
   type OutilAnnotation,
+  HEX_COULEURS,
 } from "@/components/chantier/comparaison-annotations";
+import {
+  ModaleCreationNC,
+  type Capture,
+} from "@/components/chantier/nc-depuis-annotation";
 
 type OSDStatic = typeof OpenSeadragonNS;
 type Viewer = OpenSeadragonNS.Viewer;
@@ -30,9 +36,12 @@ export interface PlanDoc {
 
 interface ComparaisonPlansProps {
   chantierId: string;
+  chantierNom: string;
   userId: string;
   plansPE: PlanDoc[];
   plansEXE: PlanDoc[];
+  planPEInitial?: string;
+  planEXEInitial?: string;
 }
 
 const EXTENSIONS_IMAGE = /\.(jpe?g|png|webp|gif)$/i;
@@ -129,12 +138,19 @@ function libelle(doc: PlanDoc): string {
 
 export function ComparaisonPlans({
   chantierId,
+  chantierNom,
   userId,
   plansPE,
   plansEXE,
+  planPEInitial,
+  planEXEInitial,
 }: ComparaisonPlansProps) {
-  const [idPE, setIdPE] = useState(plansPE[0]?.id ?? "");
-  const [idEXE, setIdEXE] = useState(plansEXE[0]?.id ?? "");
+  const [idPE, setIdPE] = useState(
+    plansPE.find((p) => p.id === planPEInitial)?.id ?? plansPE[0]?.id ?? ""
+  );
+  const [idEXE, setIdEXE] = useState(
+    plansEXE.find((p) => p.id === planEXEInitial)?.id ?? plansEXE[0]?.id ?? ""
+  );
   const [pagePE, setPagePE] = useState(1);
   const [pageEXE, setPageEXE] = useState(1);
   const [nbPagesPE, setNbPagesPE] = useState(1);
@@ -160,6 +176,9 @@ export function ComparaisonPlans({
   const [filtreCouleur, setFiltreCouleur] = useState<CouleurAnnotation | "all">("all");
   const [erreurAnnotation, setErreurAnnotation] = useState<string | null>(null);
   const [idAFocaliser, setIdAFocaliser] = useState<string | null>(null);
+  const [liensNC, setLiensNC] = useState<Record<string, LienNC>>({});
+  const [annotationNC, setAnnotationNC] = useState<Annotation | null>(null);
+  const [capture, setCapture] = useState<Capture>({ blob: null, apercu: null });
 
   const conteneurRef = useRef<HTMLDivElement>(null);
   const cadreRef = useRef<HTMLDivElement>(null);
@@ -256,6 +275,9 @@ export function ComparaisonPlans({
           // le zoom reste accessible au double-clic, à la molette et aux boutons.
           gestureSettingsMouse: { clickToZoom: false, dblClickToZoom: true },
           gestureSettingsTouch: { clickToZoom: false, dblClickToZoom: true },
+          // Sans cela, un plan image servi par le stockage teinte le canevas
+          // et la capture de la zone annotée devient impossible.
+          crossOriginPolicy: "Anonymous",
         });
 
         osdRef.current = OSD;
@@ -334,6 +356,7 @@ export function ComparaisonPlans({
       aLiberer.forEach((liberer) => liberer());
       setPret(false);
       setAnnotations([]);
+      setLiensNC({});
       setComparaisonId(null);
       setSelection(null);
     };
@@ -427,6 +450,31 @@ export function ComparaisonPlans({
         return;
       }
       setAnnotations(lignes ?? []);
+
+      const idsAnnotations = (lignes ?? []).map((l) => l.id);
+      if (idsAnnotations.length === 0) {
+        setLiensNC({});
+        return;
+      }
+
+      const { data: liens } = await supabase
+        .from("comparaison_nc_links")
+        .select("annotation_id, nc_id, ecarts(numero)")
+        .in("annotation_id", idsAnnotations);
+
+      if (annule) return;
+      setLiensNC(
+        Object.fromEntries(
+          (liens ?? []).map((l) => [
+            l.annotation_id,
+            {
+              ncId: l.nc_id,
+              numero:
+                (l.ecarts as unknown as { numero: number } | null)?.numero ?? 0,
+            },
+          ])
+        )
+      );
     })();
 
     return () => {
@@ -517,6 +565,15 @@ export function ComparaisonPlans({
   }
 
   async function supprimerAnnotation(id: string) {
+    if (
+      liensNC[id] &&
+      !confirm(
+        `Cette annotation est rattachée à la NC #${liensNC[id].numero}. La supprimer laissera la non-conformité en place, sans lien vers le plan. Continuer ?`
+      )
+    ) {
+      return;
+    }
+
     setAnnotations((precedentes) => precedentes.filter((a) => a.id !== id));
     if (selection === id) setSelection(null);
     const supabase = createClient();
@@ -525,6 +582,80 @@ export function ComparaisonPlans({
       .delete()
       .eq("id", id);
     if (error) setErreurAnnotation("Suppression non enregistrée : " + error.message);
+  }
+
+  // Capture PNG de la zone annotée : on découpe le canevas du visualiseur
+  // autour de la boîte de l'annotation, avec une marge, et on y trace son
+  // contour — la couche SVG des annotations n'est pas dans ce canevas.
+  async function genererCapture(annotation: Annotation): Promise<Capture> {
+    const viewer = viewerRef.current;
+    const OSD = osdRef.current;
+    const vide: Capture = { blob: null, apercu: null };
+    if (!viewer || !OSD) return vide;
+
+    try {
+      const source = viewer.container.querySelector("canvas");
+      if (!(source instanceof HTMLCanvasElement)) return vide;
+
+      const ratio = source.width / viewer.container.clientWidth;
+      const x0 = Math.min(annotation.x, annotation.x + annotation.width);
+      const y0 = Math.min(annotation.y, annotation.y + annotation.height);
+      const largeur = Math.abs(annotation.width);
+      const hauteur = Math.abs(annotation.height);
+      const marge = Math.max(largeur, hauteur) * 0.3 + 0.01;
+
+      const coin1 = viewer.viewport.pixelFromPoint(
+        new OSD.Point(x0 - marge, y0 - marge),
+        true
+      );
+      const coin2 = viewer.viewport.pixelFromPoint(
+        new OSD.Point(x0 + largeur + marge, y0 + hauteur + marge),
+        true
+      );
+
+      const sx = Math.max(0, Math.min(coin1.x, coin2.x) * ratio);
+      const sy = Math.max(0, Math.min(coin1.y, coin2.y) * ratio);
+      const sw = Math.min(source.width - sx, Math.abs(coin2.x - coin1.x) * ratio);
+      const sh = Math.min(source.height - sy, Math.abs(coin2.y - coin1.y) * ratio);
+      if (sw < 8 || sh < 8) return vide;
+
+      const cible = document.createElement("canvas");
+      cible.width = Math.round(sw);
+      cible.height = Math.round(sh);
+      const ctx = cible.getContext("2d");
+      if (!ctx) return vide;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cible.width, cible.height);
+      ctx.drawImage(source, sx, sy, sw, sh, 0, 0, cible.width, cible.height);
+
+      const haut = viewer.viewport.pixelFromPoint(new OSD.Point(x0, y0), true);
+      const bas = viewer.viewport.pixelFromPoint(
+        new OSD.Point(x0 + largeur, y0 + hauteur),
+        true
+      );
+      ctx.strokeStyle = HEX_COULEURS[annotation.color];
+      ctx.lineWidth = 3;
+      ctx.strokeRect(
+        haut.x * ratio - sx,
+        haut.y * ratio - sy,
+        (bas.x - haut.x) * ratio,
+        (bas.y - haut.y) * ratio
+      );
+
+      const blob = await new Promise<Blob | null>((resoudre) =>
+        cible.toBlob(resoudre, "image/png")
+      );
+      return { blob, apercu: blob ? cible.toDataURL("image/png") : null };
+    } catch {
+      // Canevas teinté ou navigateur restrictif : la NC sera créée sans image.
+      return vide;
+    }
+  }
+
+  async function ouvrirModaleNC(annotation: Annotation) {
+    setCapture(await genererCapture(annotation));
+    setAnnotationNC(annotation);
   }
 
   function exporterAnnotations() {
@@ -848,6 +979,7 @@ export function ComparaisonPlans({
                 outil={outil}
                 couleur={couleurAnnotation}
                 annotations={annotations}
+                liens={liensNC}
                 selection={selection}
                 onSelection={setSelection}
                 onCreer={creerAnnotation}
@@ -945,6 +1077,8 @@ export function ComparaisonPlans({
           {/* Liste des annotations */}
           <ListeAnnotations
             annotations={annotations}
+            liens={liensNC}
+            chantierId={chantierId}
             filtre={filtreCouleur}
             selection={selection}
             onFiltre={setFiltreCouleur}
@@ -952,8 +1086,39 @@ export function ComparaisonPlans({
             onCommentaire={majCommentaire}
             onCouleur={majCouleur}
             onSupprimer={supprimerAnnotation}
+            onCreerNC={ouvrirModaleNC}
           />
         </div>
+      )}
+
+      {annotationNC && docPE && docEXE && (
+        <ModaleCreationNC
+          annotation={annotationNC}
+          chantierId={chantierId}
+          chantierNom={chantierNom}
+          docPE={docPE}
+          docEXE={docEXE}
+          pagePE={pagePE}
+          pageEXE={pageEXE}
+          capture={capture}
+          onFermer={() => {
+            setAnnotationNC(null);
+            setCapture({ blob: null, apercu: null });
+          }}
+          onCree={(nc) => {
+            setLiensNC((precedents) => ({
+              ...precedents,
+              [annotationNC.id]: { ncId: nc.ncId, numero: nc.numero },
+            }));
+            setErreurAnnotation(
+              nc.avertissement
+                ? `NC #${nc.numero} créée. ${nc.avertissement}`
+                : null
+            );
+            setAnnotationNC(null);
+            setCapture({ blob: null, apercu: null });
+          }}
+        />
       )}
     </div>
   );

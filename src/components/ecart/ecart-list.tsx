@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { EcartStatusBadge } from "./ecart-status-badge";
 import { STATUTS_ECART } from "@/lib/utils/constants";
 import type { Tables } from "@/types/database";
@@ -8,9 +9,11 @@ import type { Tables } from "@/types/database";
 interface EcartListProps {
   ecarts: Tables<"ecarts">[];
   onUpdateStatut?: (id: string, statut: string) => Promise<void>;
+  /** Fourni depuis la page chantier : rend chaque NC cliquable vers son détail. */
+  chantierId?: string;
 }
 
-export function EcartList({ ecarts, onUpdateStatut }: EcartListProps) {
+export function EcartList({ ecarts, onUpdateStatut, chantierId }: EcartListProps) {
   const [updating, setUpdating] = useState<string | null>(null);
   const [showCorriges, setShowCorriges] = useState(false);
   const [localEcarts, setLocalEcarts] = useState(ecarts);
@@ -86,7 +89,25 @@ export function EcartList({ ecarts, onUpdateStatut }: EcartListProps) {
           className="bg-white rounded-lg border border-gray-400 p-4"
         >
           <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-[#002855]">
+                  NC #{ecart.numero}
+                </span>
+                {ecart.type === "ecart_plan" && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-white bg-[#2563EB]">
+                    <span className="material-symbols-outlined text-[11px]">
+                      compare_arrows
+                    </span>
+                    Écart de plan
+                  </span>
+                )}
+              </div>
+              {ecart.titre && (
+                <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                  {ecart.titre}
+                </p>
+              )}
               <p className="text-sm font-medium text-gray-900">
                 {ecart.description}
               </p>
@@ -98,6 +119,15 @@ export function EcartList({ ecarts, onUpdateStatut }: EcartListProps) {
             </div>
             <EcartStatusBadge statut={ecart.statut} />
           </div>
+          {chantierId && (
+            <Link
+              href={`/chantiers/${chantierId}/nc/${ecart.id}`}
+              className="mt-3 mr-2 inline-flex items-center gap-1 px-3 py-2 min-h-touch text-sm text-[#002855] rounded-lg hover:bg-[#002855]/10 font-medium transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">open_in_new</span>
+              Voir le détail
+            </Link>
+          )}
           {onUpdateStatut && (
             <button
               type="button"

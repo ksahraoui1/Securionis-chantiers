@@ -276,7 +276,7 @@ export default async function ChantierDetailPage({
       {/* Non-conformités */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 mb-3">Non-conformités</h2>
-        <EcartListWithActions ecarts={ecarts ?? []} />
+        <EcartListWithActions ecarts={ecarts ?? []} chantierId={chantierId} />
       </div>
     </div>
   );

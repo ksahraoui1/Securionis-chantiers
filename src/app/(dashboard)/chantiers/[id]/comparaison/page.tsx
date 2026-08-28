@@ -5,10 +5,14 @@ import { ComparaisonPlans } from "@/components/chantier/comparaison-plans";
 
 export default async function ComparaisonPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ pe?: string; exe?: string }>;
 }) {
   const { id: chantierId } = await params;
+  // « Voir la comparaison » depuis une NC recharge le même couple de plans
+  const { pe: planPEInitial, exe: planEXEInitial } = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -86,9 +90,12 @@ export default async function ComparaisonPage({
       ) : (
         <ComparaisonPlans
           chantierId={chantierId}
+          chantierNom={chantier.nom || chantier.adresse}
           userId={user.id}
           plansPE={plansPE}
           plansEXE={plansEXE}
+          planPEInitial={planPEInitial}
+          planEXEInitial={planEXEInitial}
         />
       )}
     </div>
