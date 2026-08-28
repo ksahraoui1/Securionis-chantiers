@@ -917,6 +917,98 @@ manuel utilisateur.
 > d'annotations : sans cela le calque des écarts serait absent de la carte — et
 > l'était aussi des exports PNG, PDF et de l'impression.
 
+### Détection sur la vue recalée (2026-08-28)
+
+Éprouvé sur le chantier **Orllati**, premier de la base à porter de vraies
+paires PE/EXE (16 plans de chaque). Trois constats y ont fait évoluer la chaîne.
+
+#### Le bug : déformation anisotrope
+
+`resizeToSameDimensions` forçait la seconde image aux dimensions de la première.
+Mesuré sur Orllati : plan PE au rapport **1,000** (page carrée), plan EXE au
+rapport **1,415** (A-série paysage), soit **41 % d'étirement vertical**. La
+déformation détruit les descripteurs ORB, RANSAC en tire une homographie
+dégénérée qui écrase le plan en 5 pixels (facteurs 0,003 / 0,004).
+
+Corrigé : mise à l'échelle par le facteur le plus contraignant, puis centrage
+sur fond blanc. Le bug était invisible tant qu'on comparait un document à
+lui-même.
+
+#### La limite : les dossiers PE et EXE ne sont pas le même dessin
+
+Deux échecs de nature différente sur Orllati :
+
+- **Emprises différentes** — PE bâtiment A seul contre EXE bâtiments A+B, même
+  échelle 1:100. 498 correspondances, homographie toujours dégénérée
+  (0,238 / 0,186) : la moitié du plan EXE est un autre bâtiment qui ressemble au
+  premier, les appariements sont majoritairement faux.
+- **Échelles différentes** — PE 1:100 contre EXE 1:50, même emprise.
+  L'alignement **réussit** (613 correspondances, facteurs 1,531 / 1,529,
+  isotropes à 0,2 % près), mais **33 % de discordance sur 100 % de
+  recouvrement** : à ces échelles, l'épaisseur des traits, la taille des textes
+  et le niveau de détail diffèrent intrinsèquement. Le masque de recouvrement
+  n'y change rien — il n'y a pas de bordure à exclure.
+
+> La comparaison pixel à pixel suppose **deux versions du même dessin**. Un
+> dossier PE et un dossier EXE sont deux jeux de dessins distincts.
+
+#### La réponse : comparer ce que l'utilisateur a superposé
+
+`analyserVue()` rend les deux calques séparément — on éteint l'un, on lit le
+canevas du visualiseur, on éteint l'autre — donc **dans le même cadre**, à la
+position, à l'échelle et au cadrage que l'utilisateur leur a donnés. Aucun
+recalage n'est calculé : il fait le recalage, l'algorithme fait la différence.
+
+Le bouton propose désormais **deux modes** explicites, parce qu'ils ne
+conviennent pas aux mêmes plans :
+
+| Mode | Pipeline | Pour |
+|---|---|---|
+| Sur la vue recalée | `analyserVue` | plans de formats ou d'échelles différents |
+| Avec recalage automatique | `analyserPlans` → `alignPlans` | deux versions d'un même dessin |
+
+**Le garde-fou de discordance devient un avertissement** en mode vue :
+l'utilisateur a affirmé que ces plans se correspondent en les superposant.
+Le refus ne subsiste qu'au-delà de `DISCORDANCE_REFUS` (60 %).
+
+#### Réglage manuel de l'échelle du calque
+
+Cadenas ouvert, la barre d'outils propose l'échelle du calque du dessus
+(25 %–400 %, pas de 1 %). Indispensable pour poser un 1:50 sur un 1:100 :
+le glissement ne fait que translater.
+
+> Le redimensionnement est **recentré sur le centre de la vue**. `setWidth`
+> conserve le coin supérieur gauche : sans recentrage, ce qu'on regarde
+> s'échappe du cadre à chaque cran.
+
+`estimateScale` est branchée sur ce mode et mesure l'**échelle résiduelle**
+entre les deux calques — la seule information qui dise si le recalage manuel
+est à la bonne taille. Vérifié : calque réglé à 60 %, mesure indépendante à
+**0,631**.
+
+#### Repère explicite
+
+`ResultatAnalyse.repere` porte l'origine et le pas vers les unités monde
+OpenSeadragon, au lieu de supposer que le plan PE fait 1 de large. Le calque et
+les annotations créées se placent correctement quel que soit le cadre analysé.
+Vérifié au pixel : rectangle détecté et annotation créée à (440, 1459, 106×21)
+tous les deux.
+
+#### Paliers d'`alignPlans`
+
+Le traitement dépend du **nombre de correspondances trouvées** (et non du
+sous-ensemble retenu pour l'homographie, plafonné à 400) :
+
+| Correspondances | Comportement |
+|---|---|
+| < 30 | refus — `raison: "Plans trop différents"` |
+| 30 à 100 | homographie et transformation, `echelle: null` |
+| > 100 | + estimation de l'échelle, tirée des mêmes appariements |
+
+L'image est **toujours** renvoyée : en échec, une copie non transformée du plan
+2. Le motif du refus remonte jusqu'à l'écran — « Plans trop différents »
+n'appelle pas la même vérification qu'une transformation aberrante.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -947,7 +1039,9 @@ manuel utilisateur.
 26. **Coordonnées des zones détectées** : en pixels dans le repère de l'image d'analyse. Vers les unités monde OpenSeadragon, diviser **les deux axes par la largeur** (le plan PE fait 1 de large, l'échelle est isotrope).
 27. **Palette des écarts vs couleurs d'annotation** : le calque affiche quatre types (dont `moved` en bleu), la base n'accepte que quatre couleurs sans bleu. `moved` devient orange à l'enregistrement. Toute évolution demande une migration de la contrainte `comparaison_annotations.color`.
 28. **Les écarts du rapport viennent du navigateur** : la détection est client-side, le serveur ne peut pas la recalculer. Les valeurs reçues sont bornées et typées avant d'entrer dans le document, et ne sont jamais écrites en base.
-29. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+29. **`resizeToSameDimensions` ne doit jamais déformer** : deux plans du même ouvrage sont couramment mis en page différemment (page carrée contre A-série). Étirer détruit les descripteurs ORB et rend l'alignement impossible. Mise à l'échelle isotrope puis fond blanc.
+30. **`setWidth` d'OpenSeadragon conserve le coin supérieur gauche** : tout redimensionnement de calque doit être recentré à la main, sinon la vue s'échappe.
+31. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 

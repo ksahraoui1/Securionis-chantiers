@@ -71,6 +71,12 @@ export interface RapportComparaisonAutoProps {
   confianceMoyenne: number;
   nbNonConformites: number;
   legende: { libelle: string; hex: string }[];
+  /**
+   * Répartition des écarts par type, dans l'ordre de la légende.
+   * Comptée en amont : les libellés du tableau sont déjà traduits, les
+   * regrouper ici par comparaison de chaînes serait fragile.
+   */
+  repartitionType: { libelle: string; hex: string; nombre: number }[];
 }
 
 const styles = StyleSheet.create({
@@ -299,6 +305,7 @@ export function RapportComparaisonAuto(props: RapportComparaisonAutoProps) {
     confianceMoyenne,
     nbNonConformites,
     legende,
+    repartitionType,
   } = props;
 
   const comparaison =
@@ -391,6 +398,21 @@ export function RapportComparaisonAuto(props: RapportComparaisonAutoProps) {
             {comparaison} — page {planPE.page} du plan PE, page {planEXE.page}{" "}
             du plan EXE
           </Text>
+        </View>
+
+        <Text style={styles.titreSousSection}>Répartition par type</Text>
+        <View style={styles.cartesResume}>
+          {repartitionType.map((entree) => (
+            <View
+              key={entree.libelle}
+              style={[styles.carteResume, { borderLeftColor: entree.hex }]}
+            >
+              <Text style={[styles.nombreResume, { color: entree.hex }]}>
+                {entree.nombre}
+              </Text>
+              <Text style={styles.etiquetteResume}>{entree.libelle}</Text>
+            </View>
+          ))}
         </View>
 
         <Text style={styles.titreSousSection}>Répartition par priorité</Text>
