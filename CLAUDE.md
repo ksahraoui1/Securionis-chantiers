@@ -476,6 +476,34 @@ Puis `nginx -t` et `systemctl reload nginx` (rechargement sans coupure).
 
 ---
 
+### Plans PE / EXE et onglets du chantier (2026-08-28)
+
+**Objectif** : marquer un document de chantier comme *plan d'enquête publique* (PE) ou *plan d'exécution* (EXE), le versionner, et préparer leur comparaison.
+
+**Base de données** (migration 041, table `documents`, appliquée) :
+- `plan_type` text nullable, CHECK `'PE' | 'EXE' | NULL`
+- `plan_version` integer nullable, CHECK `> 0`
+- `parent_version_id` uuid nullable → `documents(id) ON DELETE SET NULL`, avec une garde anti-auto-référence
+- index partiel `idx_documents_plan_type (chantier_id, plan_type) WHERE plan_type IS NOT NULL`
+
+Aucune policy RLS à ajouter : les policies de `documents` (migration 022) portent sur la ligne entière et couvrent donc ces colonnes — écriture pour l'inspecteur assigné au chantier ou l'administrateur.
+
+**Interface** (`src/components/chantier/document-manager.tsx`) :
+- Menu `more_vert` par document : « Marquer comme plan PE / EXE » et « Retirer le marquage » (ce dernier seulement si le document est marqué).
+- Le choix ouvre un champ « Numéro de version » pré-rempli avec la prochaine version libre du type (max + 1).
+- `parent_version_id` est calculé côté client : dernier document du **même type** dont la version est inférieure. Pas de trigger DB.
+- Badge `PE V{n}` (vert #2E7D32) / `EXE V{n}` (orange #E67E22) à côté du nom, plus deux bandeaux en tête de section : « Plan PE de référence » et « Plan EXE V{n} », qui suivent la version la plus élevée de chaque type.
+
+**Onglets** (`src/components/chantier/chantier-tabs.tsx`) : la page chantier n'avait pas de navigation — Documents, Visites, Destinataires et NC étaient des sections empilées. Les sections Documents et Visites sont désormais le contenu des deux premiers onglets, `Comparaison` s'ajoute en troisième (`plan-comparaison.tsx`, écran « Bientôt disponible »). Informations, Destinataires, bandeau « NC corrigées » et Non-conformités restent hors onglets, à leur place.
+
+Les panneaux inactifs sont rendus avec l'attribut `hidden` plutôt que démontés : l'état des composants clients survit au changement d'onglet.
+
+> Deux pièges CSS rencontrés et corrigés lors de la vérification navigateur :
+> - `overflow-x-auto` seul fait passer l'axe **Y** en `auto` ; combiné au `-mb-px` des onglets (1 px de débordement), il affichait une barre de défilement verticale parasite. D'où le `overflow-y-hidden`.
+> - La ligne d'actions d'un document accueille désormais 4 boutons et débordait de l'écran en 375 px : `flex-wrap` est obligatoire.
+
+⚠️ **Suppression d'un document** : `handleDelete` efface le fichier de stockage sans vérifier qu'aucun autre document ne référence la même `fichier_url`. Comportement préexistant, à garder en tête si des documents venaient à partager un fichier.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`** dans `audit_logs` : la colonne s'appelle `resource` (depuis migration 022). `resource_type` provoque des inserts silencieusement ignorés.
@@ -490,7 +518,8 @@ Puis `nginx -t` et `systemctl reload nginx` (rechargement sans coupure).
 10. **`revoke ... from anon` est insuffisant** : les privilèges des fonctions viennent du pseudo-rôle `PUBLIC`, dont `anon` hérite. Révoquer sur `PUBLIC`, puis `grant` explicitement aux rôles nécessaires.
 11. **Modifier `profiles.role` ou `profiles.entreprise_id`** exige `set role service_role;` — le trigger `enforce_role_immutability` refuse toute autre origine.
 12. **Familles des points de contrôle** : `famille` est renseignée par le trigger `points_controle_famille_trg` (migration 038) si l'appelant ne la fournit pas ; `mots_cles` n'a pas d'équivalent et doit être fourni par l'appelant (`genererMotsCles()`).
-13. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+13. **Plans PE/EXE** : `plan_type`, `plan_version` et `parent_version_id` sont renseignés uniquement côté application (aucun trigger). Le chaînage `parent_version_id` est calculé au marquage à partir des documents déjà chargés.
+14. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 

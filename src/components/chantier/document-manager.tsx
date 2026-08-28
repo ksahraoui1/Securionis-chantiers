@@ -21,6 +21,38 @@ const CATEGORIES: { value: string; label: string; icon: string }[] = [
 
 const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.value, c]));
 
+type PlanType = "PE" | "EXE";
+
+const PLAN_TYPES: Record<
+  PlanType,
+  { label: string; libelle: string; icon: string; couleur: string }
+> = {
+  PE: {
+    label: "PE",
+    libelle: "Plan d'enquête publique",
+    icon: "verified",
+    couleur: "#2E7D32",
+  },
+  EXE: {
+    label: "EXE",
+    libelle: "Plan d'exécution",
+    icon: "engineering",
+    couleur: "#E67E22",
+  },
+};
+
+// Dernier plan d'un type donné (version la plus élevée)
+function dernierPlan(
+  docs: Tables<"documents">[],
+  type: PlanType
+): Tables<"documents"> | null {
+  return (
+    [...docs]
+      .filter((d) => d.plan_type === type)
+      .sort((a, b) => (b.plan_version ?? 0) - (a.plan_version ?? 0))[0] ?? null
+  );
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} o`;
@@ -39,12 +71,20 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [replacingId, setReplacingId] = useState<string | null>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [planForm, setPlanForm] = useState<
+    { docId: string; type: PlanType; version: string } | null
+  >(null);
+  const [savingPlan, setSavingPlan] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const replaceRef = useRef<HTMLInputElement>(null);
 
   const filtered = filter === "all"
     ? documents
     : documents.filter((d) => d.categorie === filter);
+
+  const planPE = dernierPlan(documents, "PE");
+  const planEXE = dernierPlan(documents, "EXE");
 
   const countByCategory = CATEGORIES.map((c) => ({
     ...c,
@@ -184,6 +224,88 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
     await loadDocuments();
   }
 
+  // Ouvre le formulaire de version en proposant la prochaine version libre
+  function openPlanForm(docId: string, type: PlanType) {
+    const doc = documents.find((d) => d.id === docId);
+    const dernier = dernierPlan(documents, type);
+    const proposee =
+      doc?.plan_type === type && doc.plan_version
+        ? doc.plan_version
+        : (dernier?.plan_version ?? 0) + 1;
+    setMenuId(null);
+    setPlanForm({ docId, type, version: String(proposee) });
+  }
+
+  async function handleMarquerPlan() {
+    if (!planForm) return;
+
+    const version = Number.parseInt(planForm.version, 10);
+    if (!Number.isInteger(version) || version < 1) {
+      setError("Le numéro de version doit être un entier supérieur à 0.");
+      return;
+    }
+
+    setSavingPlan(true);
+    setError(null);
+
+    try {
+      // Chaîner sur la version précédente du même type, si elle existe
+      const precedent =
+        [...documents]
+          .filter(
+            (d) =>
+              d.id !== planForm.docId &&
+              d.plan_type === planForm.type &&
+              (d.plan_version ?? 0) < version
+          )
+          .sort((a, b) => (b.plan_version ?? 0) - (a.plan_version ?? 0))[0] ?? null;
+
+      const supabase = createClient();
+      const { error: dbError } = await supabase
+        .from("documents")
+        .update({
+          plan_type: planForm.type,
+          plan_version: version,
+          parent_version_id: precedent?.id ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", planForm.docId);
+
+      if (dbError) throw new Error(dbError.message);
+
+      setPlanForm(null);
+      await loadDocuments();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Erreur lors du marquage du plan"
+      );
+    } finally {
+      setSavingPlan(false);
+    }
+  }
+
+  async function handleRetirerPlan(docId: string) {
+    setMenuId(null);
+    setError(null);
+
+    const supabase = createClient();
+    const { error: dbError } = await supabase
+      .from("documents")
+      .update({
+        plan_type: null,
+        plan_version: null,
+        parent_version_id: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", docId);
+
+    if (dbError) {
+      setError(dbError.message);
+      return;
+    }
+    await loadDocuments();
+  }
+
   return (
     <div className="space-y-4">
       {/* Header + Upload button */}
@@ -293,6 +415,49 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
         </div>
       )}
 
+      {/* Plans de référence PE / EXE */}
+      {(planPE || planEXE) && (
+        <div className="flex flex-col sm:flex-row gap-2">
+          {planPE && (
+            <div className="flex-1 flex items-center gap-2 rounded-lg border border-[#2E7D32]/30 bg-[#2E7D32]/5 px-3 py-2 min-w-0">
+              <span className="material-symbols-outlined text-[#2E7D32] text-xl shrink-0">
+                verified
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-[#2E7D32]">
+                  Plan PE de référence
+                </p>
+                <p className="text-[11px] text-gray-600 truncate">
+                  {planPE.nom}
+                  {planPE.plan_version ? ` — V${planPE.plan_version}` : ""}
+                </p>
+              </div>
+            </div>
+          )}
+          {planEXE && (
+            <div className="flex-1 flex items-center gap-2 rounded-lg border border-[#E67E22]/30 bg-[#E67E22]/5 px-3 py-2 min-w-0">
+              <span className="material-symbols-outlined text-[#E67E22] text-xl shrink-0">
+                engineering
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-[#E67E22]">
+                  Plan EXE V{planEXE.plan_version ?? 1}
+                </p>
+                <p className="text-[11px] text-gray-600 truncate">{planEXE.nom}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Erreur hors formulaire d'upload */}
+      {error && !showUpload && (
+        <p className="text-sm text-red-600 flex items-center gap-1">
+          <span className="material-symbols-outlined text-sm">error</span>
+          {error}
+        </p>
+      )}
+
       {/* Filters */}
       {documents.length > 0 && (
         <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -353,7 +518,25 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">{doc.nom}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="font-medium text-gray-900 text-sm truncate">{doc.nom}</p>
+                      {doc.plan_type && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                          style={{
+                            color: PLAN_TYPES[doc.plan_type].couleur,
+                            backgroundColor: `${PLAN_TYPES[doc.plan_type].couleur}1A`,
+                          }}
+                          title={PLAN_TYPES[doc.plan_type].libelle}
+                        >
+                          <span className="material-symbols-outlined text-[12px]">
+                            {PLAN_TYPES[doc.plan_type].icon}
+                          </span>
+                          {doc.plan_type}
+                          {doc.plan_version ? ` V${doc.plan_version}` : ""}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-[10px] font-medium text-gray-400 uppercase">
                         {cat.label}
@@ -377,7 +560,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 mt-2">
+                <div className="flex items-center gap-1 mt-2 flex-wrap">
                   <a
                     href={doc.fichier_url}
                     download={doc.fichier_nom}
@@ -415,6 +598,62 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                     </span>
                     {replacingId === doc.id ? "Envoi..." : "Nouvelle version"}
                   </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setMenuId(menuId === doc.id ? null : doc.id)}
+                      aria-haspopup="menu"
+                      aria-expanded={menuId === doc.id}
+                      className="flex items-center justify-center min-h-touch min-w-touch p-1.5 text-xs text-[#002855] rounded-lg hover:bg-[#002855]/10 transition-colors"
+                      title="Actions du plan"
+                    >
+                      <span className="material-symbols-outlined text-sm">more_vert</span>
+                    </button>
+                    {menuId === doc.id && (
+                      <>
+                        {/* Fermeture au clic extérieur */}
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setMenuId(null)}
+                        />
+                        <div
+                          role="menu"
+                          className="absolute left-0 z-20 mt-1 w-60 rounded-lg border border-gray-200 bg-white shadow-lg py-1"
+                        >
+                          {(Object.keys(PLAN_TYPES) as PlanType[]).map((type) => (
+                            <button
+                              key={type}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => openPlanForm(doc.id, type)}
+                              className="w-full flex items-center gap-2 px-3 py-2 min-h-touch text-xs font-medium text-[#002855] hover:bg-gray-50 text-left"
+                            >
+                              <span
+                                className="material-symbols-outlined text-base"
+                                style={{ color: PLAN_TYPES[type].couleur }}
+                              >
+                                {PLAN_TYPES[type].icon}
+                              </span>
+                              Marquer comme plan {type}
+                            </button>
+                          ))}
+                          {doc.plan_type && (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => handleRetirerPlan(doc.id)}
+                              className="w-full flex items-center gap-2 px-3 py-2 min-h-touch text-xs font-medium text-gray-600 hover:bg-gray-50 text-left border-t border-gray-100"
+                            >
+                              <span className="material-symbols-outlined text-base">
+                                backspace
+                              </span>
+                              Retirer le marquage
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => handleDelete(doc.id)}
@@ -423,6 +662,51 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                     <span className="material-symbols-outlined text-sm">delete</span>
                   </button>
                 </div>
+
+                {/* Numéro de version du plan */}
+                {planForm?.docId === doc.id && (
+                  <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-[#002855] mb-2">
+                      {PLAN_TYPES[planForm.type].libelle} ({planForm.type})
+                    </p>
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <div>
+                        <label
+                          htmlFor={`plan-version-${doc.id}`}
+                          className="block text-xs font-medium text-gray-500 mb-1"
+                        >
+                          Numéro de version
+                        </label>
+                        <input
+                          id={`plan-version-${doc.id}`}
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={planForm.version}
+                          onChange={(e) =>
+                            setPlanForm({ ...planForm, version: e.target.value })
+                          }
+                          className="w-24 rounded-lg border border-gray-300 px-3 py-2 min-h-touch text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleMarquerPlan}
+                        disabled={savingPlan}
+                        className="px-4 py-2 min-h-touch text-xs font-medium bg-[#002855] text-white rounded-lg hover:bg-[#002855]/90 disabled:opacity-50 transition-colors"
+                      >
+                        {savingPlan ? "Enregistrement..." : "Enregistrer"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPlanForm(null)}
+                        className="px-4 py-2 min-h-touch text-xs font-medium bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
