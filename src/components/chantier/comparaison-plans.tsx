@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type OpenSeadragonNS from "openseadragon";
+import { createClient } from "@/lib/supabase/client";
+import {
+  BarreOutilsAnnotation,
+  CoucheAnnotations,
+  ListeAnnotations,
+  type Annotation,
+  type CouleurAnnotation,
+  type Geometrie,
+  type OutilAnnotation,
+} from "@/components/chantier/comparaison-annotations";
 
 type OSDStatic = typeof OpenSeadragonNS;
 type Viewer = OpenSeadragonNS.Viewer;
@@ -20,6 +30,7 @@ export interface PlanDoc {
 
 interface ComparaisonPlansProps {
   chantierId: string;
+  userId: string;
   plansPE: PlanDoc[];
   plansEXE: PlanDoc[];
 }
@@ -118,6 +129,7 @@ function libelle(doc: PlanDoc): string {
 
 export function ComparaisonPlans({
   chantierId,
+  userId,
   plansPE,
   plansEXE,
 }: ComparaisonPlansProps) {
@@ -140,6 +152,15 @@ export function ComparaisonPlans({
   const [differences, setDifferences] = useState(0);
   const [pleinEcran, setPleinEcran] = useState(false);
 
+  const [comparaisonId, setComparaisonId] = useState<string | null>(null);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [outil, setOutil] = useState<OutilAnnotation>("pan");
+  const [couleurAnnotation, setCouleurAnnotation] = useState<CouleurAnnotation>("red");
+  const [selection, setSelection] = useState<string | null>(null);
+  const [filtreCouleur, setFiltreCouleur] = useState<CouleurAnnotation | "all">("all");
+  const [erreurAnnotation, setErreurAnnotation] = useState<string | null>(null);
+  const [idAFocaliser, setIdAFocaliser] = useState<string | null>(null);
+
   const conteneurRef = useRef<HTMLDivElement>(null);
   const cadreRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
@@ -147,6 +168,7 @@ export function ComparaisonPlans({
   const itemPERef = useRef<TiledImage | null>(null);
   const itemEXERef = useRef<TiledImage | null>(null);
   const decalageRef = useRef({ x: 0, y: 0 });
+  const minuteursCommentaire = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Miroir des réglages, lu depuis les gestionnaires d'événements OpenSeadragon
   // qui sont enregistrés une seule fois, à l'initialisation du visualiseur.
@@ -311,6 +333,9 @@ export function ComparaisonPlans({
       itemEXERef.current = null;
       aLiberer.forEach((liberer) => liberer());
       setPret(false);
+      setAnnotations([]);
+      setComparaisonId(null);
+      setSelection(null);
     };
   }, [charge, docPE, docEXE, pagePE, pageEXE]);
 
@@ -332,6 +357,210 @@ export function ComparaisonPlans({
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // Session de comparaison : le couple de plans et de pages réellement
+  // affichés. C'est elle qui porte les annotations, d'où leur réapparition
+  // exactement au même endroit au rechargement.
+  useEffect(() => {
+    if (!pret || !docPE || !docEXE) return;
+    let annule = false;
+
+    (async () => {
+      const supabase = createClient();
+      setErreurAnnotation(null);
+
+      const cles = {
+        chantier_id: chantierId,
+        document_pe_id: docPE.id,
+        document_exe_id: docEXE.id,
+        page_pe: pagePE,
+        page_exe: pageEXE,
+      };
+
+      const { data: existante } = await supabase
+        .from("comparaisons")
+        .select("id")
+        .match(cles)
+        .maybeSingle();
+
+      let identifiant = existante?.id ?? null;
+
+      if (!identifiant) {
+        const { data: creee, error } = await supabase
+          .from("comparaisons")
+          .insert({ ...cles, created_by: userId })
+          .select("id")
+          .single();
+
+        if (error) {
+          // Course possible avec un autre onglet : la ligne existe désormais.
+          const { data: reprise } = await supabase
+            .from("comparaisons")
+            .select("id")
+            .match(cles)
+            .maybeSingle();
+          identifiant = reprise?.id ?? null;
+          if (!identifiant && !annule) {
+            setErreurAnnotation(
+              "Les annotations ne peuvent pas être enregistrées : " + error.message
+            );
+          }
+        } else {
+          identifiant = creee.id;
+        }
+      }
+
+      if (annule || !identifiant) return;
+      setComparaisonId(identifiant);
+
+      const { data: lignes, error: erreurLecture } = await supabase
+        .from("comparaison_annotations")
+        .select("id, type, x, y, width, height, color, commentaire")
+        .eq("comparaison_id", identifiant)
+        .order("created_at");
+
+      if (annule) return;
+      if (erreurLecture) {
+        setErreurAnnotation(
+          "Les annotations n'ont pas pu être chargées : " + erreurLecture.message
+        );
+        return;
+      }
+      setAnnotations(lignes ?? []);
+    })();
+
+    return () => {
+      annule = true;
+    };
+  }, [pret, chantierId, docPE, docEXE, pagePE, pageEXE, userId]);
+
+  // Une étiquette de texte est vide à la création : on amène l'utilisateur
+  // directement dans son champ de commentaire, qui en porte le contenu.
+  useEffect(() => {
+    if (!idAFocaliser) return;
+    document.getElementById(`commentaire-${idAFocaliser}`)?.focus();
+    setIdAFocaliser(null);
+  }, [idAFocaliser]);
+
+  // Les minuteurs de sauvegarde des commentaires ne doivent pas survivre au démontage
+  useEffect(() => {
+    const minuteurs = minuteursCommentaire.current;
+    return () => {
+      Object.values(minuteurs).forEach(clearTimeout);
+    };
+  }, []);
+
+  async function creerAnnotation(
+    nouvelle: Omit<Annotation, "id" | "commentaire">
+  ) {
+    if (!comparaisonId) return;
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from("comparaison_annotations")
+      .insert({ comparaison_id: comparaisonId, ...nouvelle, created_by: userId })
+      .select("id, type, x, y, width, height, color, commentaire")
+      .single();
+
+    if (error || !data) {
+      setErreurAnnotation(
+        "L'annotation n'a pas pu être enregistrée : " +
+          (error?.message ?? "réponse vide")
+      );
+      return;
+    }
+
+    setAnnotations((precedentes) => [...precedentes, data]);
+    setSelection(data.id);
+
+    // Le champ n'existe pas encore : on le focalise depuis un effet, une fois rendu.
+    if (data.type === "text") setIdAFocaliser(data.id);
+  }
+
+  async function majGeometrie(id: string, geometrie: Geometrie) {
+    setAnnotations((precedentes) =>
+      precedentes.map((a) => (a.id === id ? { ...a, ...geometrie } : a))
+    );
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("comparaison_annotations")
+      .update(geometrie)
+      .eq("id", id);
+    if (error) setErreurAnnotation("Déplacement non enregistré : " + error.message);
+  }
+
+  function majCommentaire(id: string, commentaire: string) {
+    setAnnotations((precedentes) =>
+      precedentes.map((a) => (a.id === id ? { ...a, commentaire } : a))
+    );
+    clearTimeout(minuteursCommentaire.current[id]);
+    minuteursCommentaire.current[id] = setTimeout(async () => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("comparaison_annotations")
+        .update({ commentaire: commentaire.trim() || null })
+        .eq("id", id);
+      if (error) setErreurAnnotation("Commentaire non enregistré : " + error.message);
+    }, 600);
+  }
+
+  async function majCouleur(id: string, color: CouleurAnnotation) {
+    setAnnotations((precedentes) =>
+      precedentes.map((a) => (a.id === id ? { ...a, color } : a))
+    );
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("comparaison_annotations")
+      .update({ color })
+      .eq("id", id);
+    if (error) setErreurAnnotation("Couleur non enregistrée : " + error.message);
+  }
+
+  async function supprimerAnnotation(id: string) {
+    setAnnotations((precedentes) => precedentes.filter((a) => a.id !== id));
+    if (selection === id) setSelection(null);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("comparaison_annotations")
+      .delete()
+      .eq("id", id);
+    if (error) setErreurAnnotation("Suppression non enregistrée : " + error.message);
+  }
+
+  function exporterAnnotations() {
+    const contenu = {
+      exporte_le: new Date().toISOString(),
+      chantier_id: chantierId,
+      comparaison_id: comparaisonId,
+      plan_pe: docPE && {
+        id: docPE.id,
+        nom: docPE.nom,
+        version: docPE.plan_version,
+        page: pagePE,
+      },
+      plan_exe: docEXE && {
+        id: docEXE.id,
+        nom: docEXE.nom,
+        version: docEXE.plan_version,
+        page: pageEXE,
+      },
+      repere:
+        "Coordonnées en unités monde OpenSeadragon : le plan PE fait 1 de large, origine au coin supérieur gauche.",
+      annotations: annotations.map((a, index) => ({ numero: index + 1, ...a })),
+    };
+
+    const blob = new Blob([JSON.stringify(contenu, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const lien = document.createElement("a");
+    lien.href = url;
+    lien.download = `annotations-comparaison-${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`;
+    lien.click();
+    URL.revokeObjectURL(url);
+  }
 
   function lancerComparaison() {
     setErreur(null);
@@ -576,6 +805,27 @@ export function ComparaisonPlans({
             </div>
           </div>
 
+          {/* Barre d'outils d'annotation */}
+          <BarreOutilsAnnotation
+            outil={outil}
+            couleur={couleurAnnotation}
+            nbAnnotations={annotations.length}
+            onOutil={(o) => {
+              setOutil(o);
+              // Le marqueur appelle le jaune : c'est la couleur attendue d'un surligneur.
+              if (o === "highlight") setCouleurAnnotation("yellow");
+            }}
+            onCouleur={setCouleurAnnotation}
+            onExporter={exporterAnnotations}
+          />
+
+          {erreurAnnotation && (
+            <p className="px-3 py-2 text-xs text-red-700 bg-red-50 border-b border-red-200 flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm">error</span>
+              {erreurAnnotation}
+            </p>
+          )}
+
           {/* Conteneur OpenSeadragon */}
           <div className="relative flex-1">
             <div
@@ -590,6 +840,19 @@ export function ComparaisonPlans({
                   {preparation ? "Préparation des plans…" : "Chargement…"}
                 </p>
               </div>
+            )}
+            {pret && (
+              <CoucheAnnotations
+                viewer={viewerRef.current}
+                osd={osdRef.current}
+                outil={outil}
+                couleur={couleurAnnotation}
+                annotations={annotations}
+                selection={selection}
+                onSelection={setSelection}
+                onCreer={creerAnnotation}
+                onGeometrie={majGeometrie}
+              />
             )}
             {!synchro && !split && (
               <p className="absolute bottom-2 left-2 text-[11px] text-white bg-black/60 rounded-lg px-2 py-1 pointer-events-none">
@@ -678,6 +941,18 @@ export function ComparaisonPlans({
               })}
             </div>
           </div>
+
+          {/* Liste des annotations */}
+          <ListeAnnotations
+            annotations={annotations}
+            filtre={filtreCouleur}
+            selection={selection}
+            onFiltre={setFiltreCouleur}
+            onSelection={setSelection}
+            onCommentaire={majCommentaire}
+            onCouleur={majCouleur}
+            onSupprimer={supprimerAnnotation}
+          />
         </div>
       )}
     </div>

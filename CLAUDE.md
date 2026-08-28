@@ -543,6 +543,28 @@ Le cadenas est désactivé en vue côte à côte. Le décalage s'applique toujou
 
 **Compteur de différences** : simple entier de session (`+` et remise à zéro visible à partir de 1), affiché en haut à droite de la barre d'outils. Aucune détection automatique, aucune persistance en base.
 
+#### Annotations sur la comparaison (2026-08-28)
+
+**Deux tables** (migration 042, appliquée) :
+- `comparaisons` — la « session de comparaison » : le couple `(chantier, document PE, page PE, document EXE, page EXE)`, sous contrainte d'unicité. Elle n'existait pas ; les annotations avaient besoin d'un ancrage stable pour réapparaître au bon endroit. Elle est créée à la volée au premier chargement d'un couple de plans (select puis insert, avec reprise sur conflit si un autre onglet a gagné la course).
+- `comparaison_annotations` — `type`, `x`, `y`, `width`, `height`, `color`, `commentaire`, `created_by`, contraintes CHECK sur `type` et `color`.
+
+RLS calquée sur celle des documents : lecture et écriture pour l'inspecteur assigné au chantier ou l'administrateur, via une jointure sur `comparaisons`. La suppression suit le même périmètre (et non « administrateur seulement » comme pour les documents) : le bouton de suppression est par annotation, il doit fonctionner pour celui qui annote.
+
+**Coordonnées en unités monde OpenSeadragon** (le plan PE fait 1 de large, origine à son coin supérieur gauche), et non en pixels. C'est ce qui rend le repositionnement exact au rechargement, quels que soient le zoom, la taille de l'écran et la résolution des plans.
+
+**Rendu** : une seule couche SVG superposée au visualiseur, dont le groupe porte `translate(...) scale(...)` recalculé sur les événements `update-viewport` et `resize`. Les traits utilisent `vector-effect="non-scaling-stroke"` pour rester lisibles à tout zoom ; les pastilles de numéro et la poignée de redimensionnement sont dimensionnées en `1 / échelle` pour garder une taille constante à l'écran.
+
+**Interactions** :
+- outil de dessin actif → `setMouseNavEnabled(false)`, la couche capte les pointeurs ; outil « Main » → la couche est en `pointer-events: none`, seules les formes restent cliquables pour être sélectionnées et déplacées ;
+- le déplacement et le redimensionnement passent par un aperçu local, commité en base au relâchement ;
+- les formes de type `rect` utilisent `fill="transparent"` et non `fill="none"` : sans cela, l'intérieur ne reçoit aucun événement et la forme n'est attrapable que par son trait ;
+- la flèche conserve une largeur/hauteur **signée** (le delta depuis son origine), les autres formes sont normalisées en positif.
+
+> Piège React rencontré : après création d'une étiquette de texte, `setTimeout(..., 0)` pour focaliser son champ de commentaire ne fonctionne pas — la ligne n'est pas encore rendue. Il faut passer par un état (`idAFocaliser`) et un `useEffect`, qui s'exécute après la mise à jour du DOM.
+
+**Export** : bouton « Exporter les annotations » → fichier JSON contenant l'horodatage, le chantier, la session, les deux plans avec version et page, le repère de coordonnées et la liste numérotée des annotations.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`** dans `audit_logs` : la colonne s'appelle `resource` (depuis migration 022). `resource_type` provoque des inserts silencieusement ignorés.
@@ -559,7 +581,8 @@ Le cadenas est désactivé en vue côte à côte. Le décalage s'applique toujou
 12. **Familles des points de contrôle** : `famille` est renseignée par le trigger `points_controle_famille_trg` (migration 038) si l'appelant ne la fournit pas ; `mots_cles` n'a pas d'équivalent et doit être fourni par l'appelant (`genererMotsCles()`).
 13. **Plans PE/EXE** : `plan_type`, `plan_version` et `parent_version_id` sont renseignés uniquement côté application (aucun trigger). Le chaînage `parent_version_id` est calculé au marquage à partir des documents déjà chargés.
 14. **pdf.js** : `destroy()` est porté par la tâche de chargement (`getDocument(...)`), pas par le document. Toute URL blob créée pour OpenSeadragon doit être révoquée au démontage.
-15. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+15. **Annotations de comparaison** : les coordonnées sont en unités monde OpenSeadragon, jamais en pixels. Une forme SVG qui doit être cliquable sur toute sa surface a besoin de `fill="transparent"`, pas `fill="none"`.
+16. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
