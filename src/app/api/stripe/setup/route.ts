@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getStripe } from "@/lib/stripe/client";
 
 /**
@@ -15,6 +16,14 @@ export async function POST() {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  // Création des produits Stripe : opération one-shot, 3 par jour
+  if (!checkRateLimit(`stripe-setup:${user.id}`, 3, 24 * 60 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Trop de requêtes. Réessayez plus tard." },
+      { status: 429 }
+    );
   }
 
   const { data: profile } = await supabase

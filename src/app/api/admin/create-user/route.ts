@@ -80,7 +80,10 @@ export async function POST(request: Request) {
   }
 
   if (newUser.user) {
-    await serviceClient.from("profiles").upsert({
+    // Le trigger handle_new_user a déjà inséré le profil avec le rôle
+    // « invité » : cet upsert applique le rôle réellement demandé. Son échec
+    // laisserait un compte au mauvais rôle, il ne doit pas passer inaperçu.
+    const { error: profileError } = await serviceClient.from("profiles").upsert({
       id: newUser.user.id,
       nom,
       email,
@@ -88,14 +91,31 @@ export async function POST(request: Request) {
       entreprise_id: profile.entreprise_id,
     });
 
+    if (profileError) {
+      console.error("Create user — échec de l'upsert du profil:", profileError.message);
+      // Le compte Auth existe mais son rôle n'est pas celui demandé : on le
+      // supprime plutôt que de laisser un compte incohérent en place.
+      await serviceClient.auth.admin.deleteUser(newUser.user.id);
+      return NextResponse.json(
+        { error: "Impossible d'appliquer le rôle au compte créé" },
+        { status: 500 }
+      );
+    }
+
     // Audit log
-    await serviceClient.from("audit_logs").insert({
+    const { error: auditError } = await serviceClient.from("audit_logs").insert({
       user_id: user.id,
       action: "create_user",
       resource: "profiles",
       resource_id: newUser.user.id,
       details: { nom, email, role },
     });
+
+    if (auditError) {
+      // Le compte est valide : on ne l'annule pas, mais la perte de traçabilité
+      // doit être visible dans les logs serveur.
+      console.error("Create user — échec du journal d'audit:", auditError.message);
+    }
   }
 
   return NextResponse.json({ success: true, userId: newUser.user?.id });

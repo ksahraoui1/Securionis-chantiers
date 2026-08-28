@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { sendPushToUser } from "@/lib/push";
 
 /**
@@ -13,6 +14,14 @@ export async function POST() {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  // Notification de test : 10 par heure
+  if (!checkRateLimit(`push-test:${user.id}`, 10, 60 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Trop de requêtes. Réessayez plus tard." },
+      { status: 429 }
+    );
   }
 
   try {

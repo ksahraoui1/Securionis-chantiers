@@ -44,6 +44,16 @@ export async function PATCH(request: Request) {
     .eq("id", userId)
     .single();
 
+  // Cloisonnement multi-entreprise. La comparaison seule était contournable :
+  // `null !== null` vaut false, donc un administrateur sans entreprise pouvait
+  // agir sur tout profil sans entreprise, quelle que soit son organisation.
+  if (!profile.entreprise_id) {
+    return NextResponse.json(
+      { error: "Votre compte n'est rattaché à aucune entreprise" },
+      { status: 403 }
+    );
+  }
+
   if (!targetProfile || targetProfile.entreprise_id !== profile.entreprise_id) {
     return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
   }
