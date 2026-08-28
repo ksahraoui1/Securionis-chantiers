@@ -419,6 +419,9 @@ export type Database = {
           fichier_nom: string;
           fichier_taille: number | null;
           version: number;
+          plan_type: "PE" | "EXE" | null;
+          plan_version: number | null;
+          parent_version_id: string | null;
           uploaded_by: string | null;
           created_at: string;
           updated_at: string;
@@ -433,6 +436,9 @@ export type Database = {
           fichier_nom: string;
           fichier_taille?: number | null;
           version?: number;
+          plan_type?: "PE" | "EXE" | null;
+          plan_version?: number | null;
+          parent_version_id?: string | null;
           uploaded_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -445,6 +451,9 @@ export type Database = {
           fichier_nom?: string;
           fichier_taille?: number | null;
           version?: number;
+          plan_type?: "PE" | "EXE" | null;
+          plan_version?: number | null;
+          parent_version_id?: string | null;
           updated_at?: string;
         };
       };

@@ -6,6 +6,8 @@ import { DestinatairesSection } from "@/components/chantier/destinataire-list";
 import { DocumentManager } from "@/components/chantier/document-manager";
 import { TimelineVisites } from "@/components/chantier/timeline-visites";
 import { VisiteCompare } from "@/components/visite/visite-compare";
+import { ChantierTabs } from "@/components/chantier/chantier-tabs";
+import { PlanComparaison } from "@/components/chantier/plan-comparaison";
 import { EcartListWithActions } from "./ecart-list-actions";
 import { ArchiveToggleButton } from "@/components/chantier/archive-toggle-button";
 
@@ -185,11 +187,48 @@ export default async function ChantierDetailPage({
         </dl>
       </Card>
 
-      {/* Documents */}
-      <Card title="Documents">
-        <DocumentManager
-          chantierId={chantierId}
-          initialDocuments={documents ?? []}
+      {/* Onglets : Documents / Visites / Comparaison */}
+      <Card>
+        <ChantierTabs
+          documents={
+            <DocumentManager
+              chantierId={chantierId}
+              initialDocuments={documents ?? []}
+            />
+          }
+          visites={
+            <div className="space-y-6">
+              <div>
+                {!chantier.archived && (
+                  <div className="flex items-center gap-2 flex-wrap justify-end mb-3">
+                    <Link
+                      href={`/chantiers/${chantierId}/visites/preparer`}
+                      className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-amber-50 text-amber-800 border border-amber-200 font-medium rounded-lg hover:bg-amber-100 transition-colors text-sm w-full sm:w-auto"
+                    >
+                      <span className="material-symbols-outlined text-lg">checklist</span>
+                      Préparer la visite
+                    </Link>
+                    <Link
+                      href={`/chantiers/${chantierId}/visites/nouvelle`}
+                      className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto"
+                    >
+                      <span className="material-symbols-outlined text-lg">add</span>
+                      Nouvelle visite
+                    </Link>
+                  </div>
+                )}
+                <TimelineVisites
+                  visites={visitesForTimeline}
+                  chantierId={chantierId}
+                />
+              </div>
+
+              {visitesForTimeline.length >= 2 && (
+                <VisiteCompare visites={visitesForTimeline} />
+              )}
+            </div>
+          }
+          comparaison={<PlanComparaison />}
         />
       </Card>
 
@@ -233,42 +272,6 @@ export default async function ChantierDetailPage({
           </div>
         </div>
       ))}
-
-      {/* Visites */}
-      <div>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-          <h2 className="text-lg font-semibold text-gray-900">Visites</h2>
-          {!chantier.archived && (
-            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-              <Link
-                href={`/chantiers/${chantierId}/visites/preparer`}
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-amber-50 text-amber-800 border border-amber-200 font-medium rounded-lg hover:bg-amber-100 transition-colors text-sm w-full sm:w-auto"
-              >
-                <span className="material-symbols-outlined text-lg">checklist</span>
-                Préparer la visite
-              </Link>
-              <Link
-                href={`/chantiers/${chantierId}/visites/nouvelle`}
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto"
-              >
-                <span className="material-symbols-outlined text-lg">add</span>
-                Nouvelle visite
-              </Link>
-            </div>
-          )}
-        </div>
-        <TimelineVisites
-          visites={visitesForTimeline}
-          chantierId={chantierId}
-        />
-      </div>
-
-      {/* Comparaison visites */}
-      {visitesForTimeline.length >= 2 && (
-        <div>
-          <VisiteCompare visites={visitesForTimeline} />
-        </div>
-      )}
 
       {/* Non-conformités */}
       <div>
