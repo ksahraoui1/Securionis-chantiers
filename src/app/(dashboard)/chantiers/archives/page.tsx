@@ -67,7 +67,7 @@ export default async function ChantiersArchivesPage() {
           href="/chantiers"
           className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 transition-colors text-sm"
         >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
+          <span translate="no" className="material-symbols-outlined text-lg">arrow_back</span>
           Chantiers actifs
         </Link>
       </div>
@@ -75,7 +75,7 @@ export default async function ChantiersArchivesPage() {
       {!chantiers || chantiers.length === 0 ? (
         <div className="text-center py-12">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="material-symbols-outlined text-gray-400 text-3xl">inventory_2</span>
+            <span translate="no" className="material-symbols-outlined text-gray-400 text-3xl">inventory_2</span>
           </div>
           <p className="text-gray-500">Aucun chantier archivé</p>
         </div>
@@ -85,7 +85,7 @@ export default async function ChantiersArchivesPage() {
             <div key={chantier.id} className="relative">
               <div className="absolute top-3 right-3 z-10">
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
-                  <span className="material-symbols-outlined text-xs">inventory_2</span>
+                  <span translate="no" className="material-symbols-outlined text-xs">inventory_2</span>
                   Archivé {chantier.archived_at
                     ? new Date(chantier.archived_at).toLocaleDateString("fr-CH")
                     : ""}

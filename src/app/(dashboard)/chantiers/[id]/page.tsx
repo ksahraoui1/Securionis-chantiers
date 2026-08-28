@@ -115,12 +115,12 @@ export default async function ChantierDetailPage({
             </h1>
             {chantier.archived ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                <span className="material-symbols-outlined text-xs">inventory_2</span>
+                <span translate="no" className="material-symbols-outlined text-xs">inventory_2</span>
                 Archivé
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                <span className="material-symbols-outlined text-xs">check_circle</span>
+                <span translate="no" className="material-symbols-outlined text-xs">check_circle</span>
                 Actif
               </span>
             )}
@@ -139,7 +139,7 @@ export default async function ChantierDetailPage({
             className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             title="Export Excel"
           >
-            <span className="material-symbols-outlined text-lg">download</span>
+            <span translate="no" className="material-symbols-outlined text-lg">download</span>
           </a>
           <ArchiveToggleButton chantierId={chantierId} archived={chantier.archived} />
           <Link
@@ -205,14 +205,14 @@ export default async function ChantierDetailPage({
                       href={`/chantiers/${chantierId}/visites/preparer`}
                       className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-amber-50 text-amber-800 border border-amber-200 font-medium rounded-lg hover:bg-amber-100 transition-colors text-sm w-full sm:w-auto"
                     >
-                      <span className="material-symbols-outlined text-lg">checklist</span>
+                      <span translate="no" className="material-symbols-outlined text-lg">checklist</span>
                       Préparer la visite
                     </Link>
                     <Link
                       href={`/chantiers/${chantierId}/visites/nouvelle`}
                       className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm w-full sm:w-auto"
                     >
-                      <span className="material-symbols-outlined text-lg">add</span>
+                      <span translate="no" className="material-symbols-outlined text-lg">add</span>
                       Nouvelle visite
                     </Link>
                   </div>
@@ -252,7 +252,7 @@ export default async function ChantierDetailPage({
         <div key={`corrected-${v.id}`} className="rounded-xl bg-green-50 border border-green-200 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-green-600 text-2xl mt-0.5">task_alt</span>
+              <span translate="no" className="material-symbols-outlined text-green-600 text-2xl mt-0.5">task_alt</span>
               <div>
                 <p className="text-sm font-semibold text-green-800">
                   Toutes les NC de la visite du {new Date(v.date_visite).toLocaleDateString("fr-CH")} sont corrigées
@@ -266,7 +266,7 @@ export default async function ChantierDetailPage({
               href={`/chantiers/${chantierId}/visites/${v.id}/rapport`}
               className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm shrink-0"
             >
-              <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
+              <span translate="no" className="material-symbols-outlined text-lg">picture_as_pdf</span>
               Générer le rapport
             </Link>
           </div>

@@ -104,7 +104,7 @@ export function PhotoCapture({
                     className="bg-white text-gray-800 rounded-full w-8 h-8 flex items-center justify-center text-xs shadow"
                     title="Annoter"
                   >
-                    <span className="material-symbols-outlined text-base">draw</span>
+                    <span translate="no" className="material-symbols-outlined text-base">draw</span>
                   </button>
                 )}
               </div>
@@ -151,7 +151,7 @@ export function PhotoCapture({
             disabled={uploading}
             className="flex items-center gap-1.5 px-4 py-2 min-h-touch bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-lg">photo_camera</span>
+            <span translate="no" className="material-symbols-outlined text-lg">photo_camera</span>
             Appareil photo
           </button>
           <button
@@ -160,7 +160,7 @@ export function PhotoCapture({
             disabled={uploading}
             className="flex items-center gap-1.5 px-4 py-2 min-h-touch bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-lg">photo_library</span>
+            <span translate="no" className="material-symbols-outlined text-lg">photo_library</span>
             Galerie
           </button>
         </div>

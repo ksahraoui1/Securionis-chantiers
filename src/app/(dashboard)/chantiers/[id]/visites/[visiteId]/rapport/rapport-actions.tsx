@@ -356,7 +356,7 @@ export function RapportActions({
                       className="text-amber-600 hover:text-amber-800"
                       aria-label={`Retirer ${email}`}
                     >
-                      <span className="material-symbols-outlined text-sm">close</span>
+                      <span translate="no" className="material-symbols-outlined text-sm">close</span>
                     </button>
                   </li>
                 ))}
@@ -375,7 +375,7 @@ export function RapportActions({
               disabled={totalSelected === 0 || sendingEmail}
               className="flex-1 py-3 min-h-[44px] bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
             >
-              <span className="material-symbols-outlined text-lg">send</span>
+              <span translate="no" className="material-symbols-outlined text-lg">send</span>
               {sendingEmail
                 ? "Envoi..."
                 : `Envoyer (${totalSelected})`}

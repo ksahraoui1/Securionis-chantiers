@@ -218,7 +218,7 @@ export function ImportExcelPoints({ onImported }: ImportExcelPointsProps) {
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 px-4 py-3 min-h-touch bg-amber-50 text-amber-700 rounded-lg font-medium hover:bg-amber-100 text-sm"
       >
-        <span className="material-symbols-outlined text-lg">upload_file</span>
+        <span translate="no" className="material-symbols-outlined text-lg">upload_file</span>
         Importer Excel
       </button>
     );
@@ -229,7 +229,7 @@ export function ImportExcelPoints({ onImported }: ImportExcelPointsProps) {
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm">Importer des points depuis un fichier Excel</h3>
         <button type="button" onClick={() => { setOpen(false); setPreview([]); setFile(null); setError(null); setResult(null); }} className="text-gray-400 hover:text-gray-600">
-          <span className="material-symbols-outlined text-sm">close</span>
+          <span translate="no" className="material-symbols-outlined text-sm">close</span>
         </button>
       </div>
 
@@ -256,7 +256,7 @@ export function ImportExcelPoints({ onImported }: ImportExcelPointsProps) {
           onClick={() => fileRef.current?.click()}
           className="w-full py-4 min-h-touch border-2 border-dashed border-amber-300 rounded-lg text-sm text-amber-600 hover:border-amber-400 transition-colors flex items-center justify-center gap-2"
         >
-          <span className="material-symbols-outlined">cloud_upload</span>
+          <span translate="no" className="material-symbols-outlined">cloud_upload</span>
           {file ? file.name : "Choisir un fichier Excel (.xlsx)"}
         </button>
       </div>
@@ -264,7 +264,7 @@ export function ImportExcelPoints({ onImported }: ImportExcelPointsProps) {
       {error && <p className="text-sm text-red-600">{error}</p>}
       {result && (
         <div className="bg-green-50 rounded-lg p-3 text-sm text-green-700 flex items-center gap-2">
-          <span className="material-symbols-outlined text-lg">check_circle</span>
+          <span translate="no" className="material-symbols-outlined text-lg">check_circle</span>
           {result}
         </div>
       )}

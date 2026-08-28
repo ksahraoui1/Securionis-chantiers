@@ -169,7 +169,7 @@ export const PointControleDocumentsUploader = forwardRef<
               key={doc.id}
               className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2"
             >
-              <span className="material-symbols-outlined text-red-500 text-sm">
+              <span translate="no" className="material-symbols-outlined text-red-500 text-sm">
                 picture_as_pdf
               </span>
               <a
@@ -185,7 +185,7 @@ export const PointControleDocumentsUploader = forwardRef<
                 onClick={() => handleDeleteDoc(doc.id)}
                 className="text-red-500 hover:text-red-700 p-1"
               >
-                <span className="material-symbols-outlined text-sm">close</span>
+                <span translate="no" className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>
           ))}
@@ -199,7 +199,7 @@ export const PointControleDocumentsUploader = forwardRef<
               key={i}
               className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2"
             >
-              <span className="material-symbols-outlined text-blue-500 text-sm">
+              <span translate="no" className="material-symbols-outlined text-blue-500 text-sm">
                 upload_file
               </span>
               <span className="text-xs text-blue-700 flex-1 truncate">
@@ -211,7 +211,7 @@ export const PointControleDocumentsUploader = forwardRef<
                 onClick={() => removePendingFile(i)}
                 className="text-red-500 hover:text-red-700 p-1"
               >
-                <span className="material-symbols-outlined text-sm">close</span>
+                <span translate="no" className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>
           ))}

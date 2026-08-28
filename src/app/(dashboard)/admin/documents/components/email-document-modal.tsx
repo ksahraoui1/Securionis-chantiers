@@ -58,7 +58,7 @@ export function EmailDocumentModal({ doc, onClose }: Props) {
       <div className="space-y-3">
         {sent ? (
           <div className="bg-green-50 rounded-lg p-4 text-center">
-            <span className="material-symbols-outlined text-green-600 text-3xl">
+            <span translate="no" className="material-symbols-outlined text-green-600 text-3xl">
               check_circle
             </span>
             <p className="text-sm font-medium text-green-800 mt-2">
@@ -101,7 +101,7 @@ export function EmailDocumentModal({ doc, onClose }: Props) {
               disabled={!to.trim() || sending}
               className="flex-1 py-3 min-h-touch bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
             >
-              <span className="material-symbols-outlined text-lg">send</span>
+              <span translate="no" className="material-symbols-outlined text-lg">send</span>
               {sending ? "Envoi..." : "Envoyer"}
             </button>
           )}

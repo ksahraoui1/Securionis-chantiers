@@ -133,7 +133,7 @@ export function DocumentUploadForm({ onClose, onUploaded }: Props) {
           onClick={() => fileRef.current?.click()}
           className="w-full py-4 min-h-touch border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
         >
-          <span className="material-symbols-outlined">cloud_upload</span>
+          <span translate="no" className="material-symbols-outlined">cloud_upload</span>
           {file ? file.name : "Choisir un fichier (PDF, JPEG, JPG, PNG)"}
         </button>
       </div>

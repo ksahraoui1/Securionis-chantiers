@@ -134,14 +134,14 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-4 py-2 min-h-touch bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
       >
-        <span className="material-symbols-outlined text-lg">gavel</span>
+        <span translate="no" className="material-symbols-outlined text-lg">gavel</span>
         Assistant juridique
         {messages.length > 0 && (
           <span className="bg-indigo-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
             {messages.filter((m) => m.role === "assistant").length}
           </span>
         )}
-        <span className="material-symbols-outlined text-sm ml-auto">
+        <span translate="no" className="material-symbols-outlined text-sm ml-auto">
           {isOpen ? "expand_less" : "expand_more"}
         </span>
       </button>
@@ -157,7 +157,7 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
               <div className="text-center py-4 space-y-3">
                 <div className="flex items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-indigo-600 text-2xl">gavel</span>
+                    <span translate="no" className="material-symbols-outlined text-indigo-600 text-2xl">gavel</span>
                   </div>
                 </div>
                 <div>
@@ -207,7 +207,7 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
                           disabled={summarizing !== null}
                           className="flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 mt-2 disabled:opacity-50"
                         >
-                          <span className="material-symbols-outlined text-sm">
+                          <span translate="no" className="material-symbols-outlined text-sm">
                             {summarizing === i ? "hourglass_top" : "content_paste"}
                           </span>
                           {summarizing === i ? "Résumé en cours..." : "Copier dans la remarque"}
@@ -225,7 +225,7 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
               <div className="flex justify-start">
                 <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 text-sm text-gray-500">
                   <span className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-lg animate-spin">progress_activity</span>
+                    <span translate="no" className="material-symbols-outlined text-lg animate-spin">progress_activity</span>
                     Recherche en cours...
                   </span>
                 </div>
@@ -234,7 +234,7 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
 
             {error && (
               <div className="bg-red-50 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2">
-                <span className="material-symbols-outlined text-lg mt-0.5">error</span>
+                <span translate="no" className="material-symbols-outlined text-lg mt-0.5">error</span>
                 {error}
               </div>
             )}
@@ -262,7 +262,7 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
               disabled={!input.trim() || loading}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors"
             >
-              <span className="material-symbols-outlined">send</span>
+              <span translate="no" className="material-symbols-outlined">send</span>
             </button>
           </div>
         </div>

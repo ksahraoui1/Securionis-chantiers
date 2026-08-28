@@ -177,7 +177,7 @@ export function ModaleCreationNC({
             className="inline-flex items-center gap-2 px-4 py-2 min-h-touch text-sm text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
             style={{ backgroundColor: NAVY }}
           >
-            <span className="material-symbols-outlined text-lg">report</span>
+            <span translate="no" className="material-symbols-outlined text-lg">report</span>
             {envoi ? "Création…" : "Créer la NC"}
           </button>
         </div>
@@ -293,7 +293,7 @@ export function ModaleCreationNC({
 
         {erreur && (
           <p className="text-sm text-red-600 flex items-start gap-1">
-            <span className="material-symbols-outlined text-sm">error</span>
+            <span translate="no" className="material-symbols-outlined text-sm">error</span>
             {erreur}
           </p>
         )}

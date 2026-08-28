@@ -96,7 +96,7 @@ export function EcartList({ ecarts, onUpdateStatut, chantierId }: EcartListProps
                 </span>
                 {ecart.type === "ecart_plan" && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-white bg-[#2563EB]">
-                    <span className="material-symbols-outlined text-[11px]">
+                    <span translate="no" className="material-symbols-outlined text-[11px]">
                       compare_arrows
                     </span>
                     Écart de plan
@@ -124,7 +124,7 @@ export function EcartList({ ecarts, onUpdateStatut, chantierId }: EcartListProps
               href={`/chantiers/${chantierId}/nc/${ecart.id}`}
               className="mt-3 mr-2 inline-flex items-center gap-1 px-3 py-2 min-h-touch text-sm text-[#002855] rounded-lg hover:bg-[#002855]/10 font-medium transition-colors"
             >
-              <span className="material-symbols-outlined text-base">open_in_new</span>
+              <span translate="no" className="material-symbols-outlined text-base">open_in_new</span>
               Voir le détail
             </Link>
           )}

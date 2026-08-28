@@ -57,7 +57,7 @@ export default async function ComparaisonPage({
             href={`/chantiers/${chantierId}`}
             className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#002855] transition-colors"
           >
-            <span className="material-symbols-outlined text-base">arrow_back</span>
+            <span translate="no" className="material-symbols-outlined text-base">arrow_back</span>
             Retour au chantier
           </Link>
           <h1 className="text-xl sm:text-2xl font-bold text-[#002855] mt-1 break-words">
@@ -69,7 +69,7 @@ export default async function ComparaisonPage({
       {manquants.length > 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
           <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
-            <span className="material-symbols-outlined text-amber-600 text-2xl">
+            <span translate="no" className="material-symbols-outlined text-amber-600 text-2xl">
               warning
             </span>
           </div>
@@ -83,7 +83,7 @@ export default async function ComparaisonPage({
             href={`/chantiers/${chantierId}`}
             className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 mt-4 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#002855]/90 transition-colors text-sm"
           >
-            <span className="material-symbols-outlined text-lg">upload_file</span>
+            <span translate="no" className="material-symbols-outlined text-lg">upload_file</span>
             Ajouter un plan
           </Link>
         </div>

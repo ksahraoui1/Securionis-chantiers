@@ -153,7 +153,7 @@ export default async function RapportPage({
       {allNcCorrected && (
         <div className="rounded-lg bg-green-50 border border-green-200 p-4 mb-6">
           <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-green-600 text-2xl">check_circle</span>
+            <span translate="no" className="material-symbols-outlined text-green-600 text-2xl">check_circle</span>
             <div>
               <p className="text-sm font-semibold text-green-800">
                 Toutes les non-conformités de la visite du{" "}
@@ -179,9 +179,9 @@ export default async function RapportPage({
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   {ecart.statut === "corrige" ? (
-                    <span className="material-symbols-outlined text-green-500 text-base shrink-0">check_circle</span>
+                    <span translate="no" className="material-symbols-outlined text-green-500 text-base shrink-0">check_circle</span>
                   ) : (
-                    <span className="material-symbols-outlined text-red-500 text-base shrink-0">error</span>
+                    <span translate="no" className="material-symbols-outlined text-red-500 text-base shrink-0">error</span>
                   )}
                   <span className={`${ecart.statut === "corrige" ? "text-gray-400 line-through" : "text-gray-700"}`}>
                     {ecart.description}
@@ -201,7 +201,7 @@ export default async function RapportPage({
         <div className="flex items-center gap-2 text-sm">
           {visite.rapport_url ? (
             <span className="text-green-600 font-medium flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm">check_circle</span>
+              <span translate="no" className="material-symbols-outlined text-sm">check_circle</span>
               PDF généré
             </span>
           ) : (
@@ -211,7 +211,7 @@ export default async function RapportPage({
         <div className="flex items-center gap-2 text-sm">
           {visite.email_envoye ? (
             <span className="text-green-600 font-medium flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm">check_circle</span>
+              <span translate="no" className="material-symbols-outlined text-sm">check_circle</span>
               Email envoyé
             </span>
           ) : (

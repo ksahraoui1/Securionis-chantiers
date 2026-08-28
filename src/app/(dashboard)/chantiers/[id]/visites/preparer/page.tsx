@@ -91,7 +91,7 @@ export default async function PreparerVisitePage({
           href={`/chantiers/${chantierId}`}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-2"
         >
-          <span className="material-symbols-outlined text-base">arrow_back</span>
+          <span translate="no" className="material-symbols-outlined text-base">arrow_back</span>
           Retour au chantier
         </Link>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
@@ -106,7 +106,7 @@ export default async function PreparerVisitePage({
       <Card title={`Non-conformités à re-vérifier (${openNCs.length})`}>
         {openNCs.length === 0 ? (
           <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-lg p-3">
-            <span className="material-symbols-outlined text-lg">check_circle</span>
+            <span translate="no" className="material-symbols-outlined text-lg">check_circle</span>
             <span className="text-sm font-medium">Aucune NC ouverte</span>
           </div>
         ) : (
@@ -204,7 +204,7 @@ export default async function PreparerVisitePage({
                 className="flex items-center justify-between gap-2 text-sm"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="material-symbols-outlined text-base text-gray-400">
+                  <span translate="no" className="material-symbols-outlined text-base text-gray-400">
                     description
                   </span>
                   <span className="truncate text-gray-900">{doc.nom}</span>
@@ -230,7 +230,7 @@ export default async function PreparerVisitePage({
             href={nouvelleVisiteHref}
             className="inline-flex items-center justify-center gap-2 min-h-[52px] px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-lg w-full"
           >
-            <span className="material-symbols-outlined text-xl">play_arrow</span>
+            <span translate="no" className="material-symbols-outlined text-xl">play_arrow</span>
             Démarrer la visite
           </Link>
         </div>

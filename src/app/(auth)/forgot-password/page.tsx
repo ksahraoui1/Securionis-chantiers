@@ -38,7 +38,7 @@ export default function ForgotPasswordPage() {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-blue-600 text-3xl">forward_to_inbox</span>
+          <span translate="no" className="material-symbols-outlined text-blue-600 text-3xl">forward_to_inbox</span>
         </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">
           Email envoyé

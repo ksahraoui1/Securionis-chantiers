@@ -106,7 +106,7 @@ export default function AdminUtilisateursPage() {
           onClick={() => setShowForm(true)}
           className="px-4 py-3 min-h-[44px] bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 inline-flex items-center gap-2"
         >
-          <span className="material-symbols-outlined text-lg">person_add</span>
+          <span translate="no" className="material-symbols-outlined text-lg">person_add</span>
           Nouvel utilisateur
         </button>
       </div>
@@ -148,7 +148,7 @@ export default function AdminUtilisateursPage() {
                   className="p-2 min-h-[44px] min-w-[44px] text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center"
                   title="Modifier"
                 >
-                  <span className="material-symbols-outlined text-lg">edit</span>
+                  <span translate="no" className="material-symbols-outlined text-lg">edit</span>
                 </button>
                 <button
                   type="button"
@@ -156,7 +156,7 @@ export default function AdminUtilisateursPage() {
                   className="p-2 min-h-[44px] min-w-[44px] text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center"
                   title="Supprimer"
                 >
-                  <span className="material-symbols-outlined text-lg">delete</span>
+                  <span translate="no" className="material-symbols-outlined text-lg">delete</span>
                 </button>
               </div>
             </div>

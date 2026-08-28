@@ -96,7 +96,7 @@ export default function AbonnementPage() {
 
       {success && (
         <div className="mb-6 rounded-lg bg-green-50 border border-green-200 p-4 text-sm text-green-700">
-          <span className="material-symbols-outlined text-lg align-middle mr-1">check_circle</span>
+          <span translate="no" className="material-symbols-outlined text-lg align-middle mr-1">check_circle</span>
           Votre abonnement a été activé avec succès !
         </div>
       )}
@@ -133,14 +133,14 @@ export default function AbonnementPage() {
 
         {isTrial && sub?.trial_end && (
           <p className="text-sm text-amber-600 mt-3">
-            <span className="material-symbols-outlined text-sm align-middle mr-1">schedule</span>
+            <span translate="no" className="material-symbols-outlined text-sm align-middle mr-1">schedule</span>
             Essai gratuit jusqu'au {new Date(sub.trial_end).toLocaleDateString("fr-CH")}
           </p>
         )}
 
         {isActive && sub?.cancel_at && (
           <p className="text-sm text-red-600 mt-3">
-            <span className="material-symbols-outlined text-sm align-middle mr-1">warning</span>
+            <span translate="no" className="material-symbols-outlined text-sm align-middle mr-1">warning</span>
             Annulation prévue le {new Date(sub.cancel_at).toLocaleDateString("fr-CH")}
           </p>
         )}
@@ -183,19 +183,19 @@ export default function AbonnementPage() {
               <p className="text-sm text-gray-500 mt-1">14 jours d'essai gratuit</p>
               <ul className="text-sm text-gray-700 mt-4 space-y-2 flex-1">
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   Chantiers illimités
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   Visites illimitées
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   10 photos par visite
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   Rapports PDF + email
                 </li>
               </ul>
@@ -223,19 +223,19 @@ export default function AbonnementPage() {
               </p>
               <ul className="text-sm text-gray-700 mt-4 space-y-2 flex-1">
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   Chantiers illimités
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   Visites illimitées
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   10 photos par visite
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-600 text-sm">check</span>
+                  <span translate="no" className="material-symbols-outlined text-green-600 text-sm">check</span>
                   Rapports PDF + email
                 </li>
               </ul>
