@@ -504,6 +504,29 @@ Les panneaux inactifs sont rendus avec l'attribut `hidden` plutôt que démonté
 
 ⚠️ **Suppression d'un document** : `handleDelete` efface le fichier de stockage sans vérifier qu'aucun autre document ne référence la même `fichier_url`. Comportement préexistant, à garder en tête si des documents venaient à partager un fichier.
 
+### Comparaison des plans PE / EXE (2026-08-28)
+
+Page `/chantiers/[id]/comparaison` (`src/app/(dashboard)/chantiers/[id]/comparaison/page.tsx` + `src/components/chantier/comparaison-plans.tsx`). L'onglet « Comparaison » de la page chantier y renvoie.
+
+**Dépendances ajoutées** : `openseadragon` (visualiseur) et `pdfjs-dist` (rendu des PDF). Toutes deux embarquent leurs types ; aucune vulnérabilité npm ajoutée.
+
+**Pourquoi pdf.js** : OpenSeadragon n'affiche que des sources image, or **tous les plans de production sont des PDF**. `construireSource()` rend donc la page demandée dans un canvas, la convertit en blob et passe l'URL blob à OpenSeadragon (`tileSource: { type: "image", url }`). Les images (JPEG/PNG) sont passées directement. Tout autre format déclenche un message explicite.
+
+**Superposition sans désynchronisation possible** : un **seul** viewer OpenSeadragon contenant deux `TiledImage`, chacune posée avec `width: 1` dans les coordonnées monde. Le zoom et la position sont donc partagés par construction — il n'y a aucun code de synchronisation entre deux viewers à maintenir.
+- Superposition : les deux images à l'origine, celle du dessus reçoit l'opacité du curseur.
+- Côte à côte (« Split view ») : l'image du dessus est déplacée en `x = 1.05`, les deux à 100 % (le curseur d'opacité est alors désactivé, et le dit).
+- « Inverser les calques » : `world.setItemIndex()` échange l'ordre ; le libellé du curseur suit (« Opacité du plan PE / EXE »).
+
+**PDF multi-pages** : `nbPages` est lu au rendu ; un sélecteur de page apparaît par plan dès qu'il y a plus d'une page (les dossiers réels font une douzaine de pages). Changer de page reconstruit la source de ce plan.
+
+**Mémoire** : chaque rendu PDF crée une URL blob, révoquée au démontage de l'effet ; la tâche de chargement pdf.js est détruite via `tache.destroy()` (c'est `PDFDocumentLoadingTask` qui porte `destroy()`, pas `PDFDocumentProxy`). Le rendu vise `LARGEUR_RENDU_PDF` = 2400 px de large, plafonné à une échelle de 4.
+
+**Worker pdf.js** : `GlobalWorkerOptions.workerSrc` est résolu par `new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url)` — pas de fichier vendu dans `public/`, et compatible avec la CSP (`worker-src 'self' blob:`).
+
+> Pièges rencontrés :
+> - OpenSeadragon zoome au **simple clic** par défaut. Insupportable pour un outil où l'on désigne des points : `gestureSettingsMouse/Touch: { clickToZoom: false }`, le double-clic et la molette suffisent.
+> - `requestFullscreen()` peut être refusé (`TypeError: Permissions check failed` dans certains navigateurs embarqués). Le refus est désormais rattrapé et affiché, sinon le bouton paraît simplement inerte. La `Permissions-Policy` de l'app ne bloque pas `fullscreen`.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`** dans `audit_logs` : la colonne s'appelle `resource` (depuis migration 022). `resource_type` provoque des inserts silencieusement ignorés.
@@ -519,7 +542,8 @@ Les panneaux inactifs sont rendus avec l'attribut `hidden` plutôt que démonté
 11. **Modifier `profiles.role` ou `profiles.entreprise_id`** exige `set role service_role;` — le trigger `enforce_role_immutability` refuse toute autre origine.
 12. **Familles des points de contrôle** : `famille` est renseignée par le trigger `points_controle_famille_trg` (migration 038) si l'appelant ne la fournit pas ; `mots_cles` n'a pas d'équivalent et doit être fourni par l'appelant (`genererMotsCles()`).
 13. **Plans PE/EXE** : `plan_type`, `plan_version` et `parent_version_id` sont renseignés uniquement côté application (aucun trigger). Le chaînage `parent_version_id` est calculé au marquage à partir des documents déjà chargés.
-14. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+14. **pdf.js** : `destroy()` est porté par la tâche de chargement (`getDocument(...)`), pas par le document. Toute URL blob créée pour OpenSeadragon doit être révoquée au démontage.
+15. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
