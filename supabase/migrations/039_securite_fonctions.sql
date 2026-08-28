@@ -1,5 +1,7 @@
 -- 039 — Durcissement des fonctions SECURITY DEFINER (audit sécurité 2026-08-28)
 --
+-- Appliquée le 2026-08-28.
+--
 -- Deux avertissements du linter Supabase, sur trois fonctions :
 --
 -- 1. `search_path` mutable : une fonction SECURITY DEFINER sans search_path fixe
@@ -33,4 +35,6 @@ revoke execute on function public.prevent_user_self_role_change() from public, a
 
 -- `user_role()` reste exécutable : les policies RLS l'appellent pour le compte
 -- de l'utilisateur courant. On retire seulement l'accès anonyme.
+-- NB : ce revoke sur `anon` seul est sans effet (le privilège vient de PUBLIC,
+-- dont anon hérite) — corrigé par la migration 040.
 revoke execute on function public.user_role() from anon;
