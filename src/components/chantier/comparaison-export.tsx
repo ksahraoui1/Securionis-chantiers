@@ -7,6 +7,10 @@ import {
   dateFichier,
   telecharger,
 } from "@/lib/utils/comparaison-capture";
+import {
+  construireDocumentImpression,
+  type AnnotationImpression,
+} from "@/lib/utils/comparaison-impression";
 
 const NAVY = "#002855";
 const ORANGE = "#E67E22";
@@ -40,14 +44,6 @@ function version(plan: PlanResume): string {
   return `V${plan.plan_version ?? 0}`;
 }
 
-function echapperHtml(valeur: string): string {
-  return valeur
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 export function GroupeExport({
   pret,
   comparaisonId,
@@ -56,7 +52,7 @@ export function GroupeExport({
   docEXE,
   pagePE,
   pageEXE,
-  nbAnnotations,
+  annotations,
   onCapturer,
 }: {
   pret: boolean;
@@ -66,9 +62,10 @@ export function GroupeExport({
   docEXE: PlanResume;
   pagePE: number;
   pageEXE: number;
-  nbAnnotations: number;
+  annotations: AnnotationImpression[];
   onCapturer: () => Promise<Blob>;
 }) {
+  const nbAnnotations = annotations.length;
   const [menuOuvert, setMenuOuvert] = useState(false);
   const [occupe, setOccupe] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
@@ -174,27 +171,17 @@ export function GroupeExport({
         cadre.remove();
       };
 
-      const titre = `Comparaison des plans — ${chantierNom}`;
-      const sousTitre =
-        `PE ${version(docPE)} (page ${pagePE}) vs EXE ${version(docEXE)} ` +
-        `(page ${pageEXE}) — ${nbAnnotations} annotation${
-          nbAnnotations > 1 ? "s" : ""
-        } — ${new Date().toLocaleDateString("fr-CH")}`;
-
-      cadre.srcdoc = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>${echapperHtml(titre)}</title>
-<style>
-  @page { size: landscape; margin: 10mm; }
-  body { margin: 0; font-family: Helvetica, Arial, sans-serif; color: ${NAVY}; }
-  h1 { font-size: 14px; margin: 0 0 4px; }
-  p { font-size: 11px; margin: 0 0 8px; color: #4b5563; }
-  img { width: 100%; height: auto; display: block; }
-</style></head>
-<body>
-  <h1>${echapperHtml(titre)}</h1>
-  <p>${echapperHtml(sousTitre)}</p>
-  <img src="${url}" alt="Comparaison des plans">
-</body></html>`;
+      cadre.srcdoc = construireDocumentImpression({
+        chantierNom,
+        titrePE: `${docPE.nom}${docPE.plan_version ? ` V${docPE.plan_version}` : ""}`,
+        titreEXE: `${docEXE.nom}${
+          docEXE.plan_version ? ` V${docEXE.plan_version}` : ""
+        }`,
+        pagePE,
+        pageEXE,
+        imageUrl: url,
+        annotations,
+      });
 
       await new Promise<void>((resoudre) => {
         cadre.onload = () => {
@@ -218,6 +205,7 @@ export function GroupeExport({
             resoudre();
           };
 
+          // Imprimer avant la fin du décodage donnerait une page blanche.
           const image = fenetre.document.querySelector("img");
           if (image && !image.complete) {
             image.onload = lancer;
@@ -230,7 +218,11 @@ export function GroupeExport({
 
       // Filet : certains navigateurs n'émettent jamais « afterprint ».
       setTimeout(nettoyer, 120_000);
-      setMessage({ ton: "ok", texte: "Boîte d'impression ouverte." });
+      setMessage({
+        ton: "ok",
+        texte:
+          "Boîte d'impression ouverte. Décochez « En-têtes et pieds de page » pour un rendu sans la date ni l'URL.",
+      });
     });
   }
 
