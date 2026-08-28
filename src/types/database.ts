@@ -362,8 +362,13 @@ export type Database = {
       ecarts: {
         Row: {
           id: string;
+          numero: number;
           chantier_id: string;
-          reponse_id: string;
+          // NULL pour une NC issue d'une comparaison de plans (aucune réponse de checklist)
+          reponse_id: string | null;
+          titre: string | null;
+          type: "ecart_plan" | null;
+          priorite: "haute" | "moyenne" | "basse" | null;
           description: string;
           delai: string | null;
           statut: "ouvert" | "en_cours_correction" | "corrige";
@@ -374,7 +379,10 @@ export type Database = {
         Insert: {
           id?: string;
           chantier_id: string;
-          reponse_id: string;
+          reponse_id?: string | null;
+          titre?: string | null;
+          type?: "ecart_plan" | null;
+          priorite?: "haute" | "moyenne" | "basse" | null;
           description: string;
           delai?: string | null;
           statut?: "ouvert" | "en_cours_correction" | "corrige";
@@ -383,6 +391,8 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          titre?: string | null;
+          priorite?: "haute" | "moyenne" | "basse" | null;
           description?: string;
           delai?: string | null;
           statut?: "ouvert" | "en_cours_correction" | "corrige";
@@ -642,6 +652,25 @@ export type Database = {
           height?: number;
           color?: "red" | "orange" | "green" | "yellow";
           commentaire?: string | null;
+        };
+      };
+      comparaison_nc_links: {
+        Row: {
+          id: string;
+          annotation_id: string;
+          nc_id: string;
+          capture_url: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          annotation_id: string;
+          nc_id: string;
+          capture_url?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          capture_url?: string | null;
         };
       };
     };

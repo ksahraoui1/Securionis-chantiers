@@ -55,9 +55,20 @@ export const COULEURS: {
   { valeur: "yellow", hex: "#EAB308", libelle: "Info" },
 ];
 
-const HEX: Record<CouleurAnnotation, string> = Object.fromEntries(
+export const HEX_COULEURS: Record<CouleurAnnotation, string> = Object.fromEntries(
   COULEURS.map((c) => [c.valeur, c.hex])
 ) as Record<CouleurAnnotation, string>;
+
+const HEX = HEX_COULEURS;
+
+// Une annotation rattachée à une non-conformité s'affiche en bleu. La couleur
+// d'origine reste en base : elle porte la gravité, pas l'état du rattachement.
+export const BLEU_NC = "#2563EB";
+
+export interface LienNC {
+  ncId: string;
+  numero: number;
+}
 
 const LIBELLE_COULEUR: Record<CouleurAnnotation, string> = Object.fromEntries(
   COULEURS.map((c) => [c.valeur, c.libelle])
@@ -173,6 +184,7 @@ export function CoucheAnnotations({
   outil,
   couleur,
   annotations,
+  liens,
   selection,
   onSelection,
   onCreer,
@@ -183,6 +195,7 @@ export function CoucheAnnotations({
   outil: OutilAnnotation;
   couleur: CouleurAnnotation;
   annotations: Annotation[];
+  liens: Record<string, LienNC>;
   selection: string | null;
   onSelection: (id: string | null) => void;
   onCreer: (annotation: Omit<Annotation, "id" | "commentaire">) => void;
@@ -390,6 +403,7 @@ export function CoucheAnnotations({
             <Forme
               key={annotation.id}
               annotation={{ ...annotation, ...geo }}
+              lienNC={liens[annotation.id]}
               numero={index + 1}
               selectionnee={selection === annotation.id}
               uniteEcran={uniteEcran}
@@ -422,6 +436,7 @@ export function CoucheAnnotations({
 
 function Forme({
   annotation,
+  lienNC,
   numero,
   selectionnee,
   uniteEcran,
@@ -430,6 +445,7 @@ function Forme({
   onPoignee,
 }: {
   annotation: Annotation;
+  lienNC?: LienNC;
   numero: number;
   selectionnee: boolean;
   uniteEcran: number;
@@ -437,7 +453,7 @@ function Forme({
   onPointerDown?: (e: React.PointerEvent) => void;
   onPoignee?: (e: React.PointerEvent) => void;
 }) {
-  const couleur = HEX[annotation.color];
+  const couleur = lienNC ? BLEU_NC : HEX[annotation.color];
   const { x, y, width, height } = annotation;
   const boite = normaliser({ x, y, width, height });
 
@@ -564,6 +580,29 @@ function Forme({
         </text>
       </g>
 
+      {lienNC && (
+        <g style={{ pointerEvents: "none" }}>
+          <rect
+            x={boite.x + rayon * 1.2}
+            y={boite.y - rayon}
+            width={rayon * 4.6}
+            height={rayon * 2}
+            rx={rayon * 0.5}
+            fill={BLEU_NC}
+          />
+          <text
+            x={boite.x + rayon * 3.5}
+            y={boite.y + rayon * 0.45}
+            textAnchor="middle"
+            fontSize={rayon * 1.1}
+            fill="white"
+            fontWeight={700}
+          >
+            NC #{lienNC.numero}
+          </text>
+        </g>
+      )}
+
       {selectionnee && (
         <>
           <rect
@@ -602,6 +641,8 @@ function Forme({
 
 export function ListeAnnotations({
   annotations,
+  liens,
+  chantierId,
   filtre,
   selection,
   onFiltre,
@@ -609,8 +650,11 @@ export function ListeAnnotations({
   onCommentaire,
   onCouleur,
   onSupprimer,
+  onCreerNC,
 }: {
   annotations: Annotation[];
+  liens: Record<string, LienNC>;
+  chantierId: string;
   filtre: CouleurAnnotation | "all";
   selection: string | null;
   onFiltre: (filtre: CouleurAnnotation | "all") => void;
@@ -618,6 +662,7 @@ export function ListeAnnotations({
   onCommentaire: (id: string, commentaire: string) => void;
   onCouleur: (id: string, couleur: CouleurAnnotation) => void;
   onSupprimer: (id: string) => void;
+  onCreerNC: (annotation: Annotation) => void;
 }) {
   const visibles = annotations
     .map((a, index) => ({ annotation: a, numero: index + 1 }))
@@ -675,7 +720,11 @@ export function ListeAnnotations({
           >
             <span
               className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold text-white shrink-0"
-              style={{ backgroundColor: HEX[annotation.color] }}
+              style={{
+                backgroundColor: liens[annotation.id]
+                  ? BLEU_NC
+                  : HEX[annotation.color],
+              }}
             >
               {numero}
             </span>
@@ -707,6 +756,33 @@ export function ListeAnnotations({
                 </option>
               ))}
             </select>
+
+            {liens[annotation.id] ? (
+              <a
+                href={`/chantiers/${chantierId}/nc/${liens[annotation.id].ncId}`}
+                onClick={(e) => e.stopPropagation()}
+                title="Ouvrir la non-conformité"
+                className="inline-flex items-center gap-1 px-2 py-1 min-h-touch rounded-lg text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: BLEU_NC }}
+              >
+                <span className="material-symbols-outlined text-sm">link</span>
+                NC #{liens[annotation.id].numero}
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCreerNC(annotation);
+                }}
+                title="Créer une non-conformité à partir de cette annotation"
+                className="inline-flex items-center gap-1 px-2 py-1 min-h-touch rounded-lg text-[11px] font-medium text-white shrink-0 hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: NAVY }}
+              >
+                <span className="material-symbols-outlined text-sm">report</span>
+                <span className="hidden sm:inline">Créer une NC</span>
+              </button>
+            )}
 
             <button
               type="button"

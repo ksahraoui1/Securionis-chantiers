@@ -5,9 +5,10 @@ import type { Tables } from "@/types/database";
 
 interface EcartListWithActionsProps {
   ecarts: Tables<"ecarts">[];
+  chantierId: string;
 }
 
-export function EcartListWithActions({ ecarts }: EcartListWithActionsProps) {
+export function EcartListWithActions({ ecarts, chantierId }: EcartListWithActionsProps) {
   async function handleUpdateStatut(id: string, statut: string) {
     await fetch(`/api/ecarts/${id}/statut`, {
       method: "PATCH",
@@ -16,5 +17,11 @@ export function EcartListWithActions({ ecarts }: EcartListWithActionsProps) {
     });
   }
 
-  return <EcartList ecarts={ecarts} onUpdateStatut={handleUpdateStatut} />;
+  return (
+    <EcartList
+      ecarts={ecarts}
+      chantierId={chantierId}
+      onUpdateStatut={handleUpdateStatut}
+    />
+  );
 }

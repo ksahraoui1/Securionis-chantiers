@@ -565,6 +565,28 @@ RLS calquée sur celle des documents : lecture et écriture pour l'inspecteur as
 
 **Export** : bouton « Exporter les annotations » → fichier JSON contenant l'horodatage, le chantier, la session, les deux plans avec version et page, le repère de coordonnées et la liste numérotée des annotations.
 
+#### Non-conformité créée depuis une annotation (2026-08-28)
+
+Bouton « Créer une NC » sur chaque annotation de la comparaison → modale pré-remplie → NC dans la liste du chantier et dans le compteur du tableau de bord, page de détail dédiée.
+
+**Le modèle de NC a dû évoluer** (migration 043). Jusque-là, `ecarts.reponse_id` était **NOT NULL** : toute NC dérivait d'une réponse de checklist dans une visite. Une NC née d'une annotation de plan n'a ni visite ni réponse. La colonne est donc devenue nullable, sous contrainte `ecarts_origine_check` (`reponse_id IS NOT NULL OR type = 'ecart_plan'`), afin qu'une NC sans réponse soit forcément une NC de plan.
+
+> Audit des consommateurs, fait avant la migration : le rapport de visite (`rapport/page.tsx`) et le PDF filtrent par identifiants de réponses connus — les NC de plan en sont correctement exclues ; le tableau de bord tolérait déjà l'absence de correspondance et les range sous « Sans thème » ; l'export XLSX les traite génériquement. Aucun code n'a eu à changer.
+
+Colonnes ajoutées à `ecarts` : `titre`, `type` (`'ecart_plan'`), `priorite` (`haute` / `moyenne` / `basse`) et `numero`, un entier d'identité qui donne enfin un numéro lisible aux NC (« NC #79 ») — les 77 NC existantes ont été numérotées par ordre de création.
+
+**`comparaison_nc_links`** relie une annotation à sa NC et porte `capture_url`. Les plans comparés ne sont pas dupliqués sur la NC : on remonte `nc_id → annotation_id → comparaison_id → documents + pages`.
+
+**Le bleu n'est pas stocké.** L'annotation liée à une NC s'affiche en bleu et porte le badge « NC #n », mais sa couleur en base reste celle de la gravité : l'état « liée » se déduit du lien. Ajouter `'blue'` à la contrainte de couleur aurait écrasé l'information de gravité.
+
+**Capture de la zone annotée** : le canevas OpenSeadragon est découpé autour de la boîte de l'annotation, avec marge, et le contour de la forme y est retracé (la couche SVG des annotations n'est pas dans ce canevas). Le visualiseur est passé en `crossOriginPolicy: "Anonymous"` pour que le canevas reste exportable.
+
+> ⚠️ **Bucket** : la capture PNG part dans **`visite-photos`**, pas `rapports`. Depuis le durcissement de juillet, `rapports` n'accepte que `application/pdf` — un PNG y est refusé avec un **400**. Le chantier est la première composante du chemin (`<chantierId>/comparaisons/<uuid>.png`), pour rester dans le périmètre de la policy de suppression du bucket.
+>
+> Corollaire non corrigé : `document-manager.tsx` propose encore `.jpg/.png` à l'upload vers `rapports`, où ils seront rejetés. Cela explique probablement que les 24 documents en base soient tous des PDF.
+
+**Page de détail d'une NC** : `/chantiers/[id]/nc/[ncId]` — elle n'existait pas, les NC n'étaient qu'une liste. Section « Plan comparé » avec les versions PE/EXE, la capture et un lien « Voir la comparaison » qui recharge le même couple via les paramètres `?pe=&exe=` lus par la page de comparaison.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`** dans `audit_logs` : la colonne s'appelle `resource` (depuis migration 022). `resource_type` provoque des inserts silencieusement ignorés.
@@ -582,7 +604,9 @@ RLS calquée sur celle des documents : lecture et écriture pour l'inspecteur as
 13. **Plans PE/EXE** : `plan_type`, `plan_version` et `parent_version_id` sont renseignés uniquement côté application (aucun trigger). Le chaînage `parent_version_id` est calculé au marquage à partir des documents déjà chargés.
 14. **pdf.js** : `destroy()` est porté par la tâche de chargement (`getDocument(...)`), pas par le document. Toute URL blob créée pour OpenSeadragon doit être révoquée au démontage.
 15. **Annotations de comparaison** : les coordonnées sont en unités monde OpenSeadragon, jamais en pixels. Une forme SVG qui doit être cliquable sur toute sa surface a besoin de `fill="transparent"`, pas `fill="none"`.
-16. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+16. **Bucket `rapports` = PDF uniquement** : toute image (PNG/JPEG) doit aller dans `visite-photos`, sinon l'upload répond 400.
+17. **Une NC sans `reponse_id`** est forcément de type `ecart_plan` (contrainte `ecarts_origine_check`). Tout code qui joint `ecarts` à `reponses` doit tolérer l'absence de correspondance.
+18. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
