@@ -19,6 +19,8 @@ import {
   ModaleCreationNC,
   type Capture,
 } from "@/components/chantier/nc-depuis-annotation";
+import { GroupeExport } from "@/components/chantier/comparaison-export";
+import { capturerVue } from "@/lib/utils/comparaison-capture";
 
 type OSDStatic = typeof OpenSeadragonNS;
 type Viewer = OpenSeadragonNS.Viewer;
@@ -182,6 +184,9 @@ export function ComparaisonPlans({
 
   const conteneurRef = useRef<HTMLDivElement>(null);
   const cadreRef = useRef<HTMLDivElement>(null);
+  // Zone qui porte le visualiseur et la couche d'annotations : c'est elle que
+  // la capture PNG recompose.
+  const zoneRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const osdRef = useRef<OSDStatic | null>(null);
   const itemPERef = useRef<TiledImage | null>(null);
@@ -658,6 +663,23 @@ export function ComparaisonPlans({
     setAnnotationNC(annotation);
   }
 
+  // Les poignées de sélection ne doivent pas figurer dans l'export : on
+  // désélectionne, puis on laisse React repeindre avant de lire le canevas.
+  async function capturerComparaison(): Promise<Blob> {
+    const zone = zoneRef.current;
+    if (!zone) {
+      throw new Error("La vue de comparaison n'est pas encore prête.");
+    }
+
+    setSelection(null);
+    await new Promise<void>((resoudre) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resoudre()))
+    );
+
+    const { blob } = await capturerVue(zone);
+    return blob;
+  }
+
   function exporterAnnotations() {
     const contenu = {
       exporte_le: new Date().toISOString(),
@@ -901,6 +923,23 @@ export function ComparaisonPlans({
               onChange={setPageEXE}
             />
 
+            {docPE && docEXE && (
+              <>
+                <div className="w-px h-6 bg-gray-300 mx-1" />
+                <GroupeExport
+                  pret={pret}
+                  comparaisonId={comparaisonId}
+                  chantierNom={chantierNom}
+                  docPE={docPE}
+                  docEXE={docEXE}
+                  pagePE={pagePE}
+                  pageEXE={pageEXE}
+                  nbAnnotations={annotations.length}
+                  onCapturer={capturerComparaison}
+                />
+              </>
+            )}
+
             {/* Compteur de différences */}
             <div className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2 py-1">
               <span
@@ -959,7 +998,7 @@ export function ComparaisonPlans({
           )}
 
           {/* Conteneur OpenSeadragon */}
-          <div className="relative flex-1">
+          <div ref={zoneRef} className="relative flex-1">
             <div
               ref={conteneurRef}
               className={`w-full bg-gray-100 ${

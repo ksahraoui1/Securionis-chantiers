@@ -2,23 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import type OpenSeadragonNS from "openseadragon";
+import {
+  COULEURS_ANNOTATION,
+  HEX_COULEURS as HEX_PARTAGES,
+  LIBELLES_COULEUR,
+  LIBELLES_TYPE,
+  type CouleurAnnotation,
+  type TypeAnnotation,
+} from "@/lib/utils/comparaison-libelles";
+import { ATTRIBUT_COUCHE } from "@/lib/utils/comparaison-capture";
 
 type OSDStatic = typeof OpenSeadragonNS;
 type Viewer = OpenSeadragonNS.Viewer;
 
-export type OutilAnnotation =
-  | "pan"
-  | "arrow"
-  | "circle"
-  | "rect"
-  | "text"
-  | "highlight";
-
-export type CouleurAnnotation = "red" | "orange" | "green" | "yellow";
+// Les libellés et les couleurs viennent d'un module partagé : le rapport PDF
+// est généré côté serveur et ne peut pas importer ce fichier « use client ».
+export type OutilAnnotation = TypeAnnotation | "pan";
+export type { CouleurAnnotation };
 
 export interface Annotation {
   id: string;
-  type: Exclude<OutilAnnotation, "pan">;
+  type: TypeAnnotation;
   x: number;
   y: number;
   width: number;
@@ -31,33 +35,31 @@ export type Geometrie = Pick<Annotation, "x" | "y" | "width" | "height">;
 
 const NAVY = "#002855";
 
+const ICONES_OUTIL: Record<OutilAnnotation, string> = {
+  pan: "pan_tool",
+  arrow: "arrow_outward",
+  circle: "circle",
+  rect: "crop_square",
+  text: "title",
+  highlight: "ink_highlighter",
+};
+
 export const OUTILS: {
   valeur: OutilAnnotation;
   icone: string;
   libelle: string;
 }[] = [
-  { valeur: "pan", icone: "pan_tool", libelle: "Main" },
-  { valeur: "arrow", icone: "arrow_outward", libelle: "Flèche" },
-  { valeur: "circle", icone: "circle", libelle: "Cercle" },
-  { valeur: "rect", icone: "crop_square", libelle: "Rectangle" },
-  { valeur: "text", icone: "title", libelle: "Texte" },
-  { valeur: "highlight", icone: "ink_highlighter", libelle: "Marqueur" },
+  { valeur: "pan", icone: ICONES_OUTIL.pan, libelle: "Main" },
+  ...(Object.keys(LIBELLES_TYPE) as TypeAnnotation[]).map((valeur) => ({
+    valeur: valeur as OutilAnnotation,
+    icone: ICONES_OUTIL[valeur],
+    libelle: LIBELLES_TYPE[valeur],
+  })),
 ];
 
-export const COULEURS: {
-  valeur: CouleurAnnotation;
-  hex: string;
-  libelle: string;
-}[] = [
-  { valeur: "red", hex: "#DC2626", libelle: "Critique" },
-  { valeur: "orange", hex: "#E67E22", libelle: "Moyen" },
-  { valeur: "green", hex: "#2E7D32", libelle: "Résolu" },
-  { valeur: "yellow", hex: "#EAB308", libelle: "Info" },
-];
+export const COULEURS = COULEURS_ANNOTATION;
 
-export const HEX_COULEURS: Record<CouleurAnnotation, string> = Object.fromEntries(
-  COULEURS.map((c) => [c.valeur, c.hex])
-) as Record<CouleurAnnotation, string>;
+export const HEX_COULEURS = HEX_PARTAGES;
 
 const HEX = HEX_COULEURS;
 
@@ -70,9 +72,7 @@ export interface LienNC {
   numero: number;
 }
 
-const LIBELLE_COULEUR: Record<CouleurAnnotation, string> = Object.fromEntries(
-  COULEURS.map((c) => [c.valeur, c.libelle])
-) as Record<CouleurAnnotation, string>;
+const LIBELLE_COULEUR = LIBELLES_COULEUR;
 
 // Taille par défaut d'une étiquette de texte, en unités monde
 const TAILLE_TEXTE = { width: 0.2, height: 0.025 };
@@ -381,8 +381,11 @@ export function CoucheAnnotations({
   const uniteEcran = vue.k > 0 ? 1 / vue.k : 1;
 
   return (
+    /* L'attribut ATTRIBUT_COUCHE sert de repère à la capture PNG, qui doit
+       retrouver cette couche pour la rasteriser par-dessus les plans. */
     <svg
       ref={svgRef}
+      {...{ [ATTRIBUT_COUCHE]: "" }}
       className="absolute inset-0 w-full h-full"
       style={{
         pointerEvents: interactif ? "auto" : "none",
