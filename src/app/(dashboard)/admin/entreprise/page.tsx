@@ -200,7 +200,7 @@ export default function AdminEntreprisePage() {
 
         {/* Fields */}
         {[
-          { key: "nom" as const, label: "Nom de l'entreprise *", placeholder: "FWN" },
+          { key: "nom" as const, label: "Nom de l'entreprise *", placeholder: "BTP-UP" },
           { key: "adresse" as const, label: "Adresse", placeholder: "Rue du Pied-de-Ville 15" },
           { key: "npa" as const, label: "NPA", placeholder: "1896" },
           { key: "ville" as const, label: "Ville", placeholder: "Vouvry" },

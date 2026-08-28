@@ -62,7 +62,7 @@ export default async function DashboardLayout({
       <OfflineBanner />
       <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
       <footer className="text-center text-xs text-gray-400 py-6 border-t border-gray-200 mt-8">
-        &copy;2026 - FWN - Securionis
+        &copy;2026 - BTP-UP
       </footer>
     </div>
   );

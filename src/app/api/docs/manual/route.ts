@@ -126,7 +126,7 @@ export async function GET() {
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: 200 },
-            children: [new TextRun({ text: "© 2026 FWN - Securionis. Tous droits réservés.", size: 20, color: "9ca3af" })],
+            children: [new TextRun({ text: "© 2026 BTP-UP. Tous droits réservés.", size: 20, color: "9ca3af" })],
           }),
 
           // ===== TABLE DES MATIÈRES =====
@@ -475,7 +475,7 @@ export async function GET() {
           empty(),
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            children: [new TextRun({ text: "© 2026 FWN - Securionis — Santé et Sécurité au Travail", size: 18, color: "9ca3af", italics: true })],
+            children: [new TextRun({ text: "© 2026 BTP-UP — Santé et Sécurité au Travail", size: 18, color: "9ca3af", italics: true })],
           }),
           new Paragraph({
             alignment: AlignmentType.CENTER,
