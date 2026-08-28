@@ -5,6 +5,7 @@ import type OpenSeadragonNS from "openseadragon";
 import {
   HEX_TYPE,
   LIBELLES_DIFFERENCE,
+  type RepereMonde,
   type TypeDifference,
   type ZoneAvancee,
 } from "@/lib/plan-diff-detection";
@@ -37,7 +38,7 @@ export function DiffOverlay({
   viewer,
   osd,
   ecarts,
-  largeur,
+  repere,
   opacite,
   selection,
   onSelection,
@@ -46,8 +47,8 @@ export function DiffOverlay({
   osd: OSDStatic | null;
   /** Écarts déjà filtrés par type et par confiance. */
   ecarts: EcartAffiche[];
-  /** Largeur, en pixels, du repère dans lequel les zones sont exprimées. */
-  largeur: number;
+  /** Passage des pixels d'analyse aux unités monde OpenSeadragon. */
+  repere: RepereMonde;
   /** Opacité de remplissage, de 0 à 1. */
   opacite: number;
   selection: number | null;
@@ -83,12 +84,16 @@ export function DiffOverlay({
     };
   }, [viewer, osd]);
 
-  if (largeur <= 0) return null;
+  if (repere.unitesParPixel <= 0) return null;
 
-  // Les zones sont en pixels du repère d'analyse ; le plan PE fait 1 de large
-  // en unités monde. L'échelle étant isotrope, les deux axes se divisent par la
-  // largeur.
-  const versMonde = (valeur: number) => valeur / largeur;
+  // Les zones sont en pixels du repère d'analyse. Le repère porte l'origine et
+  // le pas, ce qui vaut aussi bien pour une analyse sur les plans entiers que
+  // sur la vue recalée à l'écran.
+  const versMondeX = (valeur: number) =>
+    repere.origineX + valeur * repere.unitesParPixel;
+  const versMondeY = (valeur: number) =>
+    repere.origineY + valeur * repere.unitesParPixel;
+  const versTaille = (valeur: number) => valeur * repere.unitesParPixel;
 
   return (
     <>
@@ -108,10 +113,10 @@ export function DiffOverlay({
             return (
               <rect
                 key={numero}
-                x={versMonde(zone.x)}
-                y={versMonde(zone.y)}
-                width={versMonde(zone.width)}
-                height={versMonde(zone.height)}
+                x={versMondeX(zone.x)}
+                y={versMondeY(zone.y)}
+                width={versTaille(zone.width)}
+                height={versTaille(zone.height)}
                 fill={couleur}
                 fillOpacity={survole ? OPACITE_SURVOL : opacite}
                 stroke={couleur}

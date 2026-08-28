@@ -17,8 +17,19 @@ const NB_POINTS_ORB = 3000;
 /** Correspondances conservées, les meilleures d'abord. */
 const NB_CORRESPONDANCES_MAX = 400;
 
-/** En deçà, l'homographie n'a aucune chance d'être fiable. */
-const NB_CORRESPONDANCES_MIN = 12;
+/**
+ * Seuils d'appariement, appliqués au **nombre de correspondances trouvées**
+ * (après contrôle croisé), et non au sous-ensemble retenu pour l'homographie.
+ *
+ * - en deçà de `NB_CORRESPONDANCES_MIN`, on refuse de conclure : les deux plans
+ *   n'ont pas assez de points communs pour qu'un recalage ait un sens ;
+ * - entre les deux seuils, on recale sans estimer l'échelle : la médiane des
+ *   rapports de distances serait trop bruitée sur si peu de paires ;
+ * - au-delà de `NB_CORRESPONDANCES_ECHELLE`, l'échelle est estimée en prime,
+ *   à partir des mêmes appariements — aucune détection supplémentaire.
+ */
+const NB_CORRESPONDANCES_MIN = 30;
+const NB_CORRESPONDANCES_ECHELLE = 100;
 
 /** Tolérance de reprojection RANSAC, en pixels. */
 const SEUIL_RANSAC = 4;
@@ -28,12 +39,42 @@ const LIMITE_CONTRASTE = 2;
 const TAILLE_TUILE = 8;
 
 export interface ResultatAlignement {
-  /** Plan 2 replacé dans le repère du plan 1. À supprimer par l'appelant. */
+  /**
+   * Plan 2 replacé dans le repère du plan 1.
+   *
+   * **Toujours renseigné**, y compris en cas d'échec : l'appelant reçoit alors
+   * une copie non transformée du plan 2, pour qu'il n'ait jamais à composer
+   * avec l'absence d'image. À supprimer par l'appelant dans tous les cas.
+   */
   image: Mat;
-  /** Nombre de correspondances retenues par le filtrage. */
+  /** Nombre de correspondances trouvées entre les deux plans. */
   correspondances: number;
   /** Faux si aucune homographie exploitable n'a été trouvée. */
   aligne: boolean;
+  /**
+   * Rapport d'échelle du plan 2 par rapport au plan 1.
+   *
+   * `null` quand il n'a pas été estimé — soit l'alignement a échoué, soit les
+   * correspondances étaient trop peu nombreuses pour que la médiane des
+   * rapports de distances veuille dire quelque chose.
+   */
+  echelle: number | null;
+  /** Motif de l'échec, `null` lorsque l'alignement a abouti. */
+  raison: string | null;
+  /**
+   * Masque du recouvrement : blanc là où le plan 2 a réellement atterri après
+   * transformation, noir ailleurs. À supprimer par l'appelant.
+   *
+   * `null` quand aucune transformation n'a été appliquée — tout le cadre est
+   * alors valide.
+   *
+   * Sans lui, les bordures découvertes par la transformation seraient comptées
+   * comme des différences : projeter un dessin au 1:50 dans le cadre d'un
+   * 1:100 remplit une large part du cadre de blanc, ce qui suffit à faire
+   * dépasser le seuil de discordance et à refuser une comparaison pourtant
+   * réussie.
+   */
+  masque: Mat | null;
 }
 
 /** Supprime toutes les ressources OpenCV fournies, en ignorant les nulles. */
@@ -123,9 +164,24 @@ export function convertToGrayscale(imageData: Mat): Mat {
 }
 
 /**
- * Ramène les deux images à une taille commune.
- * La première sert de référence — c'est le plan PE, repère de la comparaison
+ * Ramène les deux images à une taille commune, **sans déformer la seconde**.
+ *
+ * La première sert de référence : c'est le plan PE, repère de la comparaison
  * et des annotations existantes.
+ *
+ * ⚠️ Le rapport d'aspect doit être préservé. Deux plans du même ouvrage sont
+ * couramment mis en page différemment — l'un sur une page carrée, l'autre sur
+ * une A-série paysage. Étirer le second aux dimensions du premier lui inflige
+ * une déformation anisotrope qui **détruit les descripteurs ORB** : les
+ * appariements deviennent aléatoires et RANSAC en tire une homographie
+ * dégénérée, qui écrase le plan en quelques pixels. Constaté sur le chantier
+ * Orllati : PE au rapport 1,000, EXE au rapport 1,415, soit 41 % d'étirement
+ * vertical, et un alignement systématiquement refusé.
+ *
+ * La seconde image est donc mise à l'échelle par le facteur le plus
+ * contraignant, puis centrée sur un fond blanc aux dimensions de la première.
+ * Le blanc imite le papier vierge : les marges ajoutées ne seront pas lues
+ * comme des différences.
  */
 export function resizeToSameDimensions(
   img1: Mat,
@@ -134,27 +190,60 @@ export function resizeToSameDimensions(
   const cv = opencv();
 
   const reference = img1.clone();
-  const redimensionnee = new cv.Mat();
+  const miseAEchelle = new cv.Mat();
+  let fond: Mat | null = null;
+  let region: Mat | null = null;
 
   try {
+    // Le facteur le plus contraignant : l'image entière doit tenir dans le
+    // cadre, quitte à laisser des marges.
+    const facteur = Math.min(img1.cols / img2.cols, img1.rows / img2.rows);
+    const largeur = Math.max(1, Math.min(img1.cols, Math.round(img2.cols * facteur)));
+    const hauteur = Math.max(1, Math.min(img1.rows, Math.round(img2.rows * facteur)));
+
     // INTER_AREA préserve les traits fins à la réduction, ce que
     // l'interpolation bilinéaire ne fait pas.
-    const interpolation =
-      img2.cols > img1.cols ? cv.INTER_AREA : cv.INTER_LINEAR;
+    const interpolation = facteur < 1 ? cv.INTER_AREA : cv.INTER_LINEAR;
 
     cv.resize(
       img2,
-      redimensionnee,
-      new cv.Size(img1.cols, img1.rows),
+      miseAEchelle,
+      new cv.Size(largeur, hauteur),
       0,
       0,
       interpolation
     );
 
-    return { img1: reference, img2: redimensionnee };
+    if (largeur === img1.cols && hauteur === img1.rows) {
+      // Mêmes proportions : aucune marge à ajouter.
+      return { img1: reference, img2: miseAEchelle };
+    }
+
+    fond = new cv.Mat(
+      img1.rows,
+      img1.cols,
+      img2.type(),
+      new cv.Scalar(255, 255, 255, 255)
+    );
+
+    const decalageX = Math.floor((img1.cols - largeur) / 2);
+    const decalageY = Math.floor((img1.rows - hauteur) / 2);
+    region = fond.roi(new cv.Rect(decalageX, decalageY, largeur, hauteur));
+    miseAEchelle.copyTo(region);
+
+    const resultat = fond;
+    fond = null;
+    return { img1: reference, img2: resultat };
   } catch (erreur) {
-    libererTout(reference, redimensionnee);
+    libererTout(reference, fond);
     throw erreur;
+  } finally {
+    libererTout(region);
+    // La version mise à l'échelle n'est conservée que si elle est renvoyée
+    // telle quelle ; sinon elle a été recopiée dans le fond.
+    if (miseAEchelle.rows !== img1.rows || miseAEchelle.cols !== img1.cols) {
+      libererTout(miseAEchelle);
+    }
   }
 }
 
@@ -198,9 +287,18 @@ export function normalizeBrightness(img: Mat): Mat {
  *
  * Les deux images doivent être en niveaux de gris et de même taille.
  *
+ * Le traitement se fait par paliers, selon le nombre de correspondances :
+ * - **moins de 30** : on refuse de conclure. Deux plans d'étages différents,
+ *   ou orientés différemment, tombent ici.
+ * - **de 30 à 100** : homographie et transformation, sans estimation
+ *   d'échelle — trop peu de paires pour que la médiane des rapports de
+ *   distances soit fiable.
+ * - **plus de 100** : homographie, transformation et estimation de l'échelle,
+ *   tirée des **mêmes** appariements. Aucune détection supplémentaire.
+ *
  * Sans alignement fiable, la fonction renvoie une **copie non transformée**
- * du plan 2 et `aligne: false` : à l'appelant de décider s'il poursuit. Deux
- * plans d'étages différents, ou orientés différemment, tombent dans ce cas.
+ * du plan 2, `aligne: false` et le motif du refus : à l'appelant de décider
+ * s'il poursuit.
  */
 export function alignPlans(img1: Mat, img2: Mat): ResultatAlignement {
   const cv = opencv();
@@ -223,7 +321,11 @@ export function alignPlans(img1: Mat, img2: Mat): ResultatAlignement {
     orb.detectAndCompute(img2, masque, pointsCles2, descripteurs2);
 
     if (descripteurs1.empty() || descripteurs2.empty()) {
-      return { image: img2.clone(), correspondances: 0, aligne: false };
+      return echec(
+        img2,
+        0,
+        "Aucun point d'intérêt exploitable sur l'un des deux plans"
+      );
     }
 
     // Requête = plan 2 (à déplacer), référence = plan 1 (repère).
@@ -239,16 +341,16 @@ export function alignPlans(img1: Mat, img2: Mat): ResultatAlignement {
       });
     }
 
+    // Le palier porte sur le nombre de correspondances trouvées ; seules les
+    // meilleures servent ensuite à calculer l'homographie.
+    const nbCorrespondances = retenues.length;
+
+    if (nbCorrespondances < NB_CORRESPONDANCES_MIN) {
+      return echec(img2, nbCorrespondances, "Plans trop différents");
+    }
+
     retenues.sort((a, b) => a.distance - b.distance);
     const meilleures = retenues.slice(0, NB_CORRESPONDANCES_MAX);
-
-    if (meilleures.length < NB_CORRESPONDANCES_MIN) {
-      return {
-        image: img2.clone(),
-        correspondances: meilleures.length,
-        aligne: false,
-      };
-    }
 
     const source: number[] = [];
     const destination: number[] = [];
@@ -279,18 +381,23 @@ export function alignPlans(img1: Mat, img2: Mat): ResultatAlignement {
       SEUIL_RANSAC
     );
 
-    if (
-      homographie.empty() ||
-      !homographiePlausible(homographie, img1.cols, img1.rows)
-    ) {
-      return {
-        image: img2.clone(),
-        correspondances: meilleures.length,
-        aligne: false,
-      };
+    if (homographie.empty()) {
+      return echec(
+        img2,
+        nbCorrespondances,
+        "Aucune transformation n'a pu être calculée entre les deux plans"
+      );
+    }
+    if (!homographiePlausible(homographie, img1.cols, img1.rows)) {
+      return echec(
+        img2,
+        nbCorrespondances,
+        "La transformation trouvée replie ou déporte le plan hors du cadre"
+      );
     }
 
     const alignee = new cv.Mat();
+    const masqueRecouvrement = new cv.Mat();
     try {
       cv.warpPerspective(
         img2,
@@ -303,12 +410,34 @@ export function alignPlans(img1: Mat, img2: Mat): ResultatAlignement {
         // à du papier vierge, sinon ils seraient lus comme des différences.
         new cv.Scalar(255, 255, 255, 255)
       );
+
+      construireMasqueRecouvrement(img2, homographie, img1, masqueRecouvrement);
     } catch (erreur) {
-      libererTout(alignee);
+      libererTout(alignee, masqueRecouvrement);
       throw erreur;
     }
 
-    return { image: alignee, correspondances: meilleures.length, aligne: true };
+    // L'échelle n'est estimée qu'au-delà du second palier : sous ce nombre de
+    // paires, la médiane des rapports de distances est trop bruitée pour dire
+    // quoi que ce soit.
+    const echelle =
+      nbCorrespondances > NB_CORRESPONDANCES_ECHELLE
+        ? echelleDepuisPaires(
+            meilleures.map((c) => ({
+              a: pointsCles1.get(c.cible).pt,
+              b: pointsCles2.get(c.source).pt,
+            }))
+          )
+        : null;
+
+    return {
+      image: alignee,
+      correspondances: nbCorrespondances,
+      aligne: true,
+      echelle,
+      raison: null,
+      masque: masqueRecouvrement,
+    };
   } finally {
     libererTout(
       orb,
@@ -325,6 +454,110 @@ export function alignPlans(img1: Mat, img2: Mat): ResultatAlignement {
     );
   }
 }
+
+/** Érosion du masque, en pixels : le liseré d'interpolation du bord ne doit pas
+ *  compter comme du contenu valide. */
+const EROSION_MASQUE = 5;
+
+/**
+ * Transporte un masque plein à travers la même homographie que l'image.
+ *
+ * Le résultat marque exactement la zone où le plan 2 a atterri. L'interpolation
+ * laisse un liseré sur le pourtour : on l'érode, faute de quoi il ressortirait
+ * comme une différence en bordure de recouvrement.
+ */
+function construireMasqueRecouvrement(
+  source: Mat,
+  homographie: Mat,
+  reference: Mat,
+  destination: Mat
+): void {
+  const cv = opencv();
+
+  const plein = new cv.Mat(
+    source.rows,
+    source.cols,
+    cv.CV_8UC1,
+    new cv.Scalar(255, 255, 255, 255)
+  );
+  const projete = new cv.Mat();
+  let noyau: Mat | null = null;
+
+  try {
+    cv.warpPerspective(
+      plein,
+      projete,
+      homographie,
+      new cv.Size(reference.cols, reference.rows),
+      // Plus proche voisin : un masque doit rester binaire.
+      cv.INTER_NEAREST,
+      cv.BORDER_CONSTANT,
+      new cv.Scalar(0, 0, 0, 0)
+    );
+
+    noyau = cv.getStructuringElement(
+      cv.MORPH_RECT,
+      new cv.Size(EROSION_MASQUE, EROSION_MASQUE)
+    );
+    cv.morphologyEx(projete, destination, cv.MORPH_ERODE, noyau);
+  } finally {
+    libererTout(plein, projete, noyau);
+  }
+}
+
+/** Échec d'alignement : le plan 2 repart tel quel, avec le motif du refus. */
+function echec(
+  img2: Mat,
+  correspondances: number,
+  raison: string
+): ResultatAlignement {
+  return {
+    image: img2.clone(),
+    correspondances,
+    aligne: false,
+    echelle: null,
+    raison,
+    masque: null,
+  };
+}
+
+/**
+ * Rapport d'échelle, par la médiane des rapports de distances entre paires de
+ * points appariés.
+ *
+ * Comparer des distances plutôt que de lire l'homographie évite de confondre
+ * l'échelle avec la rotation et la perspective, qu'elle mêle. La **médiane**
+ * encaisse les appariements erronés, nombreux sur des plans aux motifs
+ * répétitifs, là où une moyenne serait emportée par quelques aberrations.
+ */
+export function echelleDepuisPaires(
+  paires: { a: Point2D; b: Point2D }[]
+): number | null {
+  const rapports: number[] = [];
+  // Un pas premier par rapport à la longueur échantillonne toute la liste sans
+  // privilégier une région du plan.
+  const pas = 7;
+
+  for (let i = 0; i < paires.length; i += 1) {
+    const un = paires[i];
+    const deux = paires[(i + pas) % paires.length];
+    const distance1 = Math.hypot(un.a.x - deux.a.x, un.a.y - deux.a.y);
+    const distance2 = Math.hypot(un.b.x - deux.b.x, un.b.y - deux.b.y);
+    // Deux points trop proches donnent un rapport dominé par le bruit.
+    if (distance1 < 20 || distance2 < 20) continue;
+    rapports.push(distance2 / distance1);
+  }
+
+  if (rapports.length < 10) return null;
+
+  rapports.sort((a, b) => a - b);
+  const mediane = rapports[Math.floor(rapports.length / 2)];
+
+  if (!Number.isFinite(mediane) || mediane <= 0) return null;
+  return Math.round(mediane * 1000) / 1000;
+}
+
+export type { Point2D };
 
 /**
  * Garde-fou contre les homographies dégénérées.

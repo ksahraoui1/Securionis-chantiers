@@ -40,6 +40,8 @@ export interface Mat {
   doublePtr(ligne: number, colonne: number): Float64Array;
   doubleAt(ligne: number, colonne: number): number;
   convertTo(destination: Mat, type: number, alpha?: number, beta?: number): void;
+  copyTo(destination: Mat): void;
+  type(): number;
 }
 
 export interface Rect {
@@ -139,6 +141,12 @@ export interface CV {
   Mat: {
     new (): Mat;
     new (lignes: number, colonnes: number, type: number): Mat;
+    new (
+      lignes: number,
+      colonnes: number,
+      type: number,
+      remplissage: [number, number, number, number]
+    ): Mat;
     zeros(lignes: number, colonnes: number, type: number): Mat;
     ones(lignes: number, colonnes: number, type: number): Mat;
   };
@@ -278,6 +286,8 @@ export interface CV {
   TM_CCOEFF_NORMED: number;
   INTER_AREA: number;
   INTER_LINEAR: number;
+  INTER_NEAREST: number;
+  MORPH_ERODE: number;
   THRESH_BINARY: number;
   THRESH_BINARY_INV: number;
   MORPH_RECT: number;

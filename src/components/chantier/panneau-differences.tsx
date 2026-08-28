@@ -233,7 +233,7 @@ export function PanneauDifferences({
                         e.stopPropagation();
                         onAnnoter(zone, numero);
                       }}
-                      title="Créer une annotation sur la vue de comparaison"
+                      title="Ajouter une annotation sur la vue de comparaison"
                       className="inline-flex items-center gap-1 px-2 py-1 min-h-touch rounded-lg text-[11px] font-medium text-white hover:opacity-90 transition-opacity whitespace-nowrap"
                       style={{ backgroundColor: NAVY }}
                     >
@@ -243,7 +243,12 @@ export function PanneauDifferences({
                       >
                         add_comment
                       </span>
-                      Annoter
+                      {/* Libellé court : la colonne est étroite. L'intitulé
+                          complet est porté par l'attribut `title`. */}
+                      <span className="xl:hidden">Annoter</span>
+                      <span className="hidden xl:inline">
+                        Ajouter une annotation
+                      </span>
                     </button>
                   )}
                 </td>

@@ -302,6 +302,13 @@ export async function POST(
         libelle: LIBELLES_TYPE[type],
         hex: HEX_TYPE[type],
       })),
+      repartitionType: (Object.keys(LIBELLES_TYPE) as TypeDifference[]).map(
+        (type) => ({
+          libelle: LIBELLES_TYPE[type],
+          hex: HEX_TYPE[type],
+          nombre: ecartsRecus.filter((e) => e.type === type).length,
+        })
+      ),
     };
 
     // --- Rendu

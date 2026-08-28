@@ -11,6 +11,7 @@ import { chargerOpenCv, opencv, type Mat, type MatVector } from "@/lib/opencv";
 import {
   alignPlans,
   canevasDepuisImage,
+  echelleDepuisPaires,
   chargerImage,
   convertToGrayscale,
   libererTout,
@@ -70,6 +71,36 @@ export interface ResultatAnalyse {
   aligne: boolean;
   /** Rapport d'échelle estimé du plan EXE par rapport au plan PE. */
   echelle: ResultatEchelle;
+  /** Motif du refus d'alignement, `null` quand l'analyse a abouti. */
+  raison: string | null;
+  /**
+   * Conversion des coordonnées d'une zone vers les unités monde OpenSeadragon.
+   * Elle rend le repère explicite, que l'analyse ait porté sur les plans
+   * entiers ou sur la vue recalée à l'écran.
+   */
+  repere: RepereMonde;
+  /**
+   * Réserve sur la fiabilité du résultat, `null` s'il n'y en a pas.
+   * Une discordance élevée ne fait plus échouer l'analyse quand l'utilisateur
+   * a lui-même recalé les plans : c'est son jugement qui prime, on se contente
+   * de signaler que le résultat sera bruité.
+   */
+  avertissement: string | null;
+}
+
+/**
+ * Passage des pixels d'analyse aux unités monde OpenSeadragon, où le plan PE
+ * fait 1 de large.
+ *
+ *     monde.x = origineX + pixel.x × unitesParPixel
+ *     monde.y = origineY + pixel.y × unitesParPixel
+ *
+ * L'échelle étant isotrope, un seul facteur suffit pour les deux axes.
+ */
+export interface RepereMonde {
+  origineX: number;
+  origineY: number;
+  unitesParPixel: number;
 }
 
 /** Résolution de travail : au-delà, le gain de finesse ne paie pas le temps. */
@@ -117,6 +148,13 @@ const NB_CONTOURS_MAX = 20_000;
  * différents ».
  */
 const DISCORDANCE_MAX = 0.06;
+
+/**
+ * Au-delà, la comparaison n'a plus aucun sens et on refuse de conclure, même
+ * si l'utilisateur a recalé les plans lui-même : à ce niveau, la différence
+ * couvre l'essentiel de la surface et le résultat serait illisible.
+ */
+const DISCORDANCE_REFUS = 0.6;
 
 /** Une zone est « encrée » à partir de cette proportion de pixels sombres. */
 const ENCRE_SIGNIFICATIVE = 0.02;
@@ -371,6 +409,7 @@ export async function analyserPlans(
   let normalisePE: Mat | null = null;
   let normaliseEXE: Mat | null = null;
   let alignee: Mat | null = null;
+  let masqueRecouvrement: Mat | null = null;
 
   try {
     await etape("preparation-1");
@@ -390,12 +429,27 @@ export async function analyserPlans(
     normaliseEXE = normalizeBrightness(grisEXE);
 
     await etape("alignement");
-    const echelle = estimateScale(normalisePE, normaliseEXE);
     const alignement = alignPlans(normalisePE, normaliseEXE);
     alignee = alignement.image;
+    masqueRecouvrement = alignement.masque;
+
+    // L'échelle sort du même appariement que le recalage : inutile de relancer
+    // une détection ORB pour la calculer une seconde fois.
+    const echelle: ResultatEchelle = {
+      echelle: alignement.echelle ?? 1,
+      correspondances: alignement.correspondances,
+      fiable:
+        alignement.echelle !== null &&
+        alignement.echelle > 0.2 &&
+        alignement.echelle < 5,
+    };
 
     await etape("detection");
-    const detection = detectStructuralDiffsAdvanced(normalisePE, alignee);
+    const detection = detectStructuralDiffsAdvanced(
+      normalisePE,
+      alignee,
+      masqueRecouvrement
+    );
 
     await etape("classification");
     const zones = filterNoise(detection.zones, seuilBruit) as ZoneAvancee[];
@@ -413,10 +467,22 @@ export async function analyserPlans(
       largeur: normalisePE.cols,
       hauteur: normalisePE.rows,
       correspondances: alignement.correspondances,
+      // Le plan PE fait 1 de large en unités monde : un pixel d'analyse vaut
+      // donc 1/largeur, et l'origine est le coin supérieur gauche.
+      repere: {
+        origineX: 0,
+        origineY: 0,
+        unitesParPixel: 1 / Math.max(1, normalisePE.cols),
+      },
+      avertissement: null,
       // Une homographie plausible ne suffit pas : si le résidu couvre une part
       // importante de la page, les deux plans ne se correspondent pas.
       aligne,
       echelle,
+      raison: aligne
+        ? null
+        : (alignement.raison ??
+          "Les deux plans diffèrent sur une part trop importante de leur surface"),
     };
   } finally {
     libererTout(
@@ -428,7 +494,8 @@ export async function analyserPlans(
       grisEXE,
       normalisePE,
       normaliseEXE,
-      alignee
+      alignee,
+      masqueRecouvrement
     );
   }
 }
@@ -783,7 +850,12 @@ function centresBlobs(carte: Mat): { x: number; y: number }[] {
  */
 export function detectStructuralDiffsAdvanced(
   img1: Mat,
-  img2: Mat
+  img2: Mat,
+  /**
+   * Masque du recouvrement issu de l'alignement. Hors de cette zone, le plan 2
+   * n'a rien posé : la comparaison n'y a pas de sens et ne doit rien signaler.
+   */
+  masqueRecouvrement: Mat | null = null
 ): { zones: ZoneAvancee[]; contours: number; discordance: number } {
   const cv = opencv();
 
@@ -834,8 +906,20 @@ export function detectStructuralDiffsAdvanced(
     cv.morphologyEx(binaire, nettoyee, cv.MORPH_OPEN, noyauOuverture);
     cv.morphologyEx(nettoyee, nettoyee, cv.MORPH_CLOSE, noyauFermeture);
 
-    const discordance =
-      cv.countNonZero(nettoyee) / Math.max(1, img1.cols * img1.rows);
+    // Hors recouvrement, il n'y a rien à comparer : les bordures découvertes
+    // par la transformation ne sont pas des différences.
+    if (masqueRecouvrement) {
+      cv.bitwise_and(nettoyee, masqueRecouvrement, nettoyee);
+    }
+
+    // La discordance se rapporte à la surface réellement comparée, pas au
+    // cadre entier : sinon un plan projeté plus petit que son cadre semblerait
+    // toujours discordant.
+    const airePlan = masqueRecouvrement
+      ? Math.max(1, cv.countNonZero(masqueRecouvrement))
+      : Math.max(1, img1.cols * img1.rows);
+
+    const discordance = cv.countNonZero(nettoyee) / airePlan;
 
     encre1 = masqueEncreAdaptatif(lisse1);
     encre2 = masqueEncreAdaptatif(lisse2);
@@ -850,7 +934,6 @@ export function detectStructuralDiffsAdvanced(
       cv.CHAIN_APPROX_SIMPLE
     );
 
-    const airePlan = img1.cols * img1.rows;
     const zones: ZoneAvancee[] = [];
     const nbContours = Math.min(contours.size(), NB_CONTOURS_MAX);
 
@@ -1221,30 +1304,23 @@ export function estimateScale(img1: Mat, img2: Mat): ResultatEchelle {
       return { echelle: 1, correspondances: paires.length, fiable: false };
     }
 
-    const rapports: number[] = [];
-    // Un pas premier par rapport à la longueur échantillonne toute la liste
-    // sans privilégier une région du plan.
-    const pas = 7;
-    for (let i = 0; i < paires.length; i += 1) {
-      const a = paires[i];
-      const b = paires[(i + pas) % paires.length];
-      const d1p = Math.hypot(a.x1 - b.x1, a.y1 - b.y1);
-      const d2p = Math.hypot(a.x2 - b.x2, a.y2 - b.y2);
-      if (d1p < 20 || d2p < 20) continue;
-      rapports.push(d2p / d1p);
-    }
+    // Même calcul que dans `alignPlans` : une seule implémentation, pour que
+    // les deux chemins ne puissent pas diverger.
+    const mediane = echelleDepuisPaires(
+      paires.map((p) => ({
+        a: { x: p.x1, y: p.y1 },
+        b: { x: p.x2, y: p.y2 },
+      }))
+    );
 
-    if (rapports.length < NB_CORRESPONDANCES_ECHELLE) {
+    if (mediane === null) {
       return { echelle: 1, correspondances: paires.length, fiable: false };
     }
 
-    rapports.sort((a, b) => a - b);
-    const mediane = rapports[Math.floor(rapports.length / 2)];
-
     return {
-      echelle: Math.round(mediane * 1000) / 1000,
+      echelle: mediane,
       correspondances: paires.length,
-      fiable: Number.isFinite(mediane) && mediane > 0.2 && mediane < 5,
+      fiable: mediane > 0.2 && mediane < 5,
     };
   } finally {
     libererTout(orb, masque, k1, k2, d1, d2, appariement, correspondances);
@@ -1253,3 +1329,157 @@ export function estimateScale(img1: Mat, img2: Mat): ResultatEchelle {
 
 /** Minimum de correspondances pour qu'une estimation d'échelle ait un sens. */
 const NB_CORRESPONDANCES_ECHELLE = 20;
+
+// ============================================================
+// Détection sur la vue recalée
+// ============================================================
+
+export interface CalquesVue {
+  /** Rendu du seul plan PE, tel qu'il est affiché. */
+  canevasPE: HTMLCanvasElement;
+  /** Rendu du seul plan EXE, dans le même cadre et la même position. */
+  canevasEXE: HTMLCanvasElement;
+  /** Passage des pixels de ces canevas aux unités monde OpenSeadragon. */
+  repere: RepereMonde;
+}
+
+/**
+ * Détecte les différences sur la vue **telle que l'utilisateur l'a recalée**.
+ *
+ * C'est la seule approche qui tienne quand les deux dossiers ne sont pas
+ * dessinés au même format. Mesuré sur le chantier Orllati : le plan PE est sur
+ * une page carrée et l'EXE sur une A-série paysage ; le PE couvre un bâtiment
+ * quand l'EXE en couvre deux ; et les échelles vont du 1:100 au 1:50. Aucune
+ * mise en correspondance automatique ne s'en sort — ORB apparie majoritairement
+ * à faux et RANSAC en tire une homographie dégénérée.
+ *
+ * Ici, **aucun recalage n'est calculé** : les deux calques sont pris dans la
+ * position, l'échelle et le cadrage que l'utilisateur leur a donnés à l'écran.
+ * Il fait le recalage, l'algorithme fait la différence.
+ *
+ * Conséquence sur les garde-fous : une discordance élevée ne fait plus échouer
+ * l'analyse — l'utilisateur a affirmé que ces plans se correspondent, c'est son
+ * jugement qui prime. Elle devient un avertissement, et seul un écart extrême
+ * (`DISCORDANCE_REFUS`) fait renoncer.
+ */
+export async function analyserVue(
+  calques: CalquesVue,
+  options: { seuilBruit?: number; onEtape?: (etape: EtapeAnalyse) => void; nbApercus?: number } = {}
+): Promise<ResultatAnalyse> {
+  const {
+    seuilBruit = 0.0005,
+    onEtape,
+    nbApercus = NB_APERCUS,
+  } = options;
+
+  const etape = async (valeur: EtapeAnalyse) => {
+    onEtape?.(valeur);
+    await respirer();
+  };
+
+  await chargerOpenCv();
+  const cv = opencv();
+
+  let couleurPE: Mat | null = null;
+  let couleurEXE: Mat | null = null;
+  let grisPE: Mat | null = null;
+  let grisEXE: Mat | null = null;
+  let normalisePE: Mat | null = null;
+  let normaliseEXE: Mat | null = null;
+
+  try {
+    await etape("preparation-1");
+    couleurPE = cv.imread(calques.canevasPE);
+
+    await etape("preparation-2");
+    couleurEXE = cv.imread(calques.canevasEXE);
+
+    grisPE = convertToGrayscale(couleurPE);
+    grisEXE = convertToGrayscale(couleurEXE);
+
+    // Les deux calques sortent du même canevas : mêmes dimensions par
+    // construction, aucun redimensionnement ni alignement à faire.
+    await etape("alignement");
+
+    normalisePE = normalizeBrightness(grisPE);
+    normaliseEXE = normalizeBrightness(grisEXE);
+
+    // Aucun recalage n'est calculé ici, mais l'écart d'échelle **résiduel**
+    // entre les deux calques renseigne sur la qualité du recalage manuel : à
+    // 1, ils se superposent à la bonne taille ; loin de 1, le cadrage est à
+    // reprendre. C'est l'information que l'utilisateur n'a pas autrement.
+    const echelle = estimateScale(normalisePE, normaliseEXE);
+
+    await etape("detection");
+    const detection = detectStructuralDiffsAdvanced(normalisePE, normaliseEXE);
+
+    await etape("classification");
+    const zones = filterNoise(detection.zones, seuilBruit) as ZoneAvancee[];
+
+    if (nbApercus > 0) {
+      construireApercus(zones.slice(0, nbApercus), normalisePE, normaliseEXE);
+    }
+
+    const aligne = detection.discordance <= DISCORDANCE_REFUS;
+
+    return {
+      zones,
+      contours: detection.contours,
+      discordance: detection.discordance,
+      largeur: normalisePE.cols,
+      hauteur: normalisePE.rows,
+      // Le recalage est celui de l'utilisateur : aucune correspondance calculée.
+      correspondances: 0,
+      aligne,
+      echelle,
+      raison: aligne
+        ? null
+        : "Les deux calques diffèrent sur la quasi-totalité de la vue",
+      repere: calques.repere,
+      avertissement: composerAvertissement(aligne, detection.discordance, echelle),
+    };
+  } finally {
+    libererTout(
+      couleurPE,
+      couleurEXE,
+      grisPE,
+      grisEXE,
+      normalisePE,
+      normaliseEXE
+    );
+  }
+}
+
+/**
+ * Réserve à afficher après une analyse sur la vue recalée.
+ *
+ * Deux causes distinctes méritent d'être nommées séparément : un recalage à la
+ * mauvaise échelle, et une divergence de contenu. La première se corrige, la
+ * seconde s'accepte.
+ */
+function composerAvertissement(
+  aligne: boolean,
+  discordance: number,
+  echelle: ResultatEchelle
+): string | null {
+  if (!aligne) return null;
+
+  const reserves: string[] = [];
+
+  if (echelle.fiable && Math.abs(echelle.echelle - 1) > 0.08) {
+    reserves.push(
+      `les deux calques ne sont pas à la même échelle (rapport estimé ${echelle.echelle}) : ` +
+        "ajustez le zoom du calque du dessus, verrou ouvert"
+    );
+  }
+
+  if (discordance > DISCORDANCE_MAX) {
+    reserves.push(
+      `${Math.round(discordance * 100)} % de la vue diffère : ` +
+        "affinez le recalage ou resserrez le cadrage sur la zone à comparer"
+    );
+  }
+
+  if (reserves.length === 0) return null;
+  return `${reserves.join(" — ").replace(/^./, (c) => c.toUpperCase())}.`;
+}

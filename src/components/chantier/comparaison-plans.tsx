@@ -27,9 +27,11 @@ import {
 } from "@/lib/utils/comparaison-libelles";
 import {
   analyserPlans,
+  analyserVue,
   HEX_TYPE,
   LIBELLES_ETAPE,
   type EtapeAnalyse,
+  type CalquesVue,
   type ResultatAnalyse,
   type TypeDifference,
   type ZoneAvancee,
@@ -123,6 +125,39 @@ type EtatDetection =
   | { statut: "encours"; premierChargement: boolean; etape: EtapeAnalyse }
   | { statut: "fait"; resultat: ResultatAnalyse }
   | { statut: "erreur"; message: string };
+
+/**
+ * Deux façons de comparer, qui ne servent pas les mêmes plans.
+ *
+ * - `vue` : les deux calques sont pris tels qu'ils sont affichés, dans le
+ *   recalage et le cadrage de l'utilisateur. Seule option viable quand les
+ *   dossiers ne sont pas dessinés au même format ni à la même échelle.
+ * - `auto` : recalage par points d'intérêt ORB puis homographie, sur les plans
+ *   entiers. Fait pour deux versions d'un **même** dessin.
+ */
+type ModeDetection = "vue" | "auto";
+
+const MODES_DETECTION: {
+  valeur: ModeDetection;
+  icone: string;
+  titre: string;
+  detail: string;
+}[] = [
+  {
+    valeur: "vue",
+    icone: "align_horizontal_center",
+    titre: "Sur la vue recalée",
+    detail:
+      "Compare les deux calques tels qu'ils sont affichés. À utiliser quand les plans n'ont ni le même format ni la même échelle.",
+  },
+  {
+    valeur: "auto",
+    icone: "auto_fix_high",
+    titre: "Avec recalage automatique",
+    detail:
+      "Aligne les plans entiers par points d'intérêt (ORB), puis compare. Fait pour deux versions d'un même dessin.",
+  },
+];
 
 const ORDRE_ETAPES: EtapeAnalyse[] = [
   "preparation-1",
@@ -295,6 +330,12 @@ export function ComparaisonPlans({
   const [inverse, setInverse] = useState(false);
   const [synchro, setSynchro] = useState(true);
   const [decalage, setDecalage] = useState({ x: 0, y: 0 });
+  /**
+   * Largeur du calque du dessus en unités monde. Les deux plans sont posés à
+   * 1 de large : un plan au 1:50 doit donc être ramené autour de 0,5 pour se
+   * superposer à un 1:100 du même ouvrage.
+   */
+  const [echelleCalque, setEchelleCalque] = useState(1);
   const [differences, setDifferences] = useState(0);
   const [pleinEcran, setPleinEcran] = useState(false);
 
@@ -310,6 +351,8 @@ export function ComparaisonPlans({
   // contrediraient et l'utilisateur ne saurait plus lequel gouverne l'affichage.
   const [confianceMin, setConfianceMin] = useState(0);
   const [ecartSelectionne, setEcartSelectionne] = useState<number | null>(null);
+  const [menuDetection, setMenuDetection] = useState(false);
+  const menuDetectionRef = useRef<HTMLDivElement>(null);
   const [modaleRapport, setModaleRapport] = useState(false);
   // Annotation créée depuis chaque écart : permet de savoir, au moment du
   // rapport, si l'écart a donné lieu à une non-conformité.
@@ -353,7 +396,7 @@ export function ComparaisonPlans({
   const docPE = plansPE.find((p) => p.id === idPE) ?? null;
   const docEXE = plansEXE.find((p) => p.id === idEXE) ?? null;
 
-  const recale = decalage.x !== 0 || decalage.y !== 0;
+  const recale = decalage.x !== 0 || decalage.y !== 0 || echelleCalque !== 1;
 
   const appliquerCalques = useCallback(() => {
     const viewer = viewerRef.current;
@@ -380,9 +423,13 @@ export function ComparaisonPlans({
 
     pe.setOpacity(opacitePE / 100);
     exe.setOpacity(opaciteEXE / 100);
+    dessous.setWidth(1);
     dessous.setPosition(new OSD.Point(0, 0));
+    // L'ordre compte : la largeur d'abord, la position ensuite — `setWidth`
+    // conserve le coin supérieur gauche, que `setPosition` fixe juste après.
+    dessus.setWidth(echelleCalque);
     dessus.setPosition(new OSD.Point(decalage.x, decalage.y));
-  }, [inverse, split, opacitePE, opaciteEXE, decalage]);
+  }, [inverse, split, opacitePE, opaciteEXE, decalage, echelleCalque]);
 
   // Référence toujours à jour, pour l'appeler depuis l'effet d'initialisation
   const appliquerCalquesRef = useRef(appliquerCalques);
@@ -535,6 +582,27 @@ export function ComparaisonPlans({
   useEffect(() => {
     if (pret) viewerRef.current?.viewport.goHome();
   }, [split, pret]);
+
+  // Fermeture du menu de détection au clic extérieur et à Échap
+  useEffect(() => {
+    if (!menuDetection) return;
+
+    function auClic(event: MouseEvent) {
+      if (!menuDetectionRef.current?.contains(event.target as Node)) {
+        setMenuDetection(false);
+      }
+    }
+    function auClavier(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuDetection(false);
+    }
+
+    document.addEventListener("mousedown", auClic);
+    document.addEventListener("keydown", auClavier);
+    return () => {
+      document.removeEventListener("mousedown", auClic);
+      document.removeEventListener("keydown", auClavier);
+    };
+  }, [menuDetection]);
 
   // Suivi du plein écran (déclenché sur le cadre, pour garder la barre d'outils)
   useEffect(() => {
@@ -831,9 +899,17 @@ export function ComparaisonPlans({
     setAnnotationNC(annotation);
   }
 
-  async function detecterDifferences() {
-    const sources = sourcesRef.current;
-    if (!sources) return;
+  async function detecterDifferences(mode: ModeDetection) {
+    setMenuDetection(false);
+
+    if (mode === "vue" && split) {
+      setDetection({
+        statut: "erreur",
+        message:
+          "La détection compare les deux calques superposés. Repassez en superposition avant de la lancer.",
+      });
+      return;
+    }
 
     // Près de 7 Mo au premier appel : le dire évite de croire à un blocage.
     const premierChargement = !opencvPret();
@@ -850,16 +926,47 @@ export function ComparaisonPlans({
     setConfianceMin(0);
 
     try {
-      const resultat = await analyserPlans(sources.pe, sources.exe, {
-        seuilBruit: SEUIL_BRUIT_DETECTION,
-        onEtape: (etape) =>
-          setDetection({ statut: "encours", premierChargement, etape }),
-      });
+      const onEtape = (etape: EtapeAnalyse) =>
+        setDetection({ statut: "encours", premierChargement, etape });
+
+      let resultat: ResultatAnalyse;
+
+      if (mode === "auto") {
+        // Recalage automatique : ORB + homographie sur les plans entiers.
+        const sources = sourcesRef.current;
+        if (!sources) {
+          throw new Error("Les plans ne sont plus disponibles.");
+        }
+        resultat = await analyserPlans(sources.pe, sources.exe, {
+          seuilBruit: SEUIL_BRUIT_DETECTION,
+          onEtape,
+        });
+      } else {
+        // Le recalage est celui de l'utilisateur : on compare les deux calques
+        // dans le cadrage courant, pas les plans entiers.
+        const calques = await capturerCalques();
+        if (!calques) {
+          throw new Error("La vue n'a pas pu être capturée.");
+        }
+        resultat = await analyserVue(calques, {
+          seuilBruit: SEUIL_BRUIT_DETECTION,
+          onEtape,
+        });
+      }
       if (resultat.aligne) {
         setDetection({ statut: "fait", resultat });
         setPanneauOuvert(resultat.zones.length > 0);
+        setErreurAnnotation(resultat.avertissement);
       } else {
-        setDetection({ statut: "erreur", message: MESSAGE_DETECTION_IMPOSSIBLE });
+        // Le motif venu de l'alignement dit *pourquoi* : « Plans trop
+        // différents » n'appelle pas la même vérification qu'une transformation
+        // aberrante.
+        setDetection({
+          statut: "erreur",
+          message: resultat.raison
+            ? `${MESSAGE_DETECTION_IMPOSSIBLE} (${resultat.raison}.)`
+            : MESSAGE_DETECTION_IMPOSSIBLE,
+        });
         setPanneauOuvert(false);
       }
     } catch (err) {
@@ -928,24 +1035,24 @@ export function ComparaisonPlans({
    * Reporte une différence détectée en annotation sur la vue.
    *
    * Les zones sont exprimées en pixels dans le repère de l'image d'analyse ;
-   * les annotations en unités monde OpenSeadragon, où le plan PE fait 1 de
-   * large. La conversion divise donc **les deux** axes par la largeur, l'échelle
-   * étant isotrope.
+   * les annotations en unités monde OpenSeadragon. Le repère renvoyé par
+   * l'analyse porte l'origine et le pas — il vaut aussi bien pour une analyse
+   * sur les plans entiers que sur la vue recalée à l'écran.
    */
   async function annoterZone(zone: ZoneAvancee, numero: number) {
     if (detection.statut !== "fait") return;
 
-    const largeur = detection.resultat.largeur;
-    if (!largeur) return;
+    const repere = detection.resultat.repere;
+    if (repere.unitesParPixel <= 0) return;
 
     const pourcent = Math.round(zone.confiance * 100);
     const idAnnotation = await creerAnnotation(
       {
         type: "rect",
-        x: zone.x / largeur,
-        y: zone.y / largeur,
-        width: zone.width / largeur,
-        height: zone.height / largeur,
+        x: repere.origineX + zone.x * repere.unitesParPixel,
+        y: repere.origineY + zone.y * repere.unitesParPixel,
+        width: zone.width * repere.unitesParPixel,
+        height: zone.height * repere.unitesParPixel,
         color: COULEUR_ANNOTATION[zone.type],
       },
       `${PHRASE_TYPE_ANNOTATION[zone.type]} — confiance ${pourcent} % (différence n° ${numero})`
@@ -1056,6 +1163,79 @@ export function ComparaisonPlans({
     numeroNC: liensNC[annotation.id]?.numero ?? null,
   }));
 
+  /**
+   * Rend les deux calques séparément, dans le cadrage courant.
+   *
+   * On éteint l'un puis l'autre et on lit le canevas du visualiseur entre les
+   * deux : les deux images sortent donc du **même** cadre, à la position, à
+   * l'échelle et au recalage que l'utilisateur leur a donnés. C'est ce qui
+   * permet de comparer des plans qui ne sont ni au même format ni à la même
+   * échelle.
+   */
+  async function capturerCalques(): Promise<CalquesVue | null> {
+    const viewer = viewerRef.current;
+    const OSD = osdRef.current;
+    const pe = itemPERef.current;
+    const exe = itemEXERef.current;
+    if (!viewer || !OSD || !pe || !exe) return null;
+
+    const source = viewer.container.querySelector("canvas");
+    if (!(source instanceof HTMLCanvasElement)) return null;
+
+    const largeurCss = viewer.container.clientWidth;
+    const hauteurCss = viewer.container.clientHeight;
+    if (largeurCss < 8 || hauteurCss < 8) return null;
+
+    const attendreRendu = () =>
+      new Promise<void>((resoudre) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resoudre()))
+      );
+
+    const rendre = async (visible: TiledImage, cache: TiledImage) => {
+      visible.setOpacity(1);
+      cache.setOpacity(0);
+      viewer.forceRedraw();
+      await attendreRendu();
+
+      const canevas = document.createElement("canvas");
+      canevas.width = source.width;
+      canevas.height = source.height;
+      const ctx = canevas.getContext("2d");
+      if (!ctx) return null;
+      // Fond blanc : hors du plan, le canevas est transparent, ce qui serait
+      // lu comme de l'encre par le seuillage.
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canevas.width, canevas.height);
+      ctx.drawImage(source, 0, 0);
+      return canevas;
+    };
+
+    try {
+      const canevasPE = await rendre(pe, exe);
+      const canevasEXE = await rendre(exe, pe);
+      if (!canevasPE || !canevasEXE) return null;
+
+      // Repère : origine et pas du canevas de capture, en unités monde.
+      const ratio = source.width / largeurCss;
+      const origine = viewer.viewport.pointFromPixel(new OSD.Point(0, 0), true);
+      const unite = viewer.viewport.pointFromPixel(new OSD.Point(1, 0), true);
+
+      return {
+        canevasPE,
+        canevasEXE,
+        repere: {
+          origineX: origine.x,
+          origineY: origine.y,
+          unitesParPixel: (unite.x - origine.x) / ratio,
+        },
+      };
+    } finally {
+      // Rétablit les opacités choisies par l'utilisateur.
+      appliquerCalques();
+      viewer.forceRedraw();
+    }
+  }
+
   // Les poignées de sélection ne doivent pas figurer dans l'export : on
   // désélectionne, puis on laisse React repeindre avant de lire le canevas.
   async function capturerComparaison(): Promise<Blob> {
@@ -1138,6 +1318,32 @@ export function ComparaisonPlans({
   function reinitialiserRecalage() {
     decalageRef.current = { x: 0, y: 0 };
     setDecalage({ x: 0, y: 0 });
+    setEchelleCalque(1);
+  }
+
+  /**
+   * Redimensionne le calque du dessus autour du centre de la vue.
+   *
+   * Sans ce recentrage, `setWidth` conserverait le coin supérieur gauche : ce
+   * qu'on regarde s'échapperait du cadre à chaque cran, et il faudrait
+   * redéplacer le calque après chaque changement d'échelle.
+   */
+  function changerEchelleCalque(nouvelle: number) {
+    const viewer = viewerRef.current;
+    const facteurBorne = Math.min(4, Math.max(0.25, nouvelle));
+
+    if (viewer && echelleCalque > 0) {
+      const rapport = facteurBorne / echelleCalque;
+      const centre = viewer.viewport.getCenter(true);
+      const suivant = {
+        x: centre.x - (centre.x - decalage.x) * rapport,
+        y: centre.y - (centre.y - decalage.y) * rapport,
+      };
+      decalageRef.current = suivant;
+      setDecalage(suivant);
+    }
+
+    setEchelleCalque(facteurBorne);
   }
 
   // Alterne entre « PE seul » et « EXE seul »
@@ -1290,10 +1496,17 @@ export function ComparaisonPlans({
               desactive={split}
               onClick={() => setSynchro((v) => !v)}
             />
+            {!synchro && !split && (
+              <EchelleCalque
+                valeur={echelleCalque}
+                plan={inverse ? "PE" : "EXE"}
+                onChange={changerEchelleCalque}
+              />
+            )}
             {!synchro && recale && (
               <OutilBouton
                 icone="filter_center_focus"
-                titre="Remettre le plan du dessus dans sa position d'origine"
+                titre="Remettre le plan du dessus à sa position et à son échelle d'origine"
                 onClick={reinitialiserRecalage}
               />
             )}
@@ -1317,13 +1530,65 @@ export function ComparaisonPlans({
             />
 
             <div className="w-px h-6 bg-gray-300 mx-1" />
-            <OutilBouton
-              icone="troubleshoot"
-              titre="Comparer automatiquement les deux plans et repérer les zones qui diffèrent"
-              libelle="Détecter les différences"
-              desactive={!pret || detection.statut === "encours"}
-              onClick={() => void detecterDifferences()}
-            />
+
+            {/* Deux modes de comparaison, explicités : ils ne conviennent pas
+                aux mêmes plans, l'utilisateur doit savoir lequel il lance. */}
+            <div className="relative" ref={menuDetectionRef}>
+              <button
+                type="button"
+                onClick={() => setMenuDetection((v) => !v)}
+                disabled={!pret || detection.statut === "encours"}
+                aria-haspopup="menu"
+                aria-expanded={menuDetection}
+                title="Comparer les deux plans et repérer les zones qui diffèrent"
+                className="inline-flex items-center gap-1.5 min-h-touch px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 hover:bg-[#002855]/10"
+                style={{ color: NAVY }}
+              >
+                <span translate="no" className="material-symbols-outlined text-lg">
+                  troubleshoot
+                </span>
+                <span className="hidden sm:inline">Détecter les différences</span>
+                <span translate="no" className="material-symbols-outlined text-base">
+                  {menuDetection ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+
+              {menuDetection && (
+                <div
+                  role="menu"
+                  className="absolute left-0 top-full mt-1 z-40 w-80 rounded-lg border border-gray-300 bg-white shadow-lg py-1"
+                >
+                  {MODES_DETECTION.map((mode) => (
+                    <button
+                      key={mode.valeur}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void detecterDifferences(mode.valeur)}
+                      className="w-full flex items-start gap-2 px-3 py-2 min-h-touch text-left hover:bg-gray-100 transition-colors"
+                    >
+                      <span
+                        translate="no"
+                        className="material-symbols-outlined text-lg mt-0.5 shrink-0"
+                        style={{ color: COULEUR_EXE }}
+                      >
+                        {mode.icone}
+                      </span>
+                      <span className="min-w-0">
+                        <span
+                          className="block text-xs font-semibold"
+                          style={{ color: NAVY }}
+                        >
+                          {mode.titre}
+                        </span>
+                        <span className="block text-[11px] text-gray-500">
+                          {mode.detail}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {docPE && docEXE && (
               <>
@@ -1474,7 +1739,7 @@ export function ComparaisonPlans({
                   viewer={viewerRef.current}
                   osd={osdRef.current}
                   ecarts={ecartsFiltres}
-                  largeur={detection.resultat.largeur}
+                  repere={detection.resultat.repere}
                   opacite={opaciteEcarts}
                   selection={ecartSelectionne}
                   onSelection={(numero) => {
@@ -1495,7 +1760,8 @@ export function ComparaisonPlans({
             {!synchro && !split && (
               <p className="absolute bottom-2 left-2 text-[11px] text-white bg-black/60 rounded-lg px-2 py-1 pointer-events-none">
                 Recalage libre : glissez pour déplacer le plan{" "}
-                {inverse ? "PE" : "EXE"}
+                {inverse ? "PE" : "EXE"}, réglez son échelle dans la barre
+                d&apos;outils
               </p>
             )}
           </div>
@@ -1686,9 +1952,12 @@ function ResultatDetection({
           >
             progress_activity
           </span>
+          {/* « Analyse en cours… » reste l'état lisible d'un coup d'œil ;
+              l'étape courante le précise sans le remplacer. */}
           <span className="font-medium" style={{ color: NAVY }}>
-            {LIBELLES_ETAPE[etat.etape]}
+            Analyse en cours…
           </span>
+          <span className="text-gray-600">{LIBELLES_ETAPE[etat.etape]}</span>
           {etat.premierChargement && (
             <span className="text-gray-500">
               Premier appel : la bibliothèque d&apos;analyse d&apos;image
@@ -1753,13 +2022,31 @@ function ResultatDetection({
           );
         })}
 
+      {/* La comparaison porte sur la vue telle qu'elle est recalée : il n'y a
+          pas de correspondance calculée à annoncer. */}
       <span className="text-gray-500">
-        Recalage sur {etat.resultat.correspondances} points communs
-        {etat.resultat.echelle.fiable &&
-          Math.abs(etat.resultat.echelle.echelle - 1) > 0.02 && (
-            <> — échelle EXE/PE estimée à {etat.resultat.echelle.echelle}</>
-          )}
-        .
+        {etat.resultat.correspondances > 0 ? (
+          <>
+            Recalage sur {etat.resultat.correspondances} points communs
+            {etat.resultat.echelle.fiable &&
+              Math.abs(etat.resultat.echelle.echelle - 1) > 0.02 && (
+                <> — échelle EXE/PE estimée à {etat.resultat.echelle.echelle}</>
+              )}
+            .
+          </>
+        ) : (
+          <>
+            Sur la vue telle qu&apos;elle est recalée et cadrée
+            {etat.resultat.echelle.fiable && (
+              <>
+                {" "}
+                — échelle résiduelle entre calques :{" "}
+                {etat.resultat.echelle.echelle}
+              </>
+            )}
+            .
+          </>
+        )}
       </span>
 
       {zones.length > 0 && (
@@ -1790,6 +2077,67 @@ function ResultatDetection({
           Voir le détail
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Réglage de l'échelle du calque du dessus, pour superposer deux plans dessinés
+ * à des échelles différentes — un 1:50 sur un 1:100, par exemple.
+ *
+ * Le pas fin (1 %) sert à l'ajustement final ; le curseur permet d'atteindre
+ * rapidement un rapport de moitié ou de double.
+ */
+function EchelleCalque({
+  valeur,
+  plan,
+  onChange,
+}: {
+  valeur: number;
+  plan: string;
+  onChange: (valeur: number) => void;
+}) {
+  const pourcent = Math.round(valeur * 100);
+
+  return (
+    <div className="flex items-center gap-1 ml-1 rounded-lg border border-gray-300 bg-white px-1.5 py-1">
+      <span
+        translate="no"
+        className="material-symbols-outlined text-base"
+        style={{ color: COULEUR_EXE }}
+        title={`Échelle du plan ${plan}, celui du dessus`}
+      >
+        aspect_ratio
+      </span>
+      <BoutonPas
+        icone="remove"
+        titre={`Réduire le plan ${plan} de 1 %`}
+        desactive={valeur <= 0.25}
+        onClick={() => onChange(valeur - 0.01)}
+      />
+      <input
+        type="range"
+        min={25}
+        max={400}
+        step={1}
+        value={pourcent}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        aria-label={`Échelle du plan ${plan}`}
+        className="w-24"
+        style={{ accentColor: COULEUR_EXE }}
+      />
+      <BoutonPas
+        icone="add"
+        titre={`Agrandir le plan ${plan} de 1 %`}
+        desactive={valeur >= 4}
+        onClick={() => onChange(valeur + 0.01)}
+      />
+      <span
+        className="text-xs font-semibold tabular-nums w-12 text-right"
+        style={{ color: NAVY }}
+      >
+        {pourcent} %
+      </span>
     </div>
   );
 }

@@ -286,6 +286,12 @@ export async function construireRapportDocx(
       } détectée${props.ecarts.length > 1 ? "s" : ""} — ${comparaison}`,
       { taille: 22 }
     ),
+    titre2("Répartition par type"),
+    tableau(
+      props.repartitionType.map((e) => ({ libelle: e.libelle, largeur: 25 })),
+      [props.repartitionType.map((e) => String(e.nombre))]
+    ),
+    new Paragraph({ spacing: { after: 120 }, children: [] }),
     titre2("Répartition par priorité"),
     tableau(
       ORDRE_PRIORITE.map((p) => ({
