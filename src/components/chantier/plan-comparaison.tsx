@@ -4,7 +4,7 @@ export function PlanComparaison({ chantierId }: { chantierId: string }) {
   return (
     <div className="text-center py-10 px-4">
       <div className="w-14 h-14 rounded-full bg-[#002855]/10 flex items-center justify-center mx-auto mb-3">
-        <span className="material-symbols-outlined text-[#002855] text-2xl">
+        <span translate="no" className="material-symbols-outlined text-[#002855] text-2xl">
           compare_arrows
         </span>
       </div>
@@ -22,7 +22,7 @@ export function PlanComparaison({ chantierId }: { chantierId: string }) {
         href={`/chantiers/${chantierId}/comparaison`}
         className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 mt-4 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#002855]/90 transition-colors text-sm"
       >
-        <span className="material-symbols-outlined text-lg">rule</span>
+        <span translate="no" className="material-symbols-outlined text-lg">rule</span>
         Sélectionner les plans à comparer
       </Link>
     </div>

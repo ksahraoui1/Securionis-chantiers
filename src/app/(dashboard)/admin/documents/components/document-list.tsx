@@ -33,7 +33,7 @@ export function DocumentList({
     return (
       <div className="text-center py-12">
         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-gray-400 text-3xl">
+          <span translate="no" className="material-symbols-outlined text-gray-400 text-3xl">
             folder_open
           </span>
         </div>
@@ -93,7 +93,7 @@ function DocumentRow({
               className="w-full h-full object-cover rounded-lg"
             />
           ) : (
-            <span className="material-symbols-outlined text-red-500 text-xl">
+            <span translate="no" className="material-symbols-outlined text-red-500 text-xl">
               picture_as_pdf
             </span>
           )}
@@ -134,7 +134,7 @@ function DocumentRow({
             className="p-2 min-h-touch min-w-touch flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded-lg"
             title="Ouvrir"
           >
-            <span className="material-symbols-outlined text-lg">open_in_new</span>
+            <span translate="no" className="material-symbols-outlined text-lg">open_in_new</span>
           </a>
           <button
             type="button"
@@ -142,7 +142,7 @@ function DocumentRow({
             className="p-2 min-h-touch min-w-touch flex items-center justify-center text-gray-600 hover:bg-gray-50 rounded-lg"
             title="Modifier"
           >
-            <span className="material-symbols-outlined text-lg">edit</span>
+            <span translate="no" className="material-symbols-outlined text-lg">edit</span>
           </button>
           <button
             type="button"
@@ -150,7 +150,7 @@ function DocumentRow({
             className="p-2 min-h-touch min-w-touch flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded-lg"
             title="Envoyer par email"
           >
-            <span className="material-symbols-outlined text-lg">mail</span>
+            <span translate="no" className="material-symbols-outlined text-lg">mail</span>
           </button>
           <button
             type="button"
@@ -158,7 +158,7 @@ function DocumentRow({
             className="p-2 min-h-touch min-w-touch flex items-center justify-center text-green-600 hover:bg-green-50 rounded-lg"
             title="Lier aux points de contrôle"
           >
-            <span className="material-symbols-outlined text-lg">link</span>
+            <span translate="no" className="material-symbols-outlined text-lg">link</span>
           </button>
           <button
             type="button"
@@ -166,7 +166,7 @@ function DocumentRow({
             className="p-2 min-h-touch min-w-touch flex items-center justify-center text-red-500 hover:bg-red-50 rounded-lg"
             title="Supprimer"
           >
-            <span className="material-symbols-outlined text-lg">delete</span>
+            <span translate="no" className="material-symbols-outlined text-lg">delete</span>
           </button>
         </div>
       </div>

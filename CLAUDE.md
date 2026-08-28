@@ -616,7 +616,8 @@ Migration 044 : le bucket accepte désormais exactement les sept types de la whi
 15. **Annotations de comparaison** : les coordonnées sont en unités monde OpenSeadragon, jamais en pixels. Une forme SVG qui doit être cliquable sur toute sa surface a besoin de `fill="transparent"`, pas `fill="none"`.
 16. **Types acceptés par les buckets** : `rapports` accepte PDF, Word, Excel, JPEG et PNG (migration 044) ; `visite-photos` accepte JPEG et PNG. Un type hors liste est rejeté par le stockage avec un **400**, pas par le code — la configuration du bucket reste le contrôle autoritaire.
 17. **Une NC sans `reponse_id`** est forcément de type `ecart_plan` (contrainte `ecarts_origine_check`). Tout code qui joint `ecarts` à `reponses` doit tolérer l'absence de correspondance.
-18. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+18. **Icônes et traduction automatique** : les Material Symbols fonctionnent par **ligature** — le `<span>` contient le mot `arrow_back`, que la police remplace par le dessin. Si le navigateur traduit la page, ce mot devient « flèche_re » et l'icône disparaît au profit du texte. Tout `<span class="material-symbols-outlined">` doit donc porter `translate="no"` (145 occurrences marquées). `lang="fr"` sur `<html>` ne suffit pas : Chrome propose quand même la traduction, précisément parce que les noms d'icônes sont des mots anglais.
+19. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 

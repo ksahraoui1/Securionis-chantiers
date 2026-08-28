@@ -44,7 +44,7 @@ export function ArchiveToggleButton({ chantierId, archived }: ArchiveToggleButto
           : "bg-amber-50 text-amber-700 hover:bg-amber-100"
       }`}
     >
-      <span className="material-symbols-outlined text-lg">
+      <span translate="no" className="material-symbols-outlined text-lg">
         {loading ? "hourglass_top" : archived ? "unarchive" : "archive"}
       </span>
       {loading ? "..." : archived ? "Restaurer" : "Archiver"}

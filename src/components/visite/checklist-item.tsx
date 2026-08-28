@@ -150,7 +150,7 @@ export function ChecklistItem({
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors"
               >
-                <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
+                <span translate="no" className="material-symbols-outlined text-xs">picture_as_pdf</span>
                 {doc.nom}
               </a>
             ))}
@@ -166,7 +166,7 @@ export function ChecklistItem({
                     : "bg-blue-50 text-blue-700"
                 }`}
               >
-                <span className="material-symbols-outlined text-xs">
+                <span translate="no" className="material-symbols-outlined text-xs">
                   {doc.type_fichier === "pdf" ? "picture_as_pdf" : "image"}
                 </span>
                 {doc.titre}

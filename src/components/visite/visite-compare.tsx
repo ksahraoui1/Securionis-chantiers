@@ -142,10 +142,10 @@ export function VisiteCompare({ visites }: VisiteCompareProps) {
         className="w-full flex items-center justify-between px-4 py-3 min-h-[44px] bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
       >
         <span className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-lg">compare_arrows</span>
+          <span translate="no" className="material-symbols-outlined text-lg">compare_arrows</span>
           Comparer deux visites
         </span>
-        <span className="material-symbols-outlined text-lg">
+        <span translate="no" className="material-symbols-outlined text-lg">
           {isOpen ? "expand_less" : "expand_more"}
         </span>
       </button>
@@ -344,7 +344,7 @@ export function VisiteCompare({ visites }: VisiteCompareProps) {
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${cfg.bg} ${cfg.text}`}
                         >
-                          <span className="material-symbols-outlined text-sm">
+                          <span translate="no" className="material-symbols-outlined text-sm">
                             {cfg.icon}
                           </span>
                           {cfg.label}
@@ -383,7 +383,7 @@ function SummaryCard({
 }) {
   return (
     <div className={`${bg} rounded-lg p-3 text-center`}>
-      <span className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
+      <span translate="no" className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
       <p className={`text-2xl font-bold ${color}`}>{count}</p>
       <p className="text-[10px] font-medium text-gray-600 uppercase">{label}</p>
     </div>

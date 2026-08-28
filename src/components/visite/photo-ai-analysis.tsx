@@ -139,7 +139,7 @@ export function PhotoAiAnalysis({
         disabled={loading}
         className="flex items-center gap-2 px-4 py-2 min-h-touch bg-purple-100 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-200 disabled:opacity-50 transition-colors"
       >
-        <span className="material-symbols-outlined text-lg">
+        <span translate="no" className="material-symbols-outlined text-lg">
           {loading ? "hourglass_top" : "auto_awesome"}
         </span>
         {loading ? "Analyse en cours..." : "Analyse IA"}
@@ -147,7 +147,7 @@ export function PhotoAiAnalysis({
 
       {error && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 flex items-start gap-2">
-          <span className="material-symbols-outlined text-lg mt-0.5">error</span>
+          <span translate="no" className="material-symbols-outlined text-lg mt-0.5">error</span>
           <span>{error}</span>
         </div>
       )}
@@ -157,7 +157,7 @@ export function PhotoAiAnalysis({
           {/* Header */}
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase text-purple-700 flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm">auto_awesome</span>
+              <span translate="no" className="material-symbols-outlined text-sm">auto_awesome</span>
               Analyse IA
             </span>
             {result.confiance > 0 && (
@@ -199,7 +199,7 @@ export function PhotoAiAnalysis({
                         </svg>
                       )}
                     </div>
-                    <span className={`material-symbols-outlined text-lg mt-0.5 ${cfg.text}`}>
+                    <span translate="no" className={`material-symbols-outlined text-lg mt-0.5 ${cfg.text}`}>
                       {cfg.icon}
                     </span>
                     <div className="flex-1 min-w-0">
@@ -223,7 +223,7 @@ export function PhotoAiAnalysis({
 
           {result.dangers.length === 0 && result.conformite === "conforme" && (
             <div className="flex items-center gap-2 text-sm text-green-700 bg-green-100 rounded-lg p-2.5">
-              <span className="material-symbols-outlined text-lg">check_circle</span>
+              <span translate="no" className="material-symbols-outlined text-lg">check_circle</span>
               Aucun danger détecté — la photo semble conforme.
             </div>
           )}
@@ -253,7 +253,7 @@ export function PhotoAiAnalysis({
                     : "bg-purple-600 text-white hover:bg-purple-700"
                 }`}
               >
-                <span className="material-symbols-outlined text-sm">
+                <span translate="no" className="material-symbols-outlined text-sm">
                   {applied.remarque ? "check" : "content_paste"}
                 </span>
                 {applied.remarque ? "Appliquée" : "Utiliser cette remarque"}
@@ -277,7 +277,7 @@ export function PhotoAiAnalysis({
                       : "bg-green-100 text-green-700 hover:bg-green-200"
                 }`}
               >
-                <span className="material-symbols-outlined text-sm">
+                <span translate="no" className="material-symbols-outlined text-sm">
                   {applied.conformite
                     ? "check"
                     : result.conformite === "non_conforme"

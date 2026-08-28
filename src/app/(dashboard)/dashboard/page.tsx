@@ -188,7 +188,7 @@ export default async function DashboardPage() {
             href="/chantiers/archives"
             className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-sm"
           >
-            <span className="material-symbols-outlined text-lg">inventory_2</span>
+            <span translate="no" className="material-symbols-outlined text-lg">inventory_2</span>
             Archives
           </Link>
           <a
@@ -196,7 +196,7 @@ export default async function DashboardPage() {
             download
             className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors text-sm flex-1 sm:flex-initial"
           >
-            <span className="material-symbols-outlined text-lg">download</span>
+            <span translate="no" className="material-symbols-outlined text-lg">download</span>
             Export Excel
           </a>
         </div>
@@ -396,14 +396,14 @@ function KpiCard({
         </div>
         {icon && (
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colors.icon}`}>
-            <span className="material-symbols-outlined text-xl">{icon}</span>
+            <span translate="no" className="material-symbols-outlined text-xl">{icon}</span>
           </div>
         )}
       </div>
       {href && (
         <p className="text-[10px] opacity-50 mt-2 flex items-center gap-0.5">
           Voir le détail
-          <span className="material-symbols-outlined text-xs">arrow_forward</span>
+          <span translate="no" className="material-symbols-outlined text-xs">arrow_forward</span>
         </p>
       )}
     </div>

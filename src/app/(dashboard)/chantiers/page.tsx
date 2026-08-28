@@ -71,14 +71,14 @@ export default async function ChantiersPage() {
             href="/chantiers/archives"
             className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-sm"
           >
-            <span className="material-symbols-outlined text-lg">inventory_2</span>
+            <span translate="no" className="material-symbols-outlined text-lg">inventory_2</span>
             Archives
           </Link>
           <Link
             href="/chantiers/nouveau"
             className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex-1 sm:flex-initial"
           >
-            <span className="material-symbols-outlined text-lg">add</span>
+            <span translate="no" className="material-symbols-outlined text-lg">add</span>
             Nouveau chantier
           </Link>
         </div>

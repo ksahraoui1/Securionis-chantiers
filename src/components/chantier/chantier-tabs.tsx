@@ -46,7 +46,7 @@ export function ChantierTabs({ documents, visites, comparaison }: ChantierTabsPr
                   : "border-transparent text-gray-500 hover:text-[#002855] hover:border-gray-300"
               }`}
             >
-              <span className="material-symbols-outlined text-lg">{tab.icon}</span>
+              <span translate="no" className="material-symbols-outlined text-lg">{tab.icon}</span>
               {tab.label}
             </button>
           );

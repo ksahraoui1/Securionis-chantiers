@@ -85,7 +85,7 @@ export default function RegisterPage() {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-green-600 text-3xl">mark_email_read</span>
+          <span translate="no" className="material-symbols-outlined text-green-600 text-3xl">mark_email_read</span>
         </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">
           Vérifiez votre email

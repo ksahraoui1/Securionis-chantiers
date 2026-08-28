@@ -320,7 +320,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
           onClick={() => setShowUpload(!showUpload)}
           className="inline-flex items-center gap-1 px-4 py-2 min-h-[44px] bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm"
         >
-          <span className="material-symbols-outlined text-lg">upload_file</span>
+          <span translate="no" className="material-symbols-outlined text-lg">upload_file</span>
           Ajouter
         </button>
       </div>
@@ -383,14 +383,14 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
               onClick={() => fileRef.current?.click()}
               className="w-full flex items-center justify-center gap-2 py-4 min-h-[56px] rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors text-sm"
             >
-              <span className="material-symbols-outlined text-xl">cloud_upload</span>
+              <span translate="no" className="material-symbols-outlined text-xl">cloud_upload</span>
               {uploadFile ? uploadFile.name : "Choisir un fichier (PDF, Word, Excel, Image)"}
             </button>
           </div>
 
           {error && (
             <p className="text-sm text-red-600 flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm">error</span>
+              <span translate="no" className="material-symbols-outlined text-sm">error</span>
               {error}
             </p>
           )}
@@ -420,7 +420,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
         <div className="flex flex-col sm:flex-row gap-2">
           {planPE && (
             <div className="flex-1 flex items-center gap-2 rounded-lg border border-[#2E7D32]/30 bg-[#2E7D32]/5 px-3 py-2 min-w-0">
-              <span className="material-symbols-outlined text-[#2E7D32] text-xl shrink-0">
+              <span translate="no" className="material-symbols-outlined text-[#2E7D32] text-xl shrink-0">
                 verified
               </span>
               <div className="min-w-0">
@@ -436,7 +436,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
           )}
           {planEXE && (
             <div className="flex-1 flex items-center gap-2 rounded-lg border border-[#E67E22]/30 bg-[#E67E22]/5 px-3 py-2 min-w-0">
-              <span className="material-symbols-outlined text-[#E67E22] text-xl shrink-0">
+              <span translate="no" className="material-symbols-outlined text-[#E67E22] text-xl shrink-0">
                 engineering
               </span>
               <div className="min-w-0">
@@ -453,7 +453,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
       {/* Erreur hors formulaire d'upload */}
       {error && !showUpload && (
         <p className="text-sm text-red-600 flex items-center gap-1">
-          <span className="material-symbols-outlined text-sm">error</span>
+          <span translate="no" className="material-symbols-outlined text-sm">error</span>
           {error}
         </p>
       )}
@@ -485,7 +485,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
       {filtered.length === 0 && documents.length === 0 && (
         <div className="text-center py-8">
           <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <span className="material-symbols-outlined text-gray-400 text-2xl">folder_open</span>
+            <span translate="no" className="material-symbols-outlined text-gray-400 text-2xl">folder_open</span>
           </div>
           <p className="text-sm text-gray-500">
             Aucun document. Ajoutez des permis, plans ou certificats.
@@ -509,7 +509,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
             >
               {/* Icon */}
               <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-blue-600 text-lg">
+                <span translate="no" className="material-symbols-outlined text-blue-600 text-lg">
                   {cat.icon}
                 </span>
               </div>
@@ -529,7 +529,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                           }}
                           title={PLAN_TYPES[doc.plan_type].libelle}
                         >
-                          <span className="material-symbols-outlined text-[12px]">
+                          <span translate="no" className="material-symbols-outlined text-[12px]">
                             {PLAN_TYPES[doc.plan_type].icon}
                           </span>
                           {doc.plan_type}
@@ -568,7 +568,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 px-3 py-1.5 min-h-touch text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
                   >
-                    <span className="material-symbols-outlined text-sm">download</span>
+                    <span translate="no" className="material-symbols-outlined text-sm">download</span>
                     Télécharger
                   </a>
                   <input
@@ -593,7 +593,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                     disabled={replacingId === doc.id}
                     className="flex items-center gap-1 px-3 py-1.5 min-h-touch text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
                   >
-                    <span className="material-symbols-outlined text-sm">
+                    <span translate="no" className="material-symbols-outlined text-sm">
                       {replacingId === doc.id ? "hourglass_top" : "sync"}
                     </span>
                     {replacingId === doc.id ? "Envoi..." : "Nouvelle version"}
@@ -607,7 +607,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                       className="flex items-center justify-center min-h-touch min-w-touch p-1.5 text-xs text-[#002855] rounded-lg hover:bg-[#002855]/10 transition-colors"
                       title="Actions du plan"
                     >
-                      <span className="material-symbols-outlined text-sm">more_vert</span>
+                      <span translate="no" className="material-symbols-outlined text-sm">more_vert</span>
                     </button>
                     {menuId === doc.id && (
                       <>
@@ -629,6 +629,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                               className="w-full flex items-center gap-2 px-3 py-2 min-h-touch text-xs font-medium text-[#002855] hover:bg-gray-50 text-left"
                             >
                               <span
+                                translate="no"
                                 className="material-symbols-outlined text-base"
                                 style={{ color: PLAN_TYPES[type].couleur }}
                               >
@@ -644,7 +645,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                               onClick={() => handleRetirerPlan(doc.id)}
                               className="w-full flex items-center gap-2 px-3 py-2 min-h-touch text-xs font-medium text-gray-600 hover:bg-gray-50 text-left border-t border-gray-100"
                             >
-                              <span className="material-symbols-outlined text-base">
+                              <span translate="no" className="material-symbols-outlined text-base">
                                 backspace
                               </span>
                               Retirer le marquage
@@ -659,7 +660,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
                     onClick={() => handleDelete(doc.id)}
                     className="flex items-center justify-center min-h-touch min-w-touch p-1.5 text-xs text-red-600 rounded-lg hover:bg-red-50 transition-colors"
                   >
-                    <span className="material-symbols-outlined text-sm">delete</span>
+                    <span translate="no" className="material-symbols-outlined text-sm">delete</span>
                   </button>
                 </div>
 

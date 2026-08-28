@@ -84,7 +84,7 @@ export function QuickAddPoint({ themeIds, categorieIds, onPointCreated }: QuickA
         onClick={() => setOpen(true)}
         className="w-full py-3 min-h-touch border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
       >
-        <span className="material-symbols-outlined text-lg">add_circle</span>
+        <span translate="no" className="material-symbols-outlined text-lg">add_circle</span>
         Ajouter un point de contrôle personnalisé
       </button>
     );
@@ -99,7 +99,7 @@ export function QuickAddPoint({ themeIds, categorieIds, onPointCreated }: QuickA
           onClick={() => { setOpen(false); setError(null); }}
           className="text-gray-400 hover:text-gray-600 p-1"
         >
-          <span className="material-symbols-outlined text-sm">close</span>
+          <span translate="no" className="material-symbols-outlined text-sm">close</span>
         </button>
       </div>
       <textarea

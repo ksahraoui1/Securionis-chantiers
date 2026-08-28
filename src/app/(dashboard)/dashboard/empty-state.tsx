@@ -10,6 +10,7 @@ export function DashboardEmptyState() {
       {/* Illustration */}
       <div className="w-20 h-20 rounded-3xl bg-surface-container-high flex items-center justify-center">
         <span
+          translate="no"
           className="material-symbols-outlined text-primary-container text-4xl"
           aria-hidden="true"
         >
@@ -33,7 +34,7 @@ export function DashboardEmptyState() {
         href="/chantiers/nouveau"
         className="btn-gradient text-white h-14 pl-6 pr-7 rounded-2xl flex items-center gap-3 shadow-ambient hover:scale-105 active:scale-95 transition-all font-bold"
       >
-        <span className="material-symbols-outlined" aria-hidden="true">
+        <span translate="no" className="material-symbols-outlined" aria-hidden="true">
           add
         </span>
         Créer mon premier chantier

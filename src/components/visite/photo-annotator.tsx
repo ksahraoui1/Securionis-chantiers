@@ -300,7 +300,7 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
           onClick={onCancel}
           className="text-white/80 hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
         >
-          <span className="material-symbols-outlined">close</span>
+          <span translate="no" className="material-symbols-outlined">close</span>
         </button>
         <span className="text-white font-bold text-sm">Annoter la photo</span>
         <button
@@ -375,7 +375,7 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
                   : "text-white/70 hover:text-white"
               }`}
             >
-              <span className="material-symbols-outlined text-xl">{t.icon}</span>
+              <span translate="no" className="material-symbols-outlined text-xl">{t.icon}</span>
               <span className="mt-0.5">{t.label}</span>
             </button>
           ))}
@@ -387,7 +387,7 @@ export function PhotoAnnotator({ imageUrl, onSave, onCancel }: PhotoAnnotatorPro
             disabled={state.annotations.length === 0}
             className="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-xl text-xs font-medium text-white/70 hover:text-white disabled:opacity-30"
           >
-            <span className="material-symbols-outlined text-xl">undo</span>
+            <span translate="no" className="material-symbols-outlined text-xl">undo</span>
             <span className="mt-0.5">Annuler</span>
           </button>
         </div>

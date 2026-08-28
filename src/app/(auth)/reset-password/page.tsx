@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-green-600 text-3xl">check_circle</span>
+          <span translate="no" className="material-symbols-outlined text-green-600 text-3xl">check_circle</span>
         </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">
           Mot de passe modifié
@@ -93,7 +93,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-8 text-center">
         <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-amber-600 text-3xl">hourglass_top</span>
+          <span translate="no" className="material-symbols-outlined text-amber-600 text-3xl">hourglass_top</span>
         </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">
           Vérification en cours...

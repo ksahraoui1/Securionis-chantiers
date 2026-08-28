@@ -88,7 +88,7 @@ export default async function NCDetailPage({
           href={`/chantiers/${chantierId}`}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#002855] transition-colors"
         >
-          <span className="material-symbols-outlined text-base">arrow_back</span>
+          <span translate="no" className="material-symbols-outlined text-base">arrow_back</span>
           Retour au chantier
         </Link>
         <div className="flex items-center gap-2 flex-wrap mt-1">
@@ -108,7 +108,7 @@ export default async function NCDetailPage({
               className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
               style={{ backgroundColor: BLEU_NC }}
             >
-              <span className="material-symbols-outlined text-xs">compare_arrows</span>
+              <span translate="no" className="material-symbols-outlined text-xs">compare_arrows</span>
               Écart de plan
             </span>
           )}
@@ -187,7 +187,7 @@ export default async function NCDetailPage({
               className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 text-white font-medium rounded-lg hover:opacity-90 transition-opacity text-sm"
               style={{ backgroundColor: NAVY }}
             >
-              <span className="material-symbols-outlined text-lg">compare_arrows</span>
+              <span translate="no" className="material-symbols-outlined text-lg">compare_arrows</span>
               Voir la comparaison
             </Link>
           </div>

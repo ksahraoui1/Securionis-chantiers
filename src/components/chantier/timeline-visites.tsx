@@ -70,7 +70,7 @@ export function TimelineVisites({
               </div>
               {visite.statut === "terminee" && (
                 <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-xs">description</span>
+                  <span translate="no" className="material-symbols-outlined text-xs">description</span>
                   {visite.rapport_url ? "Voir le rapport" : "Générer le rapport"}
                 </p>
               )}

@@ -115,7 +115,7 @@ export function DashboardNav({
             onClick={() => setMenuOpen(!menuOpen)}
             className={`${masquerMenu} min-h-touch min-w-touch flex items-center justify-center rounded-lg hover:bg-gray-100`}
           >
-            <span className="material-symbols-outlined">
+            <span translate="no" className="material-symbols-outlined">
               {menuOpen ? "close" : "menu"}
             </span>
           </button>
@@ -136,7 +136,7 @@ export function DashboardNav({
                   : "text-gray-600 hover:bg-gray-100"
               }`}
             >
-              <span className="material-symbols-outlined text-lg">{link.icon}</span>
+              <span translate="no" className="material-symbols-outlined text-lg">{link.icon}</span>
               {link.label}
             </a>
           ))}
@@ -146,7 +146,7 @@ export function DashboardNav({
               onClick={handleLogout}
               className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 min-h-touch w-full"
             >
-              <span className="material-symbols-outlined text-lg">logout</span>
+              <span translate="no" className="material-symbols-outlined text-lg">logout</span>
               Déconnexion
             </button>
           </div>

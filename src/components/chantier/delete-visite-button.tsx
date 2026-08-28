@@ -68,7 +68,7 @@ export function DeleteVisiteButton({ visiteId, chantierId }: DeleteVisiteButtonP
       className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
       title="Supprimer cette visite"
     >
-      <span className="material-symbols-outlined text-lg">delete</span>
+      <span translate="no" className="material-symbols-outlined text-lg">delete</span>
     </button>
   );
 }

@@ -124,7 +124,7 @@ export function BarreOutilsAnnotation({
             }`}
             style={actif ? { backgroundColor: NAVY } : { color: NAVY }}
           >
-            <span className="material-symbols-outlined text-lg">{o.icone}</span>
+            <span translate="no" className="material-symbols-outlined text-lg">{o.icone}</span>
             <span className="hidden lg:inline">{o.libelle}</span>
           </button>
         );
@@ -162,7 +162,7 @@ export function BarreOutilsAnnotation({
         className="ml-auto inline-flex items-center gap-1.5 min-h-touch px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-medium hover:bg-gray-100 disabled:opacity-50 transition-colors"
         style={{ color: NAVY }}
       >
-        <span className="material-symbols-outlined text-base">download</span>
+        <span translate="no" className="material-symbols-outlined text-base">download</span>
         Exporter les annotations
       </button>
     </div>
@@ -729,7 +729,7 @@ export function ListeAnnotations({
               {numero}
             </span>
 
-            <span className="material-symbols-outlined text-base text-gray-400 shrink-0">
+            <span translate="no" className="material-symbols-outlined text-base text-gray-400 shrink-0">
               {OUTILS.find((o) => o.valeur === annotation.type)?.icone ?? "shape_line"}
             </span>
 
@@ -765,7 +765,7 @@ export function ListeAnnotations({
                 className="inline-flex items-center gap-1 px-2 py-1 min-h-touch rounded-lg text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-opacity"
                 style={{ backgroundColor: BLEU_NC }}
               >
-                <span className="material-symbols-outlined text-sm">link</span>
+                <span translate="no" className="material-symbols-outlined text-sm">link</span>
                 NC #{liens[annotation.id].numero}
               </a>
             ) : (
@@ -779,7 +779,7 @@ export function ListeAnnotations({
                 className="inline-flex items-center gap-1 px-2 py-1 min-h-touch rounded-lg text-[11px] font-medium text-white shrink-0 hover:opacity-90 transition-opacity"
                 style={{ backgroundColor: NAVY }}
               >
-                <span className="material-symbols-outlined text-sm">report</span>
+                <span translate="no" className="material-symbols-outlined text-sm">report</span>
                 <span className="hidden sm:inline">Créer une NC</span>
               </button>
             )}
@@ -794,7 +794,7 @@ export function ListeAnnotations({
               aria-label={`Supprimer l'annotation ${numero}`}
               className="inline-flex items-center justify-center min-h-touch min-w-touch w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 transition-colors shrink-0"
             >
-              <span className="material-symbols-outlined text-base">delete</span>
+              <span translate="no" className="material-symbols-outlined text-base">delete</span>
             </button>
           </li>
         ))}
