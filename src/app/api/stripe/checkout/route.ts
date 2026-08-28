@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getStripe, getStripePrices } from "@/lib/stripe/client";
 import { getAppUrl } from "@/lib/env";
 
@@ -16,6 +17,14 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  // Création de session de paiement : 10 par heure
+  if (!checkRateLimit(`stripe-checkout:${user.id}`, 10, 60 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Trop de requêtes. Réessayez plus tard." },
+      { status: 429 }
+    );
   }
 
   const { plan } = await request.json();

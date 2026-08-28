@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole } from "@/lib/utils/security";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { getUserRole, isAllowedSupabaseUrl } from "@/lib/utils/security";
 import JSZip from "jszip";
 
 export const maxDuration = 300; // 5 minutes
@@ -21,6 +22,14 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
+
+  // Export lourd (ZIP de toutes les photos) : 5 par heure
+  if (!checkRateLimit(`photos-export:${user.id}`, 5, 60 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Trop de requêtes. Réessayez plus tard." },
+      { status: 429 }
+    );
+  }
 
     // Vérifier que c'est un admin
     const role = await getUserRole(supabase, user.id);
@@ -123,9 +132,18 @@ export async function GET(request: NextRequest) {
       const metadata = photoMetadata.get(photoUrl);
       if (!metadata) continue;
 
+      // Anti-SSRF : `reponses.photos` est modifiable par un inspecteur via
+      // l'API REST ; on n'accepte que l'hôte Supabase du projet.
+      if (!isAllowedSupabaseUrl(photoUrl)) {
+        console.warn("URL de photo refusée (hors Supabase)");
+        continue;
+      }
+
       try {
         // Télécharger la photo
-        const response = await fetch(photoUrl);
+        const response = await fetch(photoUrl, {
+          signal: AbortSignal.timeout(30000),
+        });
         if (!response.ok) {
           console.warn(`Impossible de télécharger: ${photoUrl}`);
           continue;

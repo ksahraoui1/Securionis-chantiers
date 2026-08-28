@@ -41,5 +41,10 @@
   },
   "devDependencies": {
     "@types/web-push": "^3.6.4"
+  },
+  "overrides": {
+    "minimatch@3": {
+      "brace-expansion": "^1.1.18"
+    }
   }
 }

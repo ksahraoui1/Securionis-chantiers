@@ -72,6 +72,15 @@ export function getAnthropicApiKey(): string {
   return requireServer("ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY);
 }
 
+/**
+ * Clé privée VAPID (Web Push). Passe par requireServer comme les autres
+ * secrets : une lecture directe de process.env n'a pas cette garde et pourrait
+ * être introduite dans un module rendu côté client.
+ */
+export function getVapidPrivateKey(): string {
+  return requireServer("VAPID_PRIVATE_KEY", process.env.VAPID_PRIVATE_KEY);
+}
+
 export function getStripeSecretKey(): string {
   return requireServer("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
 }
