@@ -945,9 +945,6 @@ export function ComparaisonPlans({
         // Le recalage est celui de l'utilisateur : on compare les deux calques
         // dans le cadrage courant, pas les plans entiers.
         const calques = await capturerCalques();
-        if (!calques) {
-          throw new Error("La vue n'a pas pu être capturée.");
-        }
         resultat = await analyserVue(calques, {
           seuilBruit: SEUIL_BRUIT_DETECTION,
           onEtape,
@@ -971,7 +968,16 @@ export function ComparaisonPlans({
       }
     } catch (err) {
       console.error("Détection de différences :", err);
-      setDetection({ statut: "erreur", message: MESSAGE_DETECTION_IMPOSSIBLE });
+      // Sans le détail, l'utilisateur — et nous — n'avons aucune prise sur la
+      // panne : le message générique ne distingue pas deux plans incompatibles
+      // d'un incident technique.
+      const detail = err instanceof Error ? err.message.trim() : "";
+      setDetection({
+        statut: "erreur",
+        message: detail
+          ? `${MESSAGE_DETECTION_IMPOSSIBLE} (${detail}.)`
+          : MESSAGE_DETECTION_IMPOSSIBLE,
+      });
       setPanneauOuvert(false);
     }
   }
@@ -1172,26 +1178,40 @@ export function ComparaisonPlans({
    * permet de comparer des plans qui ne sont ni au même format ni à la même
    * échelle.
    */
-  async function capturerCalques(): Promise<CalquesVue | null> {
+  async function capturerCalques(): Promise<CalquesVue> {
     const viewer = viewerRef.current;
     const OSD = osdRef.current;
     const pe = itemPERef.current;
     const exe = itemEXERef.current;
-    if (!viewer || !OSD || !pe || !exe) return null;
+    if (!viewer || !OSD || !pe || !exe) {
+      throw new Error("le visualiseur n'est pas initialisé");
+    }
 
+    // OpenSeadragon peut retomber sur son rendu HTML, sans canevas, quand le
+    // navigateur refuse WebGL et le canevas 2D. La comparaison est alors
+    // impossible : autant le dire.
     const source = viewer.container.querySelector("canvas");
-    if (!(source instanceof HTMLCanvasElement)) return null;
+    if (!(source instanceof HTMLCanvasElement)) {
+      throw new Error(
+        "le visualiseur ne fournit pas de canevas — accélération graphique désactivée ?"
+      );
+    }
 
     const largeurCss = viewer.container.clientWidth;
     const hauteurCss = viewer.container.clientHeight;
-    if (largeurCss < 8 || hauteurCss < 8) return null;
+    if (largeurCss < 8 || hauteurCss < 8) {
+      throw new Error("la zone d'affichage est trop petite");
+    }
 
     const attendreRendu = () =>
       new Promise<void>((resoudre) =>
         requestAnimationFrame(() => requestAnimationFrame(() => resoudre()))
       );
 
-    const rendre = async (visible: TiledImage, cache: TiledImage) => {
+    const rendre = async (
+      visible: TiledImage,
+      cache: TiledImage
+    ): Promise<HTMLCanvasElement> => {
       visible.setOpacity(1);
       cache.setOpacity(0);
       viewer.forceRedraw();
@@ -1201,7 +1221,9 @@ export function ComparaisonPlans({
       canevas.width = source.width;
       canevas.height = source.height;
       const ctx = canevas.getContext("2d");
-      if (!ctx) return null;
+      if (!ctx) {
+        throw new Error("le navigateur n'a pas fourni de contexte de dessin");
+      }
       // Fond blanc : hors du plan, le canevas est transparent, ce qui serait
       // lu comme de l'encre par le seuillage.
       ctx.fillStyle = "#ffffff";
@@ -1213,7 +1235,6 @@ export function ComparaisonPlans({
     try {
       const canevasPE = await rendre(pe, exe);
       const canevasEXE = await rendre(exe, pe);
-      if (!canevasPE || !canevasEXE) return null;
 
       // Repère : origine et pas du canevas de capture, en unités monde.
       const ratio = source.width / largeurCss;
