@@ -33,13 +33,13 @@ function chargerImage(url: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Rasterise la couche SVG et la dessine par-dessus les plans.
+ * Rasterise une couche SVG et la dessine par-dessus les plans.
  *
  * Le SVG affiché est étiré en CSS et n'a donc aucune dimension intrinsèque :
  * sans `width`, `height` et `viewBox` explicites, un `<img>` ne sait pas à
  * quelle taille le rendre.
  */
-async function dessinerAnnotations(
+async function dessinerCouche(
   ctx: CanvasRenderingContext2D,
   couche: SVGSVGElement,
   largeurCss: number,
@@ -96,9 +96,12 @@ export async function capturerVue(zone: HTMLElement): Promise<CaptureVue> {
   ctx.fillRect(0, 0, cible.width, cible.height);
   ctx.drawImage(canevas, 0, 0, cible.width, cible.height);
 
-  const couche = zone.querySelector<SVGSVGElement>(`svg[${ATTRIBUT_COUCHE}]`);
-  if (couche) {
-    await dessinerAnnotations(
+  // Toutes les couches SVG de la zone, dans l'ordre du DOM : le calque des
+  // écarts détectés puis celui des annotations. Les superposer dans cet ordre
+  // reproduit exactement ce que voit l'utilisateur.
+  const couches = zone.querySelectorAll<SVGSVGElement>("svg");
+  for (const couche of couches) {
+    await dessinerCouche(
       ctx,
       couche,
       canevas.clientWidth || cible.width,

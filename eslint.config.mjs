@@ -14,6 +14,8 @@ export default [
       "build/",
       "coverage/",
       "public/sw.js",
+      // Copie locale d'OpenCV.js : code tiers minifié, pas notre style
+      "public/vendor/",
       "supabase/",
     ],
   },
