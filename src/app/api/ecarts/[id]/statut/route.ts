@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { STATUTS_ECART } from "@/lib/utils/constants";
 import { canAccessChantier } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { journaliser } from "@/lib/audit";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   [STATUTS_ECART.OUVERT]: [STATUTS_ECART.EN_COURS_CORRECTION, STATUTS_ECART.CORRIGE],
@@ -101,11 +102,11 @@ export async function PATCH(
     }
 
     // Audit log
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
+    await journaliser({
+      userId: user.id,
       action: "update_ecart_statut",
       resource: "ecart",
-      resource_id: ecartId,
+      resourceId: ecartId,
       details: { old_statut: ecart.statut, new_statut: newStatut },
     });
 

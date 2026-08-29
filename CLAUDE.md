@@ -166,8 +166,10 @@ const supabase = createClient();
 
 Toujours utiliser les getters de `src/lib/env.ts` :
 ```ts
-import { getResendApiKey, getServiceRoleKey, requireServer } from "@/lib/env";
-requireServer(); // Lance une erreur si exécuté côté client
+import { getResendApiKey, getServiceRoleKey } from "@/lib/env";
+// La garde côté serveur est portée par les getters eux-mêmes : `requireServer`
+// est privée au module et prend (name, value). Appelé depuis le navigateur, le
+// getter lève.
 const key = getResendApiKey();
 ```
 
@@ -203,13 +205,19 @@ L'expéditeur doit utiliser le domaine racine vérifié (`RESEND_FROM_EMAIL`), p
 ### Audit logs
 
 ```ts
-await supabase.from("audit_logs").insert({
+import { journaliser } from "@/lib/audit";
+
+await journaliser({
+  userId: user.id,
   action: "send_rapport_email",
-  resource: "visites",        // ← "resource", pas "resource_type" !
-  resource_id: visiteId,
-  details: { sent_to: emails },   // ← "details", pas "metadata" !
+  resource: "visites",              // ← "resource", pas "resource_type" !
+  resourceId: visiteId,
+  details: { sent_to: emails },     // ← "details", pas "metadata" !
 });
 ```
+
+Ne plus écrire dans `audit_logs` directement : depuis la migration 046 le rôle
+`authenticated` n'en a plus le droit, et `journaliser()` vérifie son résultat.
 
 ---
 
@@ -572,6 +580,61 @@ ne vérifiait que `error`. Les deux ajoutent désormais `.select("id")` et
 traitent le tableau vide comme un refus, avec un message qui dit quoi faire
 (« demandez à un administrateur de vous y rattacher »). Sans cela, resserrer la
 politique aurait transformé un trou de sécurité en bug silencieux.
+
+### SEC-02 — le journal d'audit était falsifiable (2026-08-29)
+
+`audit_logs_insert` était définie `WITH CHECK (true)` pour le rôle
+`authenticated` : n'importe quel compte connecté pouvait insérer une ligne
+arbitraire dans le journal.
+
+L'impact n'est pas théorique. La page rapport d'une visite affiche son
+historique d'envoi en lisant `audit_logs` filtré sur `(action, resource_id)` :
+un tiers pouvait donc y faire apparaître des envois qui n'ont jamais eu lieu,
+**sur une visite qui ne lui appartient pas**. Sur une application dont les
+rapports peuvent être produits après un accident, la traçabilité est
+précisément ce qu'on demande au journal.
+
+#### `journaliser()` — un seul point d'écriture
+
+`src/lib/audit.ts`. Les **huit** sites d'écriture y passent désormais. Deux
+apports :
+
+- **Le journal n'est plus falsifiable** : l'écriture se fait par le
+  `service_role`, qui contourne la RLS et n'existe que côté serveur.
+- **Un échec cesse d'être silencieux** : aucun des huit appels d'origine ne
+  vérifiait son résultat — c'est ainsi que trois d'entre eux ont écrit pendant
+  des semaines dans une colonne `resource_type` inexistante sans que rien ne le
+  signale. `journaliser()` vérifie le retour et journalise l'échec côté
+  serveur (donc dans Sentry quand un DSN est configuré), sans jamais lever :
+  une action métier réussie ne doit pas échouer parce que sa trace n'a pas pu
+  être écrite.
+
+> Vérifié avant conversion : les huit renseignaient déjà `user_id` avec
+> l'utilisateur authentifié, et **aucun composant client n'écrit** dans cette
+> table — les écritures étaient toutes dans des routes API.
+
+#### Migration 046 — **écrite, pas encore appliquée**
+
+Elle retire la politique d'insertion, révoque `insert/update/delete/truncate`
+à `anon` et `authenticated`, et ajoute un trigger d'ajout seul qui couvre aussi
+le `service_role` (protection contre une route serveur compromise), en
+exemptant `postgres` et `supabase_admin` pour qu'une purge de conservation
+reste possible depuis une migration.
+
+> ⚠️ **L'ordre de déploiement compte.** Appliquer 046 avant que le nouveau code
+> ne soit en production ferait échouer silencieusement les cinq écritures qui
+> utilisaient encore le client utilisateur. Déployer d'abord, appliquer
+> ensuite.
+
+> Note : un trigger `for each statement` ignore sa valeur de retour — seul un
+> `raise` interrompt la commande, `return null` laisse passer.
+
+#### Correction de documentation au passage
+
+Ce fichier documentait `requireServer()` comme un export de `src/lib/env.ts`
+appelable sans argument. C'est faux : la fonction est **privée** et prend
+`(name, value)`. La garde côté serveur s'obtient en passant par les getters —
+`getServiceRoleKey()`, `getResendApiKey()`… — qui l'appellent en interne.
 
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
@@ -1446,6 +1509,8 @@ rend 12 dont 9 dans la garniture.
 42. **Le retour de la barre de navigation est hiérarchique**, jamais `history.back()` : en PWA installée il n'y a pas de bouton retour du navigateur et l'historique peut mener hors de l'application. Le parent ne se déduit pas du chemin — plusieurs niveaux intermédiaires n'ont pas de page (`/chantiers/<id>/visites`) — d'où la table explicite de `src/lib/utils/navigation-retour.ts`, à compléter à chaque nouvelle route.
 43. **Une écriture refusée par la RLS ne lève aucune erreur** : l'`UPDATE` ne touche simplement aucune ligne, et PostgREST renvoie un succès. Tout `.update()` dont l'échec compte doit chaîner `.select()` et traiter le tableau vide comme un refus — vérifier `error` seul ne suffit pas.
 44. **Une politique permissive `USING (true)` n'en est pas une** : les politiques permissives s'additionnent en OU, donc une seule ouverte annule toutes les autres sur la même commande. Relire `pg_policies` après chaque migration touchant la RLS (`select * from pg_policies where qual = 'true'`).
+45. **Ne jamais écrire dans `audit_logs` en direct** : passer par `journaliser()` (`src/lib/audit.ts`). Le rôle `authenticated` n'a plus le droit d'écrire dans cette table, elle est en ajout seul, et le helper est le seul endroit qui vérifie le résultat de l'insertion.
+46. **Un trigger `for each statement` ignore sa valeur de retour** : seul un `raise` interrompt la commande. `return null` y laisse passer l'opération, contrairement à un trigger `for each row`.
 
 ---
 

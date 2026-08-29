@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { journaliser } from "@/lib/audit";
 
 const VALID_ROLES = ["invité", "inspecteur", "administrateur"];
 
@@ -94,11 +95,11 @@ export async function PATCH(request: Request) {
   }
 
   // Audit log
-  await serviceClient.from("audit_logs").insert({
-    user_id: user.id,
+  await journaliser({
+    userId: user.id,
     action: "update_user",
     resource: "profiles",
-    resource_id: userId,
+    resourceId: userId,
     details: updates,
   });
 

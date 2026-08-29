@@ -11,6 +11,7 @@ import {
   lireCapturePng,
   nomFichierComparaison,
 } from "@/lib/utils/comparaison-rapport";
+import { journaliser } from "@/lib/audit";
 
 export const maxDuration = 60;
 
@@ -169,11 +170,11 @@ export async function POST(
       );
     }
 
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
+    await journaliser({
+      userId: user.id,
       action: "send_comparaison_email",
       resource: "comparaisons",
-      resource_id: comparaisonId,
+      resourceId: comparaisonId,
       details: {
         sent_to: destinataire,
         chantier_id: donnees.chantierId,
