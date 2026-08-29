@@ -259,6 +259,22 @@ export interface CV {
     methode: number
   ): void;
   boundingRect(contour: Mat): Rect;
+  approxPolyDP(
+    contour: Mat,
+    approximation: Mat,
+    epsilon: number,
+    ferme: boolean
+  ): void;
+  arcLength(contour: Mat, ferme: boolean): number;
+  isContourConvex(contour: Mat): boolean;
+  bitwise_not(source: Mat, destination: Mat): void;
+  rectangle(
+    image: Mat,
+    coin1: Point,
+    coin2: Point,
+    couleur: [number, number, number, number],
+    epaisseur: number
+  ): void;
   contourArea(contour: Mat): number;
   countNonZero(source: Mat): number;
   findHomography(
@@ -294,6 +310,7 @@ export interface CV {
   MORPH_OPEN: number;
   MORPH_CLOSE: number;
   RETR_EXTERNAL: number;
+  RETR_LIST: number;
   CHAIN_APPROX_SIMPLE: number;
   NORM_HAMMING: number;
   RANSAC: number;

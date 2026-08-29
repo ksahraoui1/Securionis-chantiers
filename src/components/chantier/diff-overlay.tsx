@@ -9,6 +9,7 @@ import {
   type TypeDifference,
   type ZoneAvancee,
 } from "@/lib/plan-diff-detection";
+import type { Rect } from "@/lib/opencv";
 
 type OSDStatic = typeof OpenSeadragonNS;
 type Viewer = OpenSeadragonNS.Viewer;
@@ -38,6 +39,7 @@ export function DiffOverlay({
   viewer,
   osd,
   ecarts,
+  cartouches,
   repere,
   opacite,
   selection,
@@ -47,6 +49,8 @@ export function DiffOverlay({
   osd: OSDStatic | null;
   /** Écarts déjà filtrés par type et par confiance. */
   ecarts: EcartAffiche[];
+  /** Cartouches écartés de la comparaison, dans le repère d'analyse. */
+  cartouches: Rect[];
   /** Passage des pixels d'analyse aux unités monde OpenSeadragon. */
   repere: RepereMonde;
   /** Opacité de remplissage, de 0 à 1. */
@@ -104,6 +108,25 @@ export function DiffOverlay({
         aria-hidden
       >
         <g transform={`translate(${vue.x}, ${vue.y}) scale(${vue.k})`}>
+          {/* Cartouches écartés : hachurés, sous les écarts, non cliquables.
+              Une exclusion invisible serait invérifiable. */}
+          {cartouches.map((boite, index) => (
+            <rect
+              key={`cartouche-${index}`}
+              x={versMondeX(boite.x)}
+              y={versMondeY(boite.y)}
+              width={versTaille(boite.width)}
+              height={versTaille(boite.height)}
+              fill="#6b7280"
+              fillOpacity={0.12}
+              stroke="#6b7280"
+              strokeWidth={1.5}
+              strokeDasharray="6 4"
+              vectorEffect="non-scaling-stroke"
+              style={{ pointerEvents: "none" }}
+            />
+          ))}
+
           {ecarts.map((ecart) => {
             const { zone, numero } = ecart;
             const couleur = HEX_TYPE[zone.type];
@@ -206,10 +229,29 @@ function formaterSurface(aireRelative: number): string {
 }
 
 /** Légende du code couleur, posée en bas à droite du visualiseur. */
-export function LegendeEcarts({ types }: { types: TypeDifference[] }) {
+export function LegendeEcarts({
+  types,
+  cartouches,
+}: {
+  types: TypeDifference[];
+  /** Nombre de cartouches écartés, pour l'annoncer dans la légende. */
+  cartouches: number;
+}) {
   return (
     <div className="absolute bottom-2 right-2 z-10 rounded-lg border border-gray-300 bg-white/95 shadow-sm px-2 py-1.5 pointer-events-none">
       <ul className="flex items-center gap-3 flex-wrap text-[11px]">
+        {cartouches > 0 && (
+          <li className="flex items-center gap-1.5 whitespace-nowrap">
+            <span
+              className="w-3 h-3 rounded-sm border border-dashed"
+              style={{ borderColor: "#6b7280", backgroundColor: "#6b728020" }}
+            />
+            <span className="text-gray-500">
+              {cartouches} cartouche{cartouches > 1 ? "s" : ""} ignoré
+              {cartouches > 1 ? "s" : ""}
+            </span>
+          </li>
+        )}
         {types.map((type) => (
           <li key={type} className="flex items-center gap-1.5 whitespace-nowrap">
             <span

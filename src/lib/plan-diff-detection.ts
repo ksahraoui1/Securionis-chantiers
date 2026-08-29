@@ -7,10 +7,18 @@
  * pour rester testables et réutilisables.
  */
 
-import { chargerOpenCv, opencv, type Mat, type MatVector } from "@/lib/opencv";
+import {
+  chargerOpenCv,
+  opencv,
+  type Mat,
+  type MatVector,
+  type Rect,
+} from "@/lib/opencv";
 import {
   alignPlans,
   canevasDepuisImage,
+  detecterCartouches,
+  masqueHorsCartouches,
   echelleDepuisPaires,
   chargerImage,
   convertToGrayscale,
@@ -73,6 +81,11 @@ export interface ResultatAnalyse {
   echelle: ResultatEchelle;
   /** Motif du refus d'alignement, `null` quand l'analyse a abouti. */
   raison: string | null;
+  /**
+   * Cartouches écartés de la comparaison, dans le repère d'analyse.
+   * Renvoyés pour être montrés : une exclusion invisible serait invérifiable.
+   */
+  cartouches: Rect[];
   /**
    * Conversion des coordonnées d'une zone vers les unités monde OpenSeadragon.
    * Elle rend le repère explicite, que l'analyse ait porté sur les plans
@@ -378,6 +391,8 @@ export async function analyserPlans(
     onEtape?: (etape: EtapeAnalyse) => void;
     /** Nombre d'aperçus miniatures à produire. 0 pour aucun. */
     nbApercus?: number;
+    /** Écarter les cartouches de la comparaison. */
+    ignorerCartouches?: boolean;
   } = {}
 ): Promise<ResultatAnalyse> {
   const {
@@ -385,6 +400,7 @@ export async function analyserPlans(
     largeurAnalyse = LARGEUR_ANALYSE,
     onEtape,
     nbApercus = NB_APERCUS,
+    ignorerCartouches = true,
   } = options;
 
   const etape = async (valeur: EtapeAnalyse) => {
@@ -410,6 +426,9 @@ export async function analyserPlans(
   let normaliseEXE: Mat | null = null;
   let alignee: Mat | null = null;
   let masqueRecouvrement: Mat | null = null;
+  let masqueCartouches: Mat | null = null;
+  let masqueComparaison: Mat | null = null;
+  let cartouches: Rect[] = [];
 
   try {
     await etape("preparation-1");
@@ -444,11 +463,18 @@ export async function analyserPlans(
         alignement.echelle < 5,
     };
 
+    if (ignorerCartouches) {
+      const exclusion = exclureCartouches(normalisePE, alignee);
+      masqueCartouches = exclusion.masque;
+      cartouches = exclusion.zones;
+    }
+
     await etape("detection");
+    masqueComparaison = combinerMasques(masqueRecouvrement, masqueCartouches);
     const detection = detectStructuralDiffsAdvanced(
       normalisePE,
       alignee,
-      masqueRecouvrement
+      masqueComparaison
     );
 
     await etape("classification");
@@ -475,6 +501,7 @@ export async function analyserPlans(
         unitesParPixel: 1 / Math.max(1, normalisePE.cols),
       },
       avertissement: null,
+      cartouches,
       // Une homographie plausible ne suffit pas : si le résidu couvre une part
       // importante de la page, les deux plans ne se correspondent pas.
       aligne,
@@ -495,7 +522,10 @@ export async function analyserPlans(
       normalisePE,
       normaliseEXE,
       alignee,
-      masqueRecouvrement
+      // `combinerMasques` réutilise le premier masque quand les deux existent :
+      // les libérer tous deux le supprimerait deux fois.
+      masqueRecouvrement,
+      masqueComparaison === masqueRecouvrement ? null : masqueCartouches
     );
   }
 }
@@ -1364,12 +1394,19 @@ export interface CalquesVue {
  */
 export async function analyserVue(
   calques: CalquesVue,
-  options: { seuilBruit?: number; onEtape?: (etape: EtapeAnalyse) => void; nbApercus?: number } = {}
+  options: {
+    seuilBruit?: number;
+    onEtape?: (etape: EtapeAnalyse) => void;
+    nbApercus?: number;
+    /** Écarter les cartouches de la comparaison. */
+    ignorerCartouches?: boolean;
+  } = {}
 ): Promise<ResultatAnalyse> {
   const {
     seuilBruit = 0.0005,
     onEtape,
     nbApercus = NB_APERCUS,
+    ignorerCartouches = true,
   } = options;
 
   const etape = async (valeur: EtapeAnalyse) => {
@@ -1386,6 +1423,8 @@ export async function analyserVue(
   let grisEXE: Mat | null = null;
   let normalisePE: Mat | null = null;
   let normaliseEXE: Mat | null = null;
+  let masqueCartouches: Mat | null = null;
+  let cartouches: Rect[] = [];
 
   try {
     await etape("preparation-1");
@@ -1410,8 +1449,18 @@ export async function analyserVue(
     // reprendre. C'est l'information que l'utilisateur n'a pas autrement.
     const echelle = estimateScale(normalisePE, normaliseEXE);
 
+    if (ignorerCartouches) {
+      const exclusion = exclureCartouches(normalisePE, normaliseEXE);
+      masqueCartouches = exclusion.masque;
+      cartouches = exclusion.zones;
+    }
+
     await etape("detection");
-    const detection = detectStructuralDiffsAdvanced(normalisePE, normaliseEXE);
+    const detection = detectStructuralDiffsAdvanced(
+      normalisePE,
+      normaliseEXE,
+      masqueCartouches
+    );
 
     await etape("classification");
     const zones = filterNoise(detection.zones, seuilBruit) as ZoneAvancee[];
@@ -1436,6 +1485,7 @@ export async function analyserVue(
         ? null
         : "Les deux calques diffèrent sur la quasi-totalité de la vue",
       repere: calques.repere,
+      cartouches,
       avertissement: composerAvertissement(aligne, detection.discordance, echelle),
     };
   } finally {
@@ -1445,7 +1495,8 @@ export async function analyserVue(
       grisPE,
       grisEXE,
       normalisePE,
-      normaliseEXE
+      normaliseEXE,
+      masqueCartouches
     );
   }
 }
@@ -1482,4 +1533,33 @@ function composerAvertissement(
 
   if (reserves.length === 0) return null;
   return `${reserves.join(" — ").replace(/^./, (c) => c.toUpperCase())}.`;
+}
+
+/**
+ * Repère les cartouches des deux plans et en compose un masque commun.
+ *
+ * Un cartouche présent sur l'un des deux plans suffit à écarter la zone : la
+ * comparaison n'y a pas de sens, quel que soit le plan qui le porte.
+ */
+function exclureCartouches(
+  planPE: Mat,
+  planEXE: Mat
+): { masque: Mat | null; zones: Rect[] } {
+  const zones = [
+    ...detecterCartouches(planPE),
+    ...detecterCartouches(planEXE),
+  ];
+  return {
+    masque: masqueHorsCartouches(planPE.cols, planPE.rows, zones),
+    zones,
+  };
+}
+
+/** Combine deux masques, en tolérant que l'un ou l'autre soit absent. */
+function combinerMasques(a: Mat | null, b: Mat | null): Mat | null {
+  if (!a) return b;
+  if (!b) return a;
+  const cv = opencv();
+  cv.bitwise_and(a, b, a);
+  return a;
 }

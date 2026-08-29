@@ -9,7 +9,13 @@
  * appeler `.delete()`. `libererTout()` est fourni pour les blocs `finally`.
  */
 
-import { opencv, type CLAHE, type Mat, type Size } from "@/lib/opencv";
+import {
+  opencv,
+  type CLAHE,
+  type Mat,
+  type Rect,
+  type Size,
+} from "@/lib/opencv";
 
 /** Nombre de points d'intérêt demandés à ORB sur chaque plan. */
 const NB_POINTS_ORB = 3000;
@@ -639,4 +645,215 @@ interface Point2D {
   y: number;
 }
 
-export type { Size };
+export type { Rect, Size };
+
+// ============================================================
+// Cartouches
+// ============================================================
+
+/**
+ * Un cartouche occupe au moins cette part de la page. En deçà, c'est une pièce
+ * du dessin, pas un cartouche.
+ */
+const AIRE_MIN_CARTOUCHE = 0.008;
+
+/**
+ * Et au plus celle-ci. Au-delà, le rectangle trouvé est le cadre de la feuille
+ * ou une grande zone du bâtiment : l'exclure reviendrait à ne plus rien
+ * comparer.
+ */
+const AIRE_MAX_CARTOUCHE = 0.3;
+
+/** Distance au bord, en part de la page, pour considérer qu'un cadre l'accoste. */
+const TOLERANCE_BORD = 0.04;
+
+/** Tolérance de l'approximation polygonale, en part du périmètre. */
+const EPSILON_POLYGONE = 0.02;
+
+/** Marge ajoutée autour d'un cartouche retenu, en part de sa taille. */
+const MARGE_CARTOUCHE = 0.02;
+
+/**
+ * Repère les cartouches d'un plan.
+ *
+ * Un cartouche est un **rectangle dessiné, accosté à un bord de la feuille**,
+ * de taille intermédiaire — ni un détail du dessin, ni le cadre entier. Ces
+ * trois conditions réunies sont ce qui le distingue du bâtiment, dont les
+ * contours sont rarement des quadrilatères convexes plaqués contre le bord.
+ *
+ * Le contenu du cartouche — bureau, date, indice, numéro de plan — diffère
+ * systématiquement entre un dossier d'enquête et un dossier d'exécution. Sans
+ * exclusion, il produit des écarts à forte confiance qui n'en sont pas.
+ *
+ * ⚠️ **Heuristique, donc faillible.** Un plan dont le cartouche n'est pas
+ * encadré passera au travers ; un grand rectangle plaqué au bord — une façade,
+ * une coupe — pourra être exclu à tort. C'est pourquoi les zones retenues sont
+ * renvoyées à l'appelant, qui doit les montrer et permettre de les désactiver.
+ *
+ * Attend une image en niveaux de gris.
+ */
+export function detecterCartouches(img: Mat): Rect[] {
+  const cv = opencv();
+
+  const encre = new cv.Mat();
+  const ferme = new cv.Mat();
+  const hierarchie = new cv.Mat();
+  const contours = new cv.MatVector();
+  let noyau: Mat | null = null;
+
+  try {
+    // Seuillage adaptatif : le trait du cadre ressort quel que soit l'éclairage.
+    cv.adaptiveThreshold(
+      img,
+      encre,
+      255,
+      cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+      cv.THRESH_BINARY_INV,
+      21,
+      8
+    );
+
+    // Fermeture : un cadre interrompu par du texte doit redevenir continu,
+    // sinon `approxPolyDP` n'y verra jamais un quadrilatère.
+    noyau = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+    cv.morphologyEx(encre, ferme, cv.MORPH_CLOSE, noyau);
+
+    // RETR_LIST et non RETR_EXTERNAL : le cartouche est souvent imbriqué dans
+    // le cadre de la feuille, donc jamais un contour de premier niveau.
+    cv.findContours(
+      ferme,
+      contours,
+      hierarchie,
+      cv.RETR_LIST,
+      cv.CHAIN_APPROX_SIMPLE
+    );
+
+    const airePage = img.cols * img.rows;
+    const margeX = img.cols * TOLERANCE_BORD;
+    const margeY = img.rows * TOLERANCE_BORD;
+
+    const retenus: Rect[] = [];
+    const nbContours = Math.min(contours.size(), 20_000);
+
+    for (let i = 0; i < nbContours; i += 1) {
+      const contour = contours.get(i);
+      const approximation = new cv.Mat();
+      try {
+        const perimetre = cv.arcLength(contour, true);
+        if (perimetre < 40) continue;
+
+        cv.approxPolyDP(
+          contour,
+          approximation,
+          EPSILON_POLYGONE * perimetre,
+          true
+        );
+        // Un cartouche est un quadrilatère convexe.
+        if (approximation.rows !== 4) continue;
+        if (!cv.isContourConvex(approximation)) continue;
+
+        const boite = cv.boundingRect(contour);
+        const part = (boite.width * boite.height) / airePage;
+        if (part < AIRE_MIN_CARTOUCHE || part > AIRE_MAX_CARTOUCHE) continue;
+
+        const accosteBord =
+          boite.x <= margeX ||
+          boite.y <= margeY ||
+          boite.x + boite.width >= img.cols - margeX ||
+          boite.y + boite.height >= img.rows - margeY;
+        if (!accosteBord) continue;
+
+        retenus.push(elargir(boite, img.cols, img.rows));
+      } finally {
+        libererTout(contour, approximation);
+      }
+    }
+
+    return fusionner(retenus);
+  } finally {
+    libererTout(encre, ferme, hierarchie, contours, noyau);
+  }
+}
+
+/** Marge autour d'un cartouche : son trait de cadre ne doit pas ressortir. */
+function elargir(boite: Rect, largeur: number, hauteur: number): Rect {
+  const marge = Math.round(
+    Math.max(boite.width, boite.height) * MARGE_CARTOUCHE + 3
+  );
+  const x = Math.max(0, boite.x - marge);
+  const y = Math.max(0, boite.y - marge);
+  return {
+    x,
+    y,
+    width: Math.min(largeur - x, boite.width + marge * 2),
+    height: Math.min(hauteur - y, boite.height + marge * 2),
+  };
+}
+
+/**
+ * Fusionne les rectangles qui se recouvrent.
+ * Le cadre d'un cartouche est souvent détecté plusieurs fois — trait intérieur,
+ * trait extérieur, sous-cases — et une seule zone d'exclusion suffit.
+ */
+function fusionner(boites: Rect[]): Rect[] {
+  const resultat: Rect[] = [];
+
+  for (const boite of [...boites].sort(
+    (a, b) => b.width * b.height - a.width * a.height
+  )) {
+    const chevauche = resultat.find((autre) => {
+      const x = Math.max(autre.x, boite.x);
+      const y = Math.max(autre.y, boite.y);
+      const x2 = Math.min(autre.x + autre.width, boite.x + boite.width);
+      const y2 = Math.min(autre.y + autre.height, boite.y + boite.height);
+      if (x2 <= x || y2 <= y) return false;
+      // Recouvrement d'au moins la moitié du plus petit des deux.
+      const commun = (x2 - x) * (y2 - y);
+      return commun >= 0.5 * Math.min(
+        autre.width * autre.height,
+        boite.width * boite.height
+      );
+    });
+
+    if (!chevauche) resultat.push(boite);
+  }
+
+  return resultat;
+}
+
+/**
+ * Masque des zones à comparer : blanc partout sauf sur les cartouches.
+ * Renvoie null si aucun cartouche n'a été trouvé — inutile d'imposer un
+ * masque plein à la détection.
+ */
+export function masqueHorsCartouches(
+  largeur: number,
+  hauteur: number,
+  cartouches: Rect[]
+): Mat | null {
+  if (cartouches.length === 0) return null;
+
+  const cv = opencv();
+  const masque = new cv.Mat(
+    hauteur,
+    largeur,
+    cv.CV_8UC1,
+    new cv.Scalar(255, 255, 255, 255)
+  );
+
+  try {
+    for (const boite of cartouches) {
+      cv.rectangle(
+        masque,
+        new cv.Point(boite.x, boite.y),
+        new cv.Point(boite.x + boite.width, boite.y + boite.height),
+        new cv.Scalar(0, 0, 0, 0),
+        -1
+      );
+    }
+    return masque;
+  } catch (erreur) {
+    libererTout(masque);
+    throw erreur;
+  }
+}

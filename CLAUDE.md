@@ -1035,6 +1035,49 @@ deux échouent de la même façon, c'est là qu'il faut regarder d'abord.
 > MIME en production, et le Service Worker n'intercepte pas `/vendor` — ses
 > motifs ne couvrent ni `.js` ni `.wasm`.
 
+### Exclusion des cartouches (2026-08-29)
+
+Le contenu d'un cartouche — bureau, date, indice, numéro de plan — **diffère
+systématiquement** entre un dossier d'enquête et un dossier d'exécution. Le
+comparer produit des écarts à forte confiance qui n'en sont pas.
+
+`detecterCartouches()` (`plan-preprocessing.ts`) en repère les emprises. Un
+cartouche réunit trois conditions :
+
+1. c'est un **quadrilatère convexe** — un cadre dessiné ;
+2. il **accoste un bord** de la feuille (à 4 % près) ;
+3. il occupe une part **intermédiaire** de la page, entre 0,8 % et 30 % — ni un
+   détail du dessin, ni le cadre entier.
+
+Le bâtiment ne produit presque jamais les trois à la fois.
+
+> `RETR_LIST` et non `RETR_EXTERNAL` : le cartouche est imbriqué dans le cadre
+> de la feuille, donc jamais un contour de premier niveau. Une fermeture
+> morphologique précède la recherche, sans quoi un cadre interrompu par du texte
+> n'est jamais vu comme un quadrilatère par `approxPolyDP`.
+
+Les emprises des **deux** plans sont écartées : si l'un des deux porte un
+cartouche à cet endroit, la comparaison n'y a pas de sens. Les rectangles qui se
+recouvrent sont fusionnés — un cadre est souvent détecté deux fois, trait
+intérieur et trait extérieur.
+
+**Les zones écartées sont hachurées en gris sur le calque** et annoncées dans la
+légende ; la case « Ignorer les cartouches » du menu de détection, cochée par
+défaut, les rétablit. Ce n'est pas cosmétique : sur un document de sécurité,
+exclure à tort revient à **masquer un écart réel**, et une exclusion invisible ou
+non débrayable serait invérifiable.
+
+> ⚠️ **Heuristique non éprouvée sur les plans de production.** Le visualiseur a
+> refusé de se charger dans le navigateur d'automatisation au moment de la
+> vérification ; aucun cartouche n'a donc été observé réellement détecté. Deux
+> risques connus : un cartouche **non encadré** passe au travers, et une grande
+> façade ou coupe plaquée au bord peut être **exclue à tort**. À confronter aux
+> hachures dès le premier usage réel.
+
+Alternative sans heuristique, quand la certitude prime : cadrer la vue sur le
+bâtiment avant de lancer la détection. En mode « vue recalée », ce qui est hors
+écran est hors analyse.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -1068,7 +1111,8 @@ deux échouent de la même façon, c'est là qu'il faut regarder d'abord.
 29. **`resizeToSameDimensions` ne doit jamais déformer** : deux plans du même ouvrage sont couramment mis en page différemment (page carrée contre A-série). Étirer détruit les descripteurs ORB et rend l'alignement impossible. Mise à l'échelle isotrope puis fond blanc.
 30. **`setWidth` d'OpenSeadragon conserve le coin supérieur gauche** : tout redimensionnement de calque doit être recentré à la main, sinon la vue s'échappe.
 31. **Message de détection sans parenthèse** = exception, jamais un refus raisonné : les deux modes donnent toujours un motif quand ils renoncent. Les deux ne partagent que `chargerOpenCv()`.
-32. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+32. **Exclusion des cartouches** : heuristique (quadrilatère convexe, accosté au bord, taille intermédiaire), donc faillible dans les deux sens. Les zones écartées doivent rester visibles et la case débrayable — exclure à tort masque un écart réel.
+33. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
