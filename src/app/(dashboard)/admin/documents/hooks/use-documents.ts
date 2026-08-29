@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractStoragePath } from "@/lib/utils/storage-path";
 import type { Tables } from "@/types/database";
@@ -11,7 +11,13 @@ export function useDocuments(filterSource: string) {
   const [linkedCount, setLinkedCount] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
+  // Numéro de la requête en cours : deux changements de filtre rapprochés
+  // peuvent revenir dans le désordre, la première réponse écrasant alors la
+  // seconde.
+  const requeteRef = useRef(0);
+
   const reload = useCallback(async () => {
+    const requete = ++requeteRef.current;
     setLoading(true);
     const supabase = createClient();
     let query = supabase
@@ -26,6 +32,7 @@ export function useDocuments(filterSource: string) {
     // qu'à chaque endroit qui affiche un lien.
     if (data) {
       const signees = await signerUrls(supabase, data.map((d) => d.fichier_url));
+      if (requete !== requeteRef.current) return; // une requête plus récente a pris la main
       setDocuments(data.map((d, i) => ({ ...d, fichier_url: signees[i] ?? d.fichier_url })));
     }
 
@@ -43,7 +50,10 @@ export function useDocuments(filterSource: string) {
     setLoading(false);
   }, [filterSource]);
 
+  // Chargement au montage et au changement de filtre. Réponses obsolètes
+  // écartées par `requeteRef` ci-dessus.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     reload();
   }, [reload]);
 

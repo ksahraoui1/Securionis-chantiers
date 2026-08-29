@@ -102,6 +102,7 @@ export default function AdminDocumentsPage() {
       />
 
       <EditDocumentModal
+        key={editDoc?.id ?? "aucun"}
         doc={editDoc}
         onClose={() => setEditDoc(null)}
         onSaved={reload}

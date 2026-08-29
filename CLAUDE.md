@@ -966,6 +966,84 @@ aurait répondu **200**.
 > Le constat d'origine citait `stripe/setup` (3 par jour) comme la fenêtre la
 > plus exposée. Cette route n'existe plus depuis le retrait de Stripe.
 
+### DET-03 — les 20 erreurs ESLint ramenées à zéro (2026-08-29)
+
+Le relevé était de 20 ; le retrait de Stripe en avait déjà emporté 4, il en
+restait **13**. Aucune n'a été écartée sans être lue.
+
+| Nature | Nb | Traitement |
+|---|---|---|
+| `react/no-unescaped-entities` | 5 | apostrophes échappées — cosmétique |
+| `react-hooks/set-state-in-effect` | 6 | **4 vrais défauts corrigés**, 2 assumées |
+| Écriture d'une ref pendant le rendu | 1 | corrigé |
+| Erreur d'analyse | 1 | fichier mort supprimé |
+
+#### Les quatre vrais défauts
+
+- **`categorie-theme-selector.tsx`** écrivait `onChangeRef.current = onChange`
+  **pendant le rendu**. React peut rendre un composant sans le valider (rendu
+  concurrent, StrictMode) : la ref part alors en avance sur l'état réellement
+  affiché. L'écriture passe dans un effet.
+- **`edit-document-modal.tsx`** recopiait les props dans l'état par un effet —
+  le motif « état dérivé », un rendu de plus à chaque ouverture. Remplacé par la
+  **réinitialisation par clé** : le parent monte la modale avec
+  `key={editDoc?.id}`, React la remonte, les `useState` s'initialisent depuis
+  les props. L'effet disparaît.
+- **`points-controle/page.tsx`** remettait `filterTheme` et `showNewTheme` à
+  zéro *dans* l'effet de chargement des thèmes. Ces remises à zéro
+  appartiennent à l'événement qui change la catégorie, pas à la
+  synchronisation qui en découle : elles sont regroupées dans
+  `handleChangeCategorie()`, utilisé par les trois endroits qui changeaient la
+  catégorie.
+- **`theme-adder.tsx`** reposait `themes` et `globalResults` à vide dans deux
+  effets. Ces listes se **dérivent** au rendu (`themesDeLaSelection`,
+  `resultatsGlobaux`), ce qui économise un rendu et évite d'afficher un instant
+  les résultats de la frappe précédente.
+
+#### Un défaut que le lint ne voyait pas
+
+En instrumentant les deux chargements restants, un vrai problème est apparu :
+la recherche des points de contrôle est **débouncée à 250 ms** et rien
+n'écartait les réponses obsolètes. Une requête partie sur « echa » pouvait
+revenir *après* celle de « échafaudage » et réafficher les résultats de la
+frappe précédente. Un compteur de requête (`requeteRef`) écarte désormais toute
+réponse dépassée, dans `points-controle/page.tsx` et `use-documents.ts`.
+
+#### Les deux assumées
+
+`use-documents.ts` et `points-controle/page.tsx` chargent leurs données au
+montage et au changement de filtre — le seul usage d'effet que React sanctionne
+pour cela, et `setLoading(true)` y est synchrone par nature. La règle est
+désactivée **sur ces deux lignes**, avec la justification à côté. Les tordre
+pour la satisfaire aurait produit du code moins clair, pas plus correct.
+
+> `eslint-disable-next-line` porte sur la **ligne suivante**, pas sur
+> l'instruction suivante : une justification de trois lignes intercalée entre la
+> directive et le code la rend inopérante — et la directive est alors signalée
+> comme inutilisée pendant que l'erreur subsiste. Écrire la justification
+> **avant** la directive.
+
+#### Le fichier mort
+
+`docs/generate-mode-emploi.js` (49 ko) ne s'analysait même pas, n'était
+référencé ni par `package.json`, ni par la CI, ni par le `Dockerfile`, et
+n'avait pas bougé depuis la première PR du projet. Le manuel est généré à
+l'exécution par `/api/docs/manual`. Supprimé.
+
+> Restent `docs/gen_mode_emploi.py` et les `.docx`/`.pdf` engendrés, également
+> obsolètes mais laissés en place : ce sont peut-être des documents remis à des
+> clients.
+
+**Vérifié dans le navigateur, sur les pages restructurées** : la cascade
+famille → catégorie → thème fonctionne et la sélection de thème se réinitialise
+bien au changement de famille ; la recherche rend 42 résultats pour « garde »,
+identiques après une frappe rapide et seule (488 sans filtre) ; la modale
+d'édition affiche les valeurs propres à chaque document et n'en garde aucune
+trace au retour.
+
+**0 erreur ESLint.** 20 avertissements subsistent — `<img>` et `alt` manquants
+dans les composants PDF, dépendances d'effets — sans effet sur la correction.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -1848,6 +1926,8 @@ rend 12 dont 9 dans la garniture.
 51. **Les contrôles de mot de passe des pages d'authentification ne garantissent rien** : ils tournent dans le navigateur et `supabase.auth.signUp` est appelable directement. La contrainte qui engage est celle de Supabase Auth (longueur minimale, refus des mots de passe compromis), réglable uniquement dans le tableau de bord — ni par le code, ni par une migration.
 52. **`getLimits()` est une barrière par rôle, pas par abonnement** : elle vit dans `src/lib/roles/limites.ts` (auparavant `lib/stripe/`, ce qui trompait) et ne lit jamais la table `subscriptions`. Six routes métier s'en servent pour autoriser PDF et email ; un compte « invité » ne peut faire ni l'un ni l'autre.
 53. **`checkRateLimit()` est asynchrone** depuis la migration 049 : elle interroge Postgres. Tout nouvel appelant doit l'attendre, sinon la condition porte sur une `Promise` — toujours vraie, donc aucune limite.
+54. **`eslint-disable-next-line` porte sur la ligne suivante, pas sur l'instruction suivante** : une justification multi-lignes intercalée entre la directive et le code la rend inopérante — ESLint signale alors la directive comme inutilisée *et* maintient l'erreur. Écrire la justification avant la directive, et viser la ligne exacte que le message désigne.
+55. **Le motif « recopier les props dans l'état » se remplace par une clé** : `key={objet?.id}` sur le composant enfant le fait remonter, ses `useState` se réinitialisent depuis les props, et l'effet de recopie disparaît avec le rendu supplémentaire qu'il coûtait.
 
 ---
 
