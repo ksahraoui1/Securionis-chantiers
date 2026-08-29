@@ -1108,6 +1108,69 @@ trace au retour.
 **0 erreur ESLint.** 20 avertissements subsistent — `<img>` et `alt` manquants
 dans les composants PDF, dépendances d'effets — sans effet sur la correction.
 
+### DET-05 — la géométrie des calques sort du composant (2026-08-29)
+
+`comparaison-plans.tsx` faisait **2 937 lignes** et portait le visualiseur, les
+opacités, le recalage, l'échelle, la rotation, la recoloration, la détection, le
+calque, les annotations, l'export, l'impression et les rapports.
+
+Les deux lignes de découpe étaient déjà visibles dans le code, et ce sont aussi
+les deux endroits qui ont produit le plus de pièges du module.
+
+| Fichier | Rôle |
+|---|---|
+| `comparaison/geometrie-calques.ts` | **logique pure** — ni React ni OpenSeadragon |
+| `comparaison/use-geometrie-calques.ts` | état de l'interface + application à OpenSeadragon |
+| `comparaison/use-pose-calques.ts` | pose des deux calques, cadrage préservé |
+
+Le composant passe de **2 937 à 2 746 lignes**. Le gain n'est pas là : il est
+dans le fait que la partie la plus piégeuse est désormais **vérifiable sans
+navigateur**.
+
+#### La décision est séparée de son application
+
+`calculerOperations(etat)` répond « quoi appliquer » ; le hook se charge du
+« comment ». Cela rend testables les règles qui ne l'étaient qu'à l'œil :
+l'ordre des calques, les opacités attachées à leur plan et non à leur position,
+la remise à plat en vue côte à côte, le recentrage à l'échelle.
+
+**Éprouvé par 19 assertions** (harnais Node sur le module réel, non conservé :
+`jiti` n'est disponible que par transitivité) :
+
+- PE dessous / EXE dessus, et l'inverse quand les calques sont échangés ;
+- la géométrie suit le calque du **dessus**, les opacités restent attachées à
+  **leur plan** ;
+- vue côte à côte : opacités à 1, rotations annulées, dessus décalé de 1,05 ;
+- bornes d'échelle (0,25–4) et de rotation (±180), arrondi au dixième —
+  `0,1 + 0,2` rend bien `0,3` et non `0,30000000000000004` ;
+- **invariant du recentrage** : après un changement d'échelle, le point du
+  calque situé sous le centre de la vue y reste (écart < 1e-9).
+
+> ⚠️ **Une différence de comportement a été trouvée et volontairement
+> conservée** : en vue côte à côte, l'échelle du calque **n'est pas** remise à
+> 1 — un calque réduit à 60 % y reste réduit. Cela ressemble à un oubli plus
+> qu'à une décision, mais le corriger serait un changement de comportement, pas
+> un refactoring. C'est explicite dans le type (`largeur: number | null`) et
+> couvert par une assertion.
+
+#### Un défaut recopié, puis corrigé
+
+`appliquerCalquesRef.current = appliquerCalques` s'écrivait **pendant le
+rendu** — exactement le défaut corrigé la veille dans
+`categorie-theme-selector` (DET-03), que le déplacement du code a fait
+ressortir. L'écriture passe dans un effet ; le rappel `success`
+d'`addTiledImage` étant asynchrone, la ref est à jour bien avant qu'il ne
+s'exécute.
+
+> ⚠️ **Ce refactoring n'a pas pu être éprouvé dans le navigateur.** Le
+> visualiseur OpenSeadragon ne s'initialise pas dans le navigateur
+> d'automatisation — limite rencontrée quatre fois sur ce projet. Vérifié
+> seulement que la page se monte sans erreur React ni erreur affichée, que
+> `tsc`, ESLint et le build sont verts, et que la logique pure passe ses 19
+> assertions. **Le premier chargement réel de la page de comparaison reste la
+> vérification qui manque** : opacités, inversion, côte à côte, échelle,
+> rotation, recentrage.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -1994,6 +2057,7 @@ rend 12 dont 9 dans la garniture.
 55. **Le motif « recopier les props dans l'état » se remplace par une clé** : `key={objet?.id}` sur le composant enfant le fait remonter, ses `useState` se réinitialisent depuis les props, et l'effet de recopie disparaît avec le rendu supplémentaire qu'il coûtait.
 56. **Le serveur de dev ne reflète pas les changements de `@theme`** : Turbopack peut servir un CSS sans la variable ni la règle, `min-height` restant à `auto`, là où `npm run build` les génère. Vérifier toute modification du thème contre le build de production (`prod-local` dans `.claude/launch.json`), sinon on mesure un effet nul et on conclut à tort.
 57. **Les valeurs de thème vivent dans le CSS, plus dans un fichier de config** : Tailwind v4 ignore `tailwind.config.ts` sans directive `@config`. Ajouter une valeur passe par `@theme { --spacing-… }` dans `globals.css`.
+58. **La géométrie des calques se décide dans `comparaison/geometrie-calques.ts`**, module pur sans React ni OpenSeadragon. Toute règle nouvelle (ordre, opacité, échelle, rotation) s'y ajoute et s'y vérifie ; le hook ne fait que l'appliquer, dans l'ordre largeur → position → rotation.
 
 ---
 

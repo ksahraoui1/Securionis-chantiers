@@ -39,6 +39,8 @@ import {
 } from "@/lib/plan-diff-detection";
 import { opencvPret } from "@/lib/opencv";
 import { PanneauDifferences } from "@/components/chantier/panneau-differences";
+import { useGeometrieCalques } from "./comparaison/use-geometrie-calques";
+import { usePoseCalques } from "./comparaison/use-pose-calques";
 import {
   DiffOverlay,
   LegendeEcarts,
@@ -284,9 +286,6 @@ const TEINTE_PE = "#1B5E20";
 const TEINTE_EXE = "#A64B00";
 const TEINTE_GRIS = "#4B5563";
 
-/** Patience accordée au rechargement des deux calques, en millisecondes. */
-const DELAI_POSE_MS = 15_000;
-
 export type ModeCouleur = "naturel" | "couleurs" | "pe-couleur";
 
 const MODES_COULEUR: {
@@ -455,29 +454,6 @@ export function ComparaisonPlans({
   const [pret, setPret] = useState(false);
   const [preparation, setPreparation] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [opacitePE, setOpacitePE] = useState(100);
-  const [opaciteEXE, setOpaciteEXE] = useState(50);
-  const [split, setSplit] = useState(false);
-  const [inverse, setInverse] = useState(false);
-  const [synchro, setSynchro] = useState(true);
-  const [decalage, setDecalage] = useState({ x: 0, y: 0 });
-  /**
-   * Largeur du calque du dessus en unités monde. Les deux plans sont posés à
-   * 1 de large : un plan au 1:50 doit donc être ramené autour de 0,5 pour se
-   * superposer à un 1:100 du même ouvrage.
-   */
-  const [echelleCalque, setEchelleCalque] = useState(1);
-
-  /**
-   * Rotation du calque du dessus, en degrés.
-   *
-   * Deux dessins du même ouvrage ne sont pas toujours orientés pareil : un
-   * plan d'exécution est couramment tourné pour tenir sur la feuille, ou pour
-   * mettre le nord dans un coin. Translation et échelle ne rattrapent pas cela
-   * — et la détection compare les calques tels qu'ils sont superposés.
-   */
-  const [rotationCalque, setRotationCalque] = useState(0);
-
   /** Recoloration des calques, pour distinguer les deux plans superposés. */
   const [modeCouleur, setModeCouleur] = useState<ModeCouleur>("naturel");
   const [differences, setDifferences] = useState(0);
@@ -542,13 +518,28 @@ export function ComparaisonPlans({
   /** Plans recolorés, par URL d'origine et couleur — la recoloration coûte un
    *  décodage et un balayage de tous les pixels, inutile de la refaire. */
   const teintesRef = useRef(new Map<string, string>());
-  /** URLs actuellement posées dans le visualiseur, pour ne rien reposer en vain. */
-  const urlsPoseesRef = useRef<{ pe: string; exe: string } | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const osdRef = useRef<OSDStatic | null>(null);
   const itemPERef = useRef<TiledImage | null>(null);
   const itemEXERef = useRef<TiledImage | null>(null);
-  const decalageRef = useRef({ x: 0, y: 0 });
+
+  /**
+   * Géométrie des deux calques — opacités, ordre, recalage, échelle, rotation.
+   *
+   * Sortie dans son propre hook : c'est la partie du module qui a produit le
+   * plus de pièges, et sa décision est désormais prise par un module pur et
+   * éprouvé (`comparaison/geometrie-calques.ts`).
+   */
+  const geo = useGeometrieCalques({ viewerRef, osdRef, itemPERef, itemEXERef });
+  const {
+    opacitePE, setOpacitePE, opaciteEXE, setOpaciteEXE,
+    split, setSplit, inverse, setInverse, synchro, setSynchro,
+    decalage, setDecalage, decalageRef,
+    echelleCalque, rotationCalque,
+    appliquerCalques, appliquerCalquesRef,
+    reinitialiserRecalage, changerEchelleCalque, changerRotationCalque,
+  } = geo;
+
   const minuteursCommentaire = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Miroir des réglages, lu depuis les gestionnaires d'événements OpenSeadragon
@@ -565,58 +556,6 @@ export function ComparaisonPlans({
     echelleCalque !== 1 ||
     rotationCalque !== 0;
 
-  const appliquerCalques = useCallback(() => {
-    const viewer = viewerRef.current;
-    const OSD = osdRef.current;
-    const pe = itemPERef.current;
-    const exe = itemEXERef.current;
-    if (!viewer || !OSD || !pe || !exe) return;
-
-    const dessus = inverse ? pe : exe;
-    const dessous = inverse ? exe : pe;
-
-    viewer.world.setItemIndex(dessous, 0);
-    viewer.world.setItemIndex(dessus, 1);
-
-    if (split) {
-      // Côte à côte : les deux plans sont pleinement visibles, l'opacité n'a
-      // plus de sens et le recalage non plus.
-      pe.setOpacity(1);
-      exe.setOpacity(1);
-      pe.setRotation(0);
-      exe.setRotation(0);
-      dessous.setPosition(new OSD.Point(0, 0));
-      dessus.setPosition(new OSD.Point(1.05, 0));
-      return;
-    }
-
-    pe.setOpacity(opacitePE / 100);
-    exe.setOpacity(opaciteEXE / 100);
-    dessous.setWidth(1);
-    dessous.setPosition(new OSD.Point(0, 0));
-    dessous.setRotation(0);
-    // L'ordre compte : la largeur d'abord, la position ensuite — `setWidth`
-    // conserve le coin supérieur gauche, que `setPosition` fixe juste après.
-    dessus.setWidth(echelleCalque);
-    dessus.setPosition(new OSD.Point(decalage.x, decalage.y));
-    // La rotation vient en dernier : elle pivote autour du centre des bornes
-    // non tournées, qui dépend de la largeur et de la position posées à
-    // l'instant. Ce pivot au centre est aussi ce qui dispense de recentrer,
-    // contrairement à `setWidth`.
-    dessus.setRotation(rotationCalque);
-  }, [
-    inverse,
-    split,
-    opacitePE,
-    opaciteEXE,
-    decalage,
-    echelleCalque,
-    rotationCalque,
-  ]);
-
-  // Référence toujours à jour, pour l'appeler depuis l'effet d'initialisation
-  const appliquerCalquesRef = useRef(appliquerCalques);
-  appliquerCalquesRef.current = appliquerCalques;
 
   /**
    * Pose (ou repose) les deux plans dans le visualiseur.
@@ -625,98 +564,14 @@ export function ComparaisonPlans({
    * changer la source d'une image déjà ajoutée. Le visualiseur, lui, est
    * conservé — et avec lui le cadrage, sauf à la première pose.
    */
-  const poserCalques = useCallback(
-    (
-      urlPE: string,
-      urlEXE: string,
-      options: { recentrer: boolean; nomPE: string; nomEXE: string }
-    ) => {
-      const viewer = viewerRef.current;
-      if (!viewer) return;
-
-      // ⚠️ Vider le monde **remet le cadrage à zéro** : OpenSeadragon revient
-      // à la vue d'ensemble dès que le monde se retrouve vide, puis se
-      // redimensionne sur le nouveau contenu. Vérifié dans le navigateur — un
-      // centre à (0,31 ; 0,42) et un zoom de 4 reviennent à (0,5 ; 0,5) et
-      // 0,78. Il faut donc relever le cadrage avant, et le reposer après.
-      const cadrage = options.recentrer
-        ? null
-        : {
-            centre: viewer.viewport.getCenter(true),
-            zoom: viewer.viewport.getZoom(true),
-          };
-
-      urlsPoseesRef.current = { pe: urlPE, exe: urlEXE };
-      itemPERef.current = null;
-      itemEXERef.current = null;
-      viewer.world.removeAll();
-
-      const ajouter = (
-        url: string,
-        index: number,
-        cible: typeof itemPERef,
-        nom: string
-      ) => {
-        viewer.addTiledImage({
-          tileSource: { type: "image", url },
-          index,
-          width: 1,
-          success: (event) => {
-            cible.current = (event as unknown as { item: TiledImage }).item;
-            if (itemPERef.current && itemEXERef.current) {
-              appliquerCalquesRef.current();
-              const vue = viewerRef.current?.viewport;
-              if (options.recentrer) {
-                vue?.goHome(true);
-              } else if (cadrage && vue) {
-                vue.zoomTo(cadrage.zoom, undefined, true);
-                vue.panTo(cadrage.centre, true);
-              }
-              setPret(true);
-            }
-          },
-          error: () => {
-            // Le visualiseur détruit met sa référence à null : c'est le signe
-            // que l'échec n'intéresse plus personne.
-            if (viewerRef.current) {
-              setErreur(`Le plan « ${nom} » n'a pas pu être affiché.`);
-            }
-          },
-        });
-      };
-
-      ajouter(urlPE, 0, itemPERef, options.nomPE);
-      ajouter(urlEXE, 1, itemEXERef, options.nomEXE);
-    },
-    []
-  );
-
-  const poserCalquesRef = useRef(poserCalques);
-  poserCalquesRef.current = poserCalques;
-
-  /** Même chose, mais rendue quand les deux plans sont entièrement chargés. */
-  const poserCalquesCharges = useCallback(
-    (urlPE: string, urlEXE: string, nomPE: string, nomEXE: string) =>
-      new Promise<void>((resoudre, rejeter) => {
-        const debut = Date.now();
-        poserCalquesRef.current(urlPE, urlEXE, {
-          recentrer: false,
-          nomPE,
-          nomEXE,
-        });
-        const verifier = () => {
-          const pe = itemPERef.current;
-          const exe = itemEXERef.current;
-          if (pe?.getFullyLoaded() && exe?.getFullyLoaded()) return resoudre();
-          if (Date.now() - debut > DELAI_POSE_MS) {
-            return rejeter(new Error("les plans n'ont pas fini de se charger"));
-          }
-          requestAnimationFrame(verifier);
-        };
-        requestAnimationFrame(verifier);
-      }),
-    []
-  );
+  const { urlsPoseesRef, poserCalquesRef, poserCalquesCharges } = usePoseCalques({
+    viewerRef,
+    itemPERef,
+    itemEXERef,
+    appliquerCalquesRef,
+    onPret: setPret,
+    onErreur: setErreur,
+  });
 
   // Préparation des sources puis initialisation du visualiseur
   useEffect(() => {
@@ -1692,52 +1547,6 @@ export function ComparaisonPlans({
         "Le plein écran a été refusé par le navigateur. Utilisez le plein écran du navigateur (F11) à la place."
       );
     });
-  }
-
-  function reinitialiserRecalage() {
-    decalageRef.current = { x: 0, y: 0 };
-    setDecalage({ x: 0, y: 0 });
-    setEchelleCalque(1);
-    setRotationCalque(0);
-  }
-
-  /**
-   * Redimensionne le calque du dessus autour du centre de la vue.
-   *
-   * Sans ce recentrage, `setWidth` conserverait le coin supérieur gauche : ce
-   * qu'on regarde s'échapperait du cadre à chaque cran, et il faudrait
-   * redéplacer le calque après chaque changement d'échelle.
-   */
-  function changerEchelleCalque(nouvelle: number) {
-    const viewer = viewerRef.current;
-    const facteurBorne = Math.min(4, Math.max(0.25, nouvelle));
-
-    if (viewer && echelleCalque > 0) {
-      const rapport = facteurBorne / echelleCalque;
-      const centre = viewer.viewport.getCenter(true);
-      const suivant = {
-        x: centre.x - (centre.x - decalage.x) * rapport,
-        y: centre.y - (centre.y - decalage.y) * rapport,
-      };
-      decalageRef.current = suivant;
-      setDecalage(suivant);
-    }
-
-    setEchelleCalque(facteurBorne);
-  }
-
-  /**
-   * Fait pivoter le calque du dessus.
-   *
-   * Aucun recentrage à prévoir : `setRotation` pivote autour du centre des
-   * bornes non tournées de l'image, qui ne bouge pas. C'est la différence avec
-   * `setWidth`, qui conserve le coin supérieur gauche.
-   */
-  function changerRotationCalque(degres: number) {
-    const borne = Math.min(180, Math.max(-180, degres));
-    // Arrondi au dixième : sans lui, les additions de pas laissent traîner des
-    // 0,30000000000000004 dans l'affichage.
-    setRotationCalque(Math.round(borne * 10) / 10);
   }
 
   // Alterne entre « PE seul » et « EXE seul »
