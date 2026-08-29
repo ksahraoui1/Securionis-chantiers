@@ -413,6 +413,80 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 - **Worktree orphelin (NETTOYÉ)** : `.claude/worktrees/practical-buck` pointait vers un gitdir inexistant (`/Users/macbookairm4/…`), contenu figé au 29 mars, aucun fichier absent de `main`. Supprimé avec la branche locale `claude/practical-buck`.
 - **Policy SELECT admin (FAIT, migration 037, appliquée manuellement depuis le SQL Editor Supabase)** : `pc_select_active` limitait la lecture à `actif = true` pour tous, administrateurs compris — désactiver un point le faisait disparaître de l'admin sans moyen de le réactiver. La policy permissive `pc_select_admin` (`user_role() = 'administrateur'`) s'ajoute en OR : les non-administrateurs restent limités aux points actifs. Cycle complet validé en production sur un point de test temporaire (créé inactif → visible sous « Désactivés uniquement » → bouton « Réactiver » fonctionnel → point supprimé). Base revérifiée : 487 points, 487 actifs, 0 sans famille, 0 résidu.
 
+### Barre de menu horizontale et bouton Retour (2026-08-29)
+
+Signalé en usage réel : en tablette, tout le menu de l'administrateur passait
+sous le bouton burger et il fallait l'ouvrir à chaque page.
+
+#### La barre cède ses libellés, plus jamais sa place
+
+Le seuil de bascule barre / menu déroulant dépendait du **nombre de liens du
+rôle** (correctif du 27 août) : `xl` (1280 px) pour l'administrateur et ses six
+liens, `md` (768 px) pour les autres. À 1024 px — une tablette en paysage —
+l'administrateur n'avait donc aucune barre.
+
+La barre horizontale s'affiche désormais dès **768 px pour tous les rôles**. Ce
+sont les **libellés** qui cèdent et non la barre : entre 768 et 1280 px, les
+liens d'un rôle chargé se réduisent à leur icône, avec le libellé en `title` et
+en `aria-label`. Le menu déroulant ne subsiste qu'en dessous de 768 px, où
+aucune barre ne tient.
+
+Mesuré à 768 px, rôle administrateur : les liens passent de **638 px** à
+**308 px**, le nom de l'utilisateur cède avant eux (`xl` au lieu de `lg`) et le
+bouton de déconnexion suit la même règle que les liens. Débordement nul de
+375 px à 1440 px, bascule vérifiée à 767/768 px et 1279/1280 px.
+
+> ⚠️ **La classe de visibilité ne peut pas être posée sur l'icône elle-même.**
+> `.material-symbols-outlined` est déclarée **hors couche** dans `globals.css` ;
+> son `display: inline-block` l'emporte donc sur les utilitaires Tailwind, qui
+> sont dans une couche. `xl:hidden` sur un `<span class="material-symbols-outlined">`
+> reste **sans effet** — l'icône et le libellé s'affichaient tous deux. La
+> classe porte sur un `<span>` enveloppe.
+
+#### Bouton Retour
+
+Présent dans la barre sur toutes les pages connectées sauf le tableau de bord,
+qui est la racine — l'emplacement y reste réservé pour que le logo ne sautille
+pas d'une page à l'autre.
+
+C'est un **retour hiérarchique**, pas un `history.back()` : en PWA installée sur
+une tablette de chantier, il n'y a pas de bouton de retour du navigateur, et
+l'historique peut tout aussi bien mener hors de l'application. Une page donnée a
+donc toujours la même destination. C'est un vrai `<Link>` : préchargé, ouvrable
+dans un nouvel onglet.
+
+> Le parent **ne s'obtient pas** en retirant le dernier segment du chemin :
+> `/chantiers/<id>/visites/nouvelle` remonterait sur `/chantiers/<id>/visites`,
+> qui n'existe pas et rendrait un 404. La table de `src/lib/utils/navigation-retour.ts`
+> est explicite, et l'infobulle nomme la destination (« Retour au chantier »,
+> « Retour à la visite »…).
+
+Vérifié sur les **19 routes** du groupe `(dashboard)` : chaque parent correspond
+à une page existante, aucun cycle, et un chemin inconnu retombe sur
+`/dashboard` plutôt que de faire disparaître le bouton.
+
+Les liens « Retour au chantier » déjà présents dans le corps de trois pages
+(NC, préparation de visite, comparaison) sont **conservés** : ils nomment leur
+destination, ce que l'icône de la barre ne fait pas.
+
+`CACHE_VERSION` passe à `v6` dans `public/sw.js` — la barre vit dans le layout,
+donc dans **toutes** les pages mises en cache par le Service Worker.
+
+#### Découvert au passage : `tailwind.config.ts` n'est jamais chargé
+
+Tailwind v4 ne lit plus la configuration JavaScript automatiquement ; il faut
+une directive `@config` dans le CSS, absente de `globals.css`. Les extensions du
+fichier sont donc **toutes inertes** : `min-h-touch` et `min-w-touch`, utilisées
+**191 fois** dans l'application, ne produisent aucune règle, et la garantie de
+44 × 44 px des éléments tactiles n'est appliquée nulle part. Les couleurs
+personnalisées (`conforme`, `ecart-ouvert`…) sont inertes elles aussi, mais
+aucune n'est utilisée.
+
+La barre et le bouton Retour posent donc leurs cibles **en dur**
+(`min-h-[44px]`). Le reste n'a pas été touché : rétablir `@config` activerait
+d'un coup les 44 px sur 191 éléments et déplacerait des mises en page dans toute
+l'application — c'est un changement à mener et à vérifier pour lui-même.
+
 ### Audit de sécurité v4 (2026-08-28)
 
 Audit complet : application, dépendances, base de données, en-têtes.
@@ -440,6 +514,64 @@ Vérifié après application : triggers toujours activés (le privilège `EXECUT
 - Protection contre les mots de passe compromis : à activer dans le dashboard Supabase (Authentication → Password security).
 
 **Vérifié sain** : RLS active sur les 19 tables, toutes avec policies · signature du webhook Stripe · middleware à correspondance exacte · aucun `dangerouslySetInnerHTML`/`eval`/`innerHTML` · exports réservés aux administrateurs · validation des uploads · en-têtes complets (HSTS preload, `X-Frame-Options: DENY`, nosniff, Referrer-Policy, Permissions-Policy) · CSP stricte. `Permissions-Policy: camera=()` ne gêne pas la prise de photo : l'app utilise `capture="environment"` sur un `<input type="file">`, non soumis à cette politique.
+
+### SEC-01 — écriture sur les chantiers ouverte à tout compte (2026-08-29)
+
+Trouvé en audit, corrigé par la **migration 045, appliquée**.
+
+`chantiers_inspecteur_update` était définie `USING (true) WITH CHECK (true)`
+pour le rôle `authenticated`. Une politique permissive s'ajoute aux autres en
+**OU** : celle-ci ne restreignait donc rien. Tout porteur d'un jeton
+`authenticated` pouvait écrire sur n'importe quelle ligne de `chantiers` —
+renommer, réaffecter `created_by`, archiver les douze en une requête.
+
+`/register` étant publique, obtenir ce jeton ne demandait ni mot de passe volé
+ni accès administrateur : un compte créé en ligne, la clé anonyme (publique par
+nature) et un `PATCH` sur `/rest/v1/chantiers`. La lecture restait fermée —
+c'était une atteinte à l'**intégrité et à la disponibilité**, pas à la
+confidentialité.
+
+La politique porte désormais le périmètre voulu : le créateur du chantier, ou
+l'inspecteur qui y est rattaché. `chantiers_admin_all` couvre l'administrateur.
+
+**Un trigger complète la politique** : `enforce_chantier_owner_immutability`
+fige `created_by`. Sans lui, la brèche subsistait en petit — un inspecteur
+rattaché satisfait la clause `exists`, donc son `WITH CHECK` passe **quelle que
+soit la valeur qu'il donne à `created_by`**, ce qui lui permettrait de désigner
+un compte arbitraire comme créateur et de lui accorder du même coup le droit
+d'écriture que cette colonne confère. Une politique RLS ne peut pas comparer
+NEW et OLD ; il faut un trigger. Même forme que `enforce_role_immutability` :
+`service_role` en est exempté, les routes API serveur restent libres.
+
+> Vérifié avant écriture : `chantier-form.tsx` et `archive-toggle-button.tsx`,
+> les deux seuls écrivains de la table, n'envoient jamais `created_by`.
+
+**Vérification, jouée en production dans une transaction annulée** (rôle
+`authenticated` endossé, `request.jwt.claims` posés, `raise exception` final) :
+
+| Acteur | Tentative | Lignes touchées |
+|---|---|---|
+| invité | archiver tous les chantiers | **0** (avant : 12) |
+| invité | renommer tous les chantiers | **0** |
+| inspecteur non rattaché | renommer | **0** |
+| administrateur | écrire | **12** — aucune régression |
+| administrateur | réaffecter `created_by` | **refusé par le trigger** |
+
+Données revérifiées après coup : 12 chantiers, aucun nom `PIRATE`, 1 archivé,
+1 créateur distinct. Puis modification réelle d'un chantier depuis le
+formulaire, en session administrateur : enregistrée sans erreur.
+
+#### Une écriture refusée par la RLS ne lève pas d'erreur
+
+C'est le corollaire qu'il faut retenir : PostgREST ne renvoie **aucune erreur**
+quand la RLS écarte les lignes visées — l'`UPDATE` n'en touche simplement
+aucune. Sans `.select()`, un refus est **indiscernable d'un succès**.
+
+`archive-toggle-button.tsx` ne vérifiait rien du tout, et `chantier-form.tsx`
+ne vérifiait que `error`. Les deux ajoutent désormais `.select("id")` et
+traitent le tableau vide comme un refus, avec un message qui dit quoi faire
+(« demandez à un administrateur de vous y rattacher »). Sans cela, resserrer la
+politique aurait transformé un trou de sécurité en bug silencieux.
 
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
@@ -1309,6 +1441,11 @@ rend 12 dont 9 dans la garniture.
 37. **Filtrer une zone sur l'aire de sa boîte est un piège** : un mur oblique a une boîte presque vide. Les seuils de `examinerZone()` portent sur l'aire du **contour** ; seul le plafond d'affichage (25 %) regarde la boîte, parce que le calque dessine des rectangles.
 38. **`matchTemplate` sur un gabarit uniforme rend `NaN`** : `TM_CCOEFF_NORMED` divise par l'écart-type du gabarit. Comme `NaN < seuil` vaut faux, le score passe tous les tests et n'importe quelle position devient une correspondance parfaite. Toujours donner du contexte au gabarit, vérifier l'écart-type, et tester `Number.isFinite(maxVal)`.
 39. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+40. **`tailwind.config.ts` n'est pas chargé** : Tailwind v4 exige une directive `@config` dans le CSS, absente de `globals.css`. Toutes les extensions du fichier sont donc inertes — dont `min-h-touch` / `min-w-touch`, utilisées 191 fois : **aucune cible tactile n'est réellement contrainte à 44 px**. Écrire les tailles en dur (`min-h-[44px]`) tant que la configuration n'est pas rebranchée.
+41. **`.material-symbols-outlined` est déclarée hors couche** dans `globals.css` : son `display: inline-block` bat les utilitaires Tailwind, qui sont dans une couche. Une classe de visibilité responsive (`xl:hidden`, `md:inline`…) posée directement sur une icône **n'a aucun effet** — la poser sur un `<span>` enveloppe.
+42. **Le retour de la barre de navigation est hiérarchique**, jamais `history.back()` : en PWA installée il n'y a pas de bouton retour du navigateur et l'historique peut mener hors de l'application. Le parent ne se déduit pas du chemin — plusieurs niveaux intermédiaires n'ont pas de page (`/chantiers/<id>/visites`) — d'où la table explicite de `src/lib/utils/navigation-retour.ts`, à compléter à chaque nouvelle route.
+43. **Une écriture refusée par la RLS ne lève aucune erreur** : l'`UPDATE` ne touche simplement aucune ligne, et PostgREST renvoie un succès. Tout `.update()` dont l'échec compte doit chaîner `.select()` et traiter le tableau vide comme un refus — vérifier `error` seul ne suffit pas.
+44. **Une politique permissive `USING (true)` n'en est pas une** : les politiques permissives s'additionnent en OU, donc une seule ouverte annule toutes les autres sur la même commande. Relire `pg_policies` après chaque migration touchant la RLS (`select * from pg_policies where qual = 'true'`).
 
 ---
 
