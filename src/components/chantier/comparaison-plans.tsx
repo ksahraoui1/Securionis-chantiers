@@ -352,6 +352,13 @@ export function ComparaisonPlans({
   const [confianceMin, setConfianceMin] = useState(0);
   const [ecartSelectionne, setEcartSelectionne] = useState<number | null>(null);
   const [menuDetection, setMenuDetection] = useState(false);
+  /**
+   * Les cartouches diffèrent systématiquement entre un dossier d'enquête et un
+   * dossier d'exécution — bureau, date, indice, numéro de plan. Les comparer
+   * produit des écarts à forte confiance qui n'en sont pas : on les écarte par
+   * défaut.
+   */
+  const [ignorerCartouches, setIgnorerCartouches] = useState(true);
   const menuDetectionRef = useRef<HTMLDivElement>(null);
   const [modaleRapport, setModaleRapport] = useState(false);
   // Annotation créée depuis chaque écart : permet de savoir, au moment du
@@ -940,6 +947,7 @@ export function ComparaisonPlans({
         resultat = await analyserPlans(sources.pe, sources.exe, {
           seuilBruit: SEUIL_BRUIT_DETECTION,
           onEtape,
+          ignorerCartouches,
         });
       } else {
         // Le recalage est celui de l'utilisateur : on compare les deux calques
@@ -948,6 +956,7 @@ export function ComparaisonPlans({
         resultat = await analyserVue(calques, {
           seuilBruit: SEUIL_BRUIT_DETECTION,
           onEtape,
+          ignorerCartouches,
         });
       }
       if (resultat.aligne) {
@@ -1579,6 +1588,27 @@ export function ComparaisonPlans({
                   role="menu"
                   className="absolute left-0 top-full mt-1 z-40 w-80 rounded-lg border border-gray-300 bg-white shadow-lg py-1"
                 >
+                  <label className="w-full flex items-start gap-2 px-3 py-2 min-h-touch text-left hover:bg-gray-100 transition-colors cursor-pointer border-b border-gray-200">
+                    <input
+                      type="checkbox"
+                      checked={ignorerCartouches}
+                      onChange={(e) => setIgnorerCartouches(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0">
+                      <span
+                        className="block text-xs font-semibold"
+                        style={{ color: NAVY }}
+                      >
+                        Ignorer les cartouches
+                      </span>
+                      <span className="block text-[11px] text-gray-500">
+                        Leur contenu diffère toujours entre les deux dossiers.
+                        Les zones écartées sont hachurées sur le plan.
+                      </span>
+                    </span>
+                  </label>
+
                   {MODES_DETECTION.map((mode) => (
                     <button
                       key={mode.valeur}
@@ -1760,6 +1790,7 @@ export function ComparaisonPlans({
                   viewer={viewerRef.current}
                   osd={osdRef.current}
                   ecarts={ecartsFiltres}
+                  cartouches={detection.resultat.cartouches}
                   repere={detection.resultat.repere}
                   opacite={opaciteEcarts}
                   selection={ecartSelectionne}
@@ -1773,6 +1804,7 @@ export function ComparaisonPlans({
                     types={TYPES_DIFFERENCE.filter((type) =>
                       typesEcarts.has(type)
                     )}
+                    cartouches={detection.resultat.cartouches.length}
                   />
                 )}
               </>
