@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { validatePassword } from "@/lib/utils/security";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -35,13 +36,14 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Le mot de passe doit contenir au moins 8 caractères.");
-      return;
-    }
-
-    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-      setError("Le mot de passe doit contenir au moins une majuscule, une minuscule et un chiffre.");
+    // Règle unique, partagée avec l'inscription et la création par un administrateur.
+    // ⚠️ Contrôle de confort seulement : il s'exécute dans le navigateur et
+    // `supabase.auth.signUp` est appelable directement. La seule contrainte
+    // qui engage est celle de Supabase Auth (longueur minimale et refus des
+    // mots de passe compromis), à régler dans le tableau de bord.
+    const erreurMotDePasse = validatePassword(password);
+    if (erreurMotDePasse) {
+      setError(erreurMotDePasse + ".");
       return;
     }
 
