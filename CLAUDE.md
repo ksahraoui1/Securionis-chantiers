@@ -1078,6 +1078,62 @@ Alternative sans heuristique, quand la certitude prime : cadrer la vue sur le
 bâtiment avant de lancer la détection. En mode « vue recalée », ce qui est hors
 écran est hors analyse.
 
+### Recoloration des calques (2026-08-29)
+
+Superposer deux plans opaques revient à regarder le second à travers une page
+blanche : à 50 % d'opacité, le plan du dessous est délavé et le trait du dessus
+l'est autant, et rien ne dit à quel dossier appartient une ligne donnée.
+
+Un sélecteur dans la barre d'outils propose trois lectures :
+
+| Mode | Effet |
+|---|---|
+| Naturel (défaut) | les plans tels qu'ils sont dessinés |
+| Une couleur par plan | PE en vert, EXE en orange, fond transparent |
+| PE coloré, EXE gris | fait ressortir l'enquête publique sur l'exécution |
+
+`teinterPlan()` recolore et **rend le fond transparent** : l'opacité de chaque
+pixel est prise sur l'encre (1 − luminance), si bien qu'un trait noir devient
+opaque, une trame grise translucide, et le blanc de la feuille disparaît. Seuls
+les traits se superposent alors, et deux couleurs distinctes disent au premier
+coup d'œil de quel dossier vient chaque ligne.
+
+> ⚠️ **Les teintes doivent rester sombres.** `masqueMurs()` ne retient que les
+> pixels sous 150 en niveaux de gris ; le vert et l'orange de l'interface
+> (#2E7D32, #E67E22) pèsent 93 et **147**. Le second passerait tout juste, ses
+> bords adoucis pas du tout. Les variantes retenues — #1B5E20, #A64B00,
+> #4B5563 — pèsent 67, 94 et 84.
+
+#### La détection analyse toujours les plans naturels
+
+Même sombre, une teinte **ne peut qu'éclaircir** : le pixel composé sur blanc
+vaut `luminance × encre + original`, donc toujours ≥ l'original. Les bords
+adoucis d'un trait passent au-dessus du seuil d'encre et le mur maigrit.
+
+Mesuré sur les plans de production, Rez contre Niveau 01 :
+
+| | différences détectées |
+|---|---|
+| plans naturels | **10** |
+| une couleur par plan | 3 |
+| PE coloré, EXE gris | 4 |
+
+Une aide à la lecture ne peut pas coûter six écarts sur un document de sécurité.
+`capturerCalques()` repose donc les sources d'origine le temps de la capture,
+puis rétablit la teinte — la géométrie posée par l'utilisateur (position,
+échelle, rotation) étant rejouée à l'identique depuis l'état React.
+
+> ⚠️ **`world.removeAll()` remet le cadrage à zéro.** OpenSeadragon revient à la
+> vue d'ensemble dès que le monde se vide, puis se redimensionne sur le nouveau
+> contenu. Vérifié dans le navigateur : un centre à (0,31 ; 0,42) et un zoom de
+> 4 reviennent à (0,5 ; 0,5) et 0,78. `poserCalques()` relève donc le cadrage
+> avant de vider et le repose une fois les deux calques ajoutés — vérifié
+> restitué au chiffre près.
+
+Les plans recolorés sont mémorisés par URL d'origine et par couleur : la
+recoloration coûte un décodage et un balayage de tous les pixels. Le cache est
+révoqué en même temps que les sources.
+
 ### Rotation du calque au recalage (2026-08-29)
 
 Deux dessins du même ouvrage ne sont pas toujours orientés pareil : un plan
@@ -1246,11 +1302,13 @@ rend 12 dont 9 dans la garniture.
 30. **`setWidth` d'OpenSeadragon conserve le coin supérieur gauche** : tout redimensionnement de calque doit être recentré à la main, sinon la vue s'échappe.
 31. **Message de détection sans parenthèse** = exception, jamais un refus raisonné : les deux modes donnent toujours un motif quand ils renoncent. Les deux ne partagent que `chargerOpenCv()`.
 32. **Exclusion des cartouches** : heuristique (quadrilatère convexe, accosté au bord, taille intermédiaire), donc faillible dans les deux sens. Les zones écartées doivent rester visibles et la case débrayable — exclure à tort masque un écart réel.
-33. **`setRotation` d'OpenSeadragon pivote autour du centre**, là où `setWidth` conserve le coin supérieur gauche : la rotation d'un calque n'a pas besoin du recentrage manuel qu'exige son redimensionnement. L'appliquer **après** la largeur et la position, dont dépend le pivot.
-34. **La détection porte sur les murs par défaut** : `masqueMurs()` ne retient que les traits pleins, ce qui écarte par construction textes, cotes, trames et cartouches. Le noyau d'ouverture est **mesuré sur le dessin** et doit être **identique pour les deux plans** (`isolerMurs()`) — calibrés séparément, ils diffèrent (9 px contre 6 px sur les plans de production) et le plan le plus érodé voit toutes ses cloisons ressortir comme supprimées.
-35. **Filtrer une zone sur l'aire de sa boîte est un piège** : un mur oblique a une boîte presque vide. Les seuils de `examinerZone()` portent sur l'aire du **contour** ; seul le plafond d'affichage (25 %) regarde la boîte, parce que le calque dessine des rectangles.
-36. **`matchTemplate` sur un gabarit uniforme rend `NaN`** : `TM_CCOEFF_NORMED` divise par l'écart-type du gabarit. Comme `NaN < seuil` vaut faux, le score passe tous les tests et n'importe quelle position devient une correspondance parfaite. Toujours donner du contexte au gabarit, vérifier l'écart-type, et tester `Number.isFinite(maxVal)`.
-37. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+33. **`world.removeAll()` d'OpenSeadragon remet le cadrage à zéro** : reposer des calques (recoloration, capture) impose de relever centre et zoom avant, et de les restituer après l'ajout des deux images.
+34. **Une teinte ne peut qu'éclaircir** : l'encre portée par l'alpha et composée sur blanc donne toujours un pixel plus clair que l'original. La détection doit donc analyser les plans **naturels**, jamais recolorés — mesuré, 10 différences contre 3. Et si l'on teinte quand même, les couleurs doivent rester sous le seuil d'encre (150).
+35. **`setRotation` d'OpenSeadragon pivote autour du centre**, là où `setWidth` conserve le coin supérieur gauche : la rotation d'un calque n'a pas besoin du recentrage manuel qu'exige son redimensionnement. L'appliquer **après** la largeur et la position, dont dépend le pivot.
+36. **La détection porte sur les murs par défaut** : `masqueMurs()` ne retient que les traits pleins, ce qui écarte par construction textes, cotes, trames et cartouches. Le noyau d'ouverture est **mesuré sur le dessin** et doit être **identique pour les deux plans** (`isolerMurs()`) — calibrés séparément, ils diffèrent (9 px contre 6 px sur les plans de production) et le plan le plus érodé voit toutes ses cloisons ressortir comme supprimées.
+37. **Filtrer une zone sur l'aire de sa boîte est un piège** : un mur oblique a une boîte presque vide. Les seuils de `examinerZone()` portent sur l'aire du **contour** ; seul le plafond d'affichage (25 %) regarde la boîte, parce que le calque dessine des rectangles.
+38. **`matchTemplate` sur un gabarit uniforme rend `NaN`** : `TM_CCOEFF_NORMED` divise par l'écart-type du gabarit. Comme `NaN < seuil` vaut faux, le score passe tous les tests et n'importe quelle position devient une correspondance parfaite. Toujours donner du contexte au gabarit, vérifier l'écart-type, et tester `Number.isFinite(maxVal)`.
+39. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
