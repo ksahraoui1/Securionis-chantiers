@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/**
+ * Cibles tactiles : 44 x 44 px minimum.
+ *
+ * Exigence explicite du projet — l'application se manipule au doigt sur
+ * tablette, souvent avec des gants. Elle était écrite 183 fois dans le code
+ * (`min-h-touch`, `min-w-touch`) mais **n'a jamais produit la moindre règle** :
+ * elle vivait dans `tailwind.config.ts`, que Tailwind v4 ne lit plus sans une
+ * directive explicite. Elle est désormais déclarée ici, à la manière v4.
+ */
+@theme {
+  --spacing-touch: 44px;
+}
+
 /* Material Symbols Outlined — hébergé localement */
 @font-face {
   font-family: 'Material Symbols Outlined';

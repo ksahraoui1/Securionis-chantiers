@@ -966,6 +966,70 @@ aurait répondu **200**.
 > Le constat d'origine citait `stripe/setup` (3 par jour) comme la fenêtre la
 > plus exposée. Cette route n'existe plus depuis le retrait de Stripe.
 
+### DET-04 — la règle des 44 px devient réelle (2026-08-29)
+
+`min-h-touch` et `min-w-touch` étaient écrites **183 fois** et ne produisaient
+**aucune règle** : elles vivaient dans `tailwind.config.ts`, que Tailwind v4 ne
+lit plus sans directive explicite. La garantie de 44 × 44 px des cibles
+tactiles — exigence du projet, sur un outil manipulé au doigt et avec des gants
+— n'était appliquée nulle part.
+
+#### `@theme` plutôt que `@config`
+
+Rebrancher `@config` aurait ressuscité tout le fichier, dont **six couleurs
+personnalisées utilisées zéro fois**. La valeur est déclarée directement dans
+`globals.css`, à la manière v4 :
+
+```css
+@theme {
+  --spacing-touch: 44px;
+}
+```
+
+Tailwind en tire `.min-h-touch{min-height:var(--spacing-touch)}` et son
+équivalent en largeur. **`tailwind.config.ts` est supprimé** : v4 détecte seul
+les fichiers à scanner, et rien d'autre n'y servait.
+
+> ⚠️ **Le serveur de développement ne reflète pas ce changement.** Turbopack
+> servait un CSS où ni la variable ni la règle n'apparaissaient — `min-height`
+> restait à `auto` — alors que `npm run build` les générait correctement. Un
+> redémarrage n'y change rien. **Toute vérification de CSS de thème doit se
+> faire contre le build de production** (configuration `prod-local` de
+> `.claude/launch.json`), sans quoi on mesure un effet nul et on conclut à tort
+> que tout va bien.
+
+#### La passe de vérification
+
+Mesurée contre le build de production, en comparant chaque page à elle-même :
+la variable est neutralisée à l'exécution (`--spacing-touch: 0px`) pour obtenir
+l'état « avant », puis rétablie. Les écarts portent donc sur les mêmes éléments,
+dans la même page.
+
+| Page | cibles | grandies | Δ hauteur max | Δ largeur max | débordement |
+|---|---|---|---|---|---|
+| `admin/points-controle` (375 et 1024) | 494 | 492 | 12 px | 0 | **0** |
+| `admin/documents` (375) | 383 | 382 | 7 px | 4 px | **0** |
+| chantier, onglets + documents (375, 768, 1024) | 146 | 146 | 15 px | 8 px | **0** |
+| `visites/nouvelle` (375) | 30 | 1 | 6 px | 0 | **0** |
+
+Cas le plus tendu, cherché exprès : la rangée de cinq boutons-icônes de la base
+documentaire à 375 px passe de **216 à 236 px** pour un conteneur de 236 —
+juste à la limite, sans déborder.
+
+La page s'allonge de 34 px sur 82 000 pour les 492 éléments de
+`points-controle`. Aucune mise en page ne casse : `min-height` et `min-width` ne
+peuvent qu'agrandir une boîte jusqu'à 44 px.
+
+> ⚠️ **Non mesuré : la barre d'outils de la comparaison** (36 des 183 usages).
+> Le visualiseur OpenSeadragon ne se charge pas dans le navigateur
+> d'automatisation — limite déjà rencontrée deux fois. La barre porte
+> `flex-wrap`, donc un débordement horizontal y est structurellement impossible ;
+> elle gagnera au plus une ligne. À regarder au premier usage réel.
+
+> Constat séparé, **antérieur** à ce changement et vérifié comme tel : la carte
+> d'un document de la base documentaire est illisible à 375 px — le nom du
+> fichier s'y casse à raison d'un mot par ligne. Identique avec et sans la règle
+> des 44 px.
 ### DET-03 — les 20 erreurs ESLint ramenées à zéro (2026-08-29)
 
 Le relevé était de 20 ; le retrait de Stripe en avait déjà emporté 4, il en
@@ -1928,6 +1992,8 @@ rend 12 dont 9 dans la garniture.
 53. **`checkRateLimit()` est asynchrone** depuis la migration 049 : elle interroge Postgres. Tout nouvel appelant doit l'attendre, sinon la condition porte sur une `Promise` — toujours vraie, donc aucune limite.
 54. **`eslint-disable-next-line` porte sur la ligne suivante, pas sur l'instruction suivante** : une justification multi-lignes intercalée entre la directive et le code la rend inopérante — ESLint signale alors la directive comme inutilisée *et* maintient l'erreur. Écrire la justification avant la directive, et viser la ligne exacte que le message désigne.
 55. **Le motif « recopier les props dans l'état » se remplace par une clé** : `key={objet?.id}` sur le composant enfant le fait remonter, ses `useState` se réinitialisent depuis les props, et l'effet de recopie disparaît avec le rendu supplémentaire qu'il coûtait.
+56. **Le serveur de dev ne reflète pas les changements de `@theme`** : Turbopack peut servir un CSS sans la variable ni la règle, `min-height` restant à `auto`, là où `npm run build` les génère. Vérifier toute modification du thème contre le build de production (`prod-local` dans `.claude/launch.json`), sinon on mesure un effet nul et on conclut à tort.
+57. **Les valeurs de thème vivent dans le CSS, plus dans un fichier de config** : Tailwind v4 ignore `tailwind.config.ts` sans directive `@config`. Ajouter une valeur passe par `@theme { --spacing-… }` dans `globals.css`.
 
 ---
 
