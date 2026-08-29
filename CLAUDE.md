@@ -652,6 +652,79 @@ appelable sans argument. C'est faux : la fonction est **privée** et prend
 `(name, value)`. La garde côté serveur s'obtient en passant par les getters —
 `getServiceRoleKey()`, `getResendApiKey()`… — qui l'appellent en interne.
 
+### FONC-01 — un inspecteur ne voyait aucun chantier (2026-08-29)
+
+Trouvé en audit. Migration **047 écrite et éprouvée**.
+
+Tout l'accès non-administrateur passe par `chantier_inspecteurs` : **21
+politiques sur 8 tables** en dépendent. Or la table était **vide** — 12
+chantiers, **0 visible** pour le profil `inspecteur` de production. Trois
+défauts concouraient à ce qu'elle le reste : aucune politique `INSERT` pour un
+inspecteur (l'auto-rattachement de `chantier-form.tsx` était donc
+*systématiquement* refusé), le résultat de cette insertion n'était pas vérifié,
+et la lecture n'avait aucun repli. Passé au travers de quatre audits parce que
+les 12 chantiers et 90 visites ont tous été créés par l'administrateur, pour qui
+`chantiers_admin_all` ouvre tout.
+
+#### ⚠️ `INSERT ... RETURNING` évalue la politique **SELECT**
+
+Le point que je n'avais pas prévu, et qui a fait échouer ma première version.
+Mesuré sur la production :
+
+| Montage | Résultat |
+|---|---|
+| trigger `AFTER` + `insert … returning` | **échec** — violation RLS |
+| trigger `AFTER` sans `returning` | OK |
+| trigger `BEFORE` + `insert … returning` | **échec** — clé étrangère |
+
+`RETURNING` fait relire la ligne insérée, **avant** que le trigger `AFTER`
+n'ait créé la liaison. En `BEFORE`, la ligne du chantier n'existe pas encore et
+la clé étrangère saute. Aucune position de trigger ne fonctionne — or
+`chantier-form.tsx` fait exactement `.insert(...).select("id").single()`.
+
+> Le message est trompeur : PostgreSQL dit « new row violates row-level
+> security policy », ce qui fait penser au `WITH CHECK` de l'insertion, alors
+> que c'est la politique de **lecture** qui refuse.
+
+Le repli `created_by` en lecture n'est donc pas un confort mais une nécessité.
+
+#### Le modèle retenu
+
+**On voit ce qu'on a créé, on ne modifie que ce à quoi on est rattaché.**
+
+- Trigger `chantier_rattacher_createur` (`SECURITY DEFINER`, `AFTER INSERT`) :
+  le créateur est rattaché automatiquement. L'inspecteur n'a toujours pas le
+  droit d'écrire dans la table de liaison — attribuer *un autre* inspecteur
+  reste réservé à l'administrateur.
+- Rattrapage des 12 chantiers existants.
+- Lecture : liaison **ou** `created_by`. Écriture : liaison seule.
+
+En pratique les deux coïncident ; ils ne divergent que si un administrateur
+retire délibérément quelqu'un — qui continue alors de **voir** le chantier
+qu'il a créé sans pouvoir le modifier, ni toucher à ses visites, écarts ou
+documents, dont les politiques ne connaissent que la liaison.
+
+L'insertion cliente dans `chantier_inspecteurs` est retirée de
+`chantier-form.tsx` (elle était toujours refusée), et la prop `userRole`
+devenue morte a été retirée du composant et de ses deux appelants.
+
+#### Vérification, en production, dans une transaction annulée
+
+| Scénario | Résultat |
+|---|---|
+| rattrapage | 12 liaisons |
+| `insert … returning` par l'inspecteur (chemin réel de l'app) | OK |
+| chantiers vus par l'inspecteur | 1 — le sien |
+| liaison créée par le trigger | 1 |
+| il modifie son chantier | 1 ligne |
+| il modifie celui d'un autre | **0 ligne** |
+| il se rattache au chantier d'un autre | **refusé** (42501) |
+| après attribution par l'admin | 2 chantiers, 13 visites, 19 écarts, 4 documents |
+| administrateur | 13 chantiers, 90 visites — aucune régression |
+
+Base revérifiée après annulation : 12 chantiers, 0 liaison, aucun trigger, aucun
+résidu.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -1527,6 +1600,8 @@ rend 12 dont 9 dans la garniture.
 44. **Une politique permissive `USING (true)` n'en est pas une** : les politiques permissives s'additionnent en OU, donc une seule ouverte annule toutes les autres sur la même commande. Relire `pg_policies` après chaque migration touchant la RLS (`select * from pg_policies where qual = 'true'`).
 45. **Ne jamais écrire dans `audit_logs` en direct** : passer par `journaliser()` (`src/lib/audit.ts`). Le rôle `authenticated` n'a plus le droit d'écrire dans cette table, elle est en ajout seul, et le helper est le seul endroit qui vérifie le résultat de l'insertion.
 46. **Un trigger `for each statement` ignore sa valeur de retour** : seul un `raise` interrompt la commande. `return null` y laisse passer l'opération, contrairement à un trigger `for each row`.
+47. **`INSERT ... RETURNING` évalue la politique `SELECT`** de la ligne insérée, avant tout trigger `AFTER`. Un `.insert(...).select(...)` de Supabase échoue donc si la politique de lecture dépend d'une ligne qu'un trigger `AFTER` doit encore créer — et PostgreSQL annonce « new row violates row-level security policy », ce qui désigne à tort le `WITH CHECK` de l'insertion.
+48. **L'accès aux chantiers a deux règles distinctes** : la lecture accepte la liaison `chantier_inspecteurs` **ou** `created_by`, l'écriture n'accepte que la liaison. Un créateur retiré par un administrateur voit encore son chantier mais ne peut plus rien y faire.
 
 ---
 

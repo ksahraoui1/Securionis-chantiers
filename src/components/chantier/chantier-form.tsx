@@ -18,7 +18,6 @@ interface ChantierFormData {
 
 interface ChantierFormProps {
   userId: string;
-  userRole: string;
   initialData?: ChantierFormData;
   chantierId?: string;
 }
@@ -36,7 +35,6 @@ const EMPTY_FORM: ChantierFormData = {
 
 export function ChantierForm({
   userId,
-  userRole,
   initialData,
   chantierId,
 }: ChantierFormProps) {
@@ -119,13 +117,14 @@ export function ChantierForm({
           );
         }
 
-        // FR-028: if user is inspecteur, auto-insert into chantier_inspecteurs
-        if (userRole === "inspecteur") {
-          await supabase.from("chantier_inspecteurs").insert({
-            chantier_id: newChantier.id,
-            inspecteur_id: userId,
-          });
-        }
+        // Le rattachement du créateur à son chantier est fait en base par le
+        // trigger `chantier_rattacher_createur` (migration 047).
+        //
+        // Il y avait ici une insertion dans `chantier_inspecteurs` : elle était
+        // *systématiquement* refusée par la RLS — aucune politique `INSERT`
+        // n'existait pour un inspecteur — et son résultat n'était pas vérifié.
+        // L'inspecteur créait donc un chantier qu'il ne pouvait pas lire, et
+        // était redirigé vers une page interdite.
 
         router.push(`/chantiers/${newChantier.id}`);
       }
