@@ -42,7 +42,7 @@ export default function AdminPage() {
               <div>
                 <h2 className="font-semibold text-gray-900">Entreprise</h2>
                 <p className="text-sm text-gray-600">
-                  Paramètres et logo de l'entreprise
+                  Paramètres et logo de l&apos;entreprise
                 </p>
               </div>
             </div>

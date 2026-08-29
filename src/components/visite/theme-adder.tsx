@@ -43,7 +43,9 @@ export function ThemeAdder({ existingThemeIds, onAdd, onCancel }: ThemeAdderProp
   // Load themes when categories change
   useEffect(() => {
     if (selectedCatIds.length === 0) {
-      setThemes([]);
+      // Ne rien reposer ici : `setThemes([])` dans le corps de l'effet
+      // déclenche un rendu de plus alors que la liste affichée est déjà vide —
+      // `themesAffiches` ci-dessous la dérive de la sélection.
       return;
     }
     async function load() {
@@ -65,7 +67,8 @@ export function ThemeAdder({ existingThemeIds, onAdd, onCancel }: ThemeAdderProp
   // Global keyword search
   useEffect(() => {
     if (globalSearch.trim().length < 2) {
-      setGlobalResults([]);
+      // Rien à reposer : `resultatsGlobaux` ci-dessous dérive du fait que la
+      // recherche est trop courte. Vider l'état ici coûtait un rendu de plus.
       return;
     }
     const timeout = setTimeout(async () => {
@@ -137,13 +140,22 @@ export function ThemeAdder({ existingThemeIds, onAdd, onCancel }: ThemeAdderProp
     ? categories.filter((c) => c.libelle.toLowerCase().includes(catSearch.toLowerCase()))
     : categories;
 
+  // Sans catégorie sélectionnée, la liste est vide — dérivé du rendu plutôt que
+  // reposé par l'effet, qui coûtait un rendu de plus et laissait passer un
+  // instant les thèmes de la sélection précédente.
+  const themesDeLaSelection = selectedCatIds.length === 0 ? [] : themes;
+
   const filteredThemes = themeSearch
-    ? themes.filter((t) => t.libelle.toLowerCase().includes(themeSearch.toLowerCase()))
-    : themes;
+    ? themesDeLaSelection.filter((t) => t.libelle.toLowerCase().includes(themeSearch.toLowerCase()))
+    : themesDeLaSelection;
 
   // Only show themes not already in the visit
   const newThemes = filteredThemes.filter((t) => !existingThemeIds.includes(t.id));
-  const newGlobalResults = globalResults.filter((t) => !existingThemeIds.includes(t.id));
+  // En dessous de deux caractères, la recherche globale n'a rien à montrer —
+  // dérivé plutôt que reposé par l'effet, ce qui évite aussi d'afficher un
+  // instant les résultats de la frappe précédente.
+  const resultatsGlobaux = globalSearch.trim().length < 2 ? [] : globalResults;
+  const newGlobalResults = resultatsGlobaux.filter((t) => !existingThemeIds.includes(t.id));
 
   const newSelectedCount = selectedThemeIds.filter((id) => !existingThemeIds.includes(id)).length;
 

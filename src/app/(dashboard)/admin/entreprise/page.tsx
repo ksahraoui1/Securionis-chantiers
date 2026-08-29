@@ -163,7 +163,7 @@ export default function AdminEntreprisePage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Configuration de l'entreprise</h1>
+      <h1 className="text-2xl font-bold mb-6">Configuration de l&apos;entreprise</h1>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Logo */}
