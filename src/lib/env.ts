@@ -32,13 +32,6 @@ export function getSupabaseAnonKey(): string {
   );
 }
 
-export function getStripePublishableKey(): string {
-  return requireValue(
-    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  );
-}
-
 export function getAppUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? "https://chantiers.securionis.com";
 }
@@ -70,35 +63,4 @@ export function getResendFromEmail(): string {
 
 export function getAnthropicApiKey(): string {
   return requireServer("ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY);
-}
-
-/**
- * Clé privée VAPID (Web Push). Passe par requireServer comme les autres
- * secrets : une lecture directe de process.env n'a pas cette garde et pourrait
- * être introduite dans un module rendu côté client.
- */
-export function getVapidPrivateKey(): string {
-  return requireServer("VAPID_PRIVATE_KEY", process.env.VAPID_PRIVATE_KEY);
-}
-
-export function getStripeSecretKey(): string {
-  return requireServer("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
-}
-
-export function getStripeWebhookSecret(): string {
-  return requireServer("STRIPE_WEBHOOK_SECRET", process.env.STRIPE_WEBHOOK_SECRET);
-}
-
-export function getStripePriceMonthly(): string {
-  if (typeof window !== "undefined") {
-    throw new Error("SECURITE: tentative d'accès à STRIPE_PRICE_MONTHLY côté client.");
-  }
-  return process.env.STRIPE_PRICE_MONTHLY ?? "";
-}
-
-export function getStripePriceYearly(): string {
-  if (typeof window !== "undefined") {
-    throw new Error("SECURITE: tentative d'accès à STRIPE_PRICE_YEARLY côté client.");
-  }
-  return process.env.STRIPE_PRICE_YEARLY ?? "";
 }

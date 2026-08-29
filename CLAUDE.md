@@ -15,7 +15,7 @@ Guide de développement pour Claude et les assistants IA travaillant sur ce proj
 - Travailler hors-ligne (PWA + IndexedDB + Service Worker)
 - Recevoir des notifications push
 
-**Stack :** Next.js 16 · TypeScript · Supabase (Postgres + Auth + Storage + RLS) · Tailwind CSS v4 · React PDF · Resend · Stripe · Anthropic Claude · Sentry · Web Push (VAPID)
+**Stack :** Next.js 16 · TypeScript · Supabase (Postgres + Auth + Storage + RLS) · Tailwind CSS v4 · React PDF · Resend · Anthropic Claude · Sentry
 
 ---
 
@@ -33,9 +33,6 @@ npm run lint
 
 # Build production
 npm run build
-
-# Générer les clés VAPID (Web Push)
-npx web-push generate-vapid-keys
 ```
 
 ---
@@ -54,7 +51,6 @@ src/
 │       ├── visites/[id]/    # CRUD visite + email rapport
 │       ├── ecarts/[id]/     # Statut NC
 │       ├── documents/       # Upload + email document
-│       ├── push/            # Subscribe/unsubscribe/test Web Push
 │       ├── stripe/          # Webhook + checkout
 │       └── admin/           # create-user, ia-analyse-photo, legal-assistant
 ├── components/
@@ -87,13 +83,7 @@ Copier `.env.example` → `.env.local` et renseigner :
 | `RESEND_API_KEY` | Clé API Resend pour les emails | **Server uniquement** |
 | `RESEND_FROM_EMAIL` | Expéditeur email (domaine racine vérifié) | Server |
 | `ANTHROPIC_API_KEY` | Clé API Claude (analyse photos + assistant) | **Server uniquement** |
-| `STRIPE_SECRET_KEY` | Clé secrète Stripe | **Server uniquement** |
-| `STRIPE_WEBHOOK_SECRET` | Secret webhook Stripe | Server |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Clé publique Stripe | Client |
-| `STRIPE_PRICE_MONTHLY` / `YEARLY` | IDs des prix Stripe | Server |
 | `NEXT_PUBLIC_APP_URL` | URL de l'application | Client + Server |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Clé publique VAPID (Web Push) | Client |
-| `VAPID_PRIVATE_KEY` | Clé privée VAPID | **Server uniquement** |
 | `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` | DSN Sentry (optionnel, no-op si absent) | Client + Server |
 
 > **IMPORTANT** : Ne jamais accéder à `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY` ou `ANTHROPIC_API_KEY` depuis du code client. Utiliser les getters de `src/lib/env.ts` qui incluent une garde `requireServer()`.
@@ -119,8 +109,8 @@ Copier `.env.example` → `.env.local` et renseigner :
 | `ecarts` | Non-conformités (statut: ouvert/en_cours/corrigé) |
 | `documents` | Base documentaire (PDF liés aux points de contrôle) |
 | `audit_logs` | Logs d'actions (send_rapport_email, delete_visite, etc.) |
-| `push_subscriptions` | Abonnements Web Push (RLS user-scoped) |
-| `subscriptions` | Abonnements Stripe |
+| `push_subscriptions` | ~~Web Push~~ — table conservée, sous-système retiré |
+| `subscriptions` | ~~Stripe~~ — table conservée (vide), sous-système retiré |
 
 ### Migrations
 
@@ -227,7 +217,7 @@ Ne plus écrire dans `audit_logs` directement : depuis la migration 046 le rôle
 |---|---|
 | `administrateur` | Tout : points de contrôle, documents, utilisateurs, entreprise |
 | `inspecteur` | Ses chantiers, visites, checklists, rapports |
-| `invité` | Vue limitée + page abonnement Stripe |
+| `invité` | Vue limitée : 2 chantiers, 1 visite, 1 photo, ni PDF ni email (`src/lib/roles/limites.ts`) |
 
 Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, `/register`, `/forgot-password`, `/reset-password`, `/auth`.
 
@@ -244,16 +234,35 @@ Le middleware (`src/middleware.ts`) protège toutes les routes sauf : `/login`, 
 
 ---
 
-## Notifications Push (Web Push)
+## Stripe et notifications push — retirés (2026-08-29)
 
-- Infra VAPID complète dans `src/lib/push.ts`
-- API : `/api/push/subscribe` (POST/DELETE), `/api/push/test`
-- Hook : `usePushNotifications()` dans `src/hooks/use-push-notifications.ts`
-- Composant : `<PushNotificationsCard>` sur `/dashboard/notifications`
-- Cleanup automatique des subscriptions expirées (erreurs 404/410)
-- **Triggers métier non implémentés** — MVP test uniquement pour l'instant
+Deux sous-systèmes complets étaient entretenus **sans aucun usage** : Stripe
+(0 abonnement depuis le début du projet) et les notifications push (1 abonnement
+de test, aucun déclencheur métier). Ce n'était pas du code mort inoffensif —
+c'était de la surface d'attaque, du temps de revue et du bruit dans chaque
+audit. Décision prise de les retirer.
 
----
+| | retiré |
+|---|---|
+| Stripe | 4 routes API dont un webhook exposé, page abonnement, client, bandeau d'incitation, dépendance `stripe`, 5 variables d'env — **732 lignes** |
+| Push | 3 routes, `lib/push.ts`, hook, page, composant, 2 handlers du Service Worker, dépendance `web-push`, 2 clés VAPID — **486 lignes** |
+
+> ⚠️ **`getLimits()` n'a jamais dépendu de Stripe.** Il vivait dans
+> `lib/stripe/limits.ts`, ce qui le laissait croire, mais il ne lit pas la table
+> `subscriptions` : il ne connaît que le **rôle** du profil. Six routes métier
+> s'en servent pour autoriser la génération de PDF et l'envoi d'emails. Il est
+> déplacé en **`src/lib/roles/limites.ts`** et fonctionne à l'identique.
+
+Les tables `subscriptions` et `push_subscriptions` sont **conservées** : les
+supprimer n'apporterait rien et fermerait la porte à un retour en arrière. Le
+code est dans l'historique git si le besoin réapparaît.
+
+Le manuel utilisateur perd sa section « Abonnement et facturation » au profit
+d'une section « Limites selon votre rôle », qui décrit ce que l'application fait
+réellement.
+
+`CACHE_VERSION` passe à `v7` — les handlers `push` et `notificationclick` ont
+disparu du Service Worker.
 
 ## Monitoring (Sentry)
 
@@ -509,7 +518,7 @@ Audit complet : application, dépendances, base de données, en-têtes.
 
 **Rate limiting (moyen, CORRIGÉ)** — ajouté sur 7 routes : `photos/export` et `rapports/export` (5/h), `stripe/checkout` et `stripe/portal` (10/h), `stripe/setup` (3/j), `push/subscribe` (30/h), `push/test` (10/h).
 
-**`VAPID_PRIVATE_KEY` (faible, CORRIGÉ)** — lue via `process.env` sans la garde `requireServer()` ; passe par `getVapidPrivateKey()` dans `env.ts`.
+**`VAPID_PRIVATE_KEY` (faible, CORRIGÉ)** — lue via `process.env` sans la garde `requireServer()` ; passée par `getVapidPrivateKey()`. *Sans objet depuis le retrait des notifications push (août 2026).*
 
 **Base de données (migrations 039 et 040, APPLIQUÉES)** — `search_path` fixé sur les trois fonctions `SECURITY DEFINER` (sans quoi un objet homonyme dans un schéma prioritaire permettrait un détournement avec les droits du propriétaire), et retrait de l'exposition RPC de `handle_new_user` et `prevent_user_self_role_change`, jusque-là appelables par `anon` via `/rest/v1/rpc/`.
 
@@ -521,7 +530,7 @@ Vérifié après application : triggers toujours activés (le privilège `EXECUT
 - `user_role()` reste exécutable par `authenticated` — le retirer casserait la RLS, les policies l'appellent dans le contexte de l'utilisateur.
 - Protection contre les mots de passe compromis : à activer dans le dashboard Supabase (Authentication → Password security).
 
-**Vérifié sain** : RLS active sur les 19 tables, toutes avec policies · signature du webhook Stripe · middleware à correspondance exacte · aucun `dangerouslySetInnerHTML`/`eval`/`innerHTML` · exports réservés aux administrateurs · validation des uploads · en-têtes complets (HSTS preload, `X-Frame-Options: DENY`, nosniff, Referrer-Policy, Permissions-Policy) · CSP stricte. `Permissions-Policy: camera=()` ne gêne pas la prise de photo : l'app utilise `capture="environment"` sur un `<input type="file">`, non soumis à cette politique.
+**Vérifié sain** : RLS active sur les 19 tables, toutes avec policies · signature du webhook Stripe (route retirée depuis) · middleware à correspondance exacte · aucun `dangerouslySetInnerHTML`/`eval`/`innerHTML` · exports réservés aux administrateurs · validation des uploads · en-têtes complets (HSTS preload, `X-Frame-Options: DENY`, nosniff, Referrer-Policy, Permissions-Policy) · CSP stricte. `Permissions-Policy: camera=()` ne gêne pas la prise de photo : l'app utilise `capture="environment"` sur un `<input type="file">`, non soumis à cette politique.
 
 ### SEC-01 — écriture sur les chantiers ouverte à tout compte (2026-08-29)
 
@@ -1761,6 +1770,7 @@ rend 12 dont 9 dans la garniture.
 49. **Une URL signée ne s'écrit jamais en base** : elle expire. Les valeurs qui font un aller-retour par le navigateur (`reponses.photos`, `entreprises.logo_url`) doivent repasser par `canoniserUrlStockage()` avant l'enregistrement, sinon la base se remplit d'URL mortes — visibles seulement le lendemain.
 50. **Un bucket privé mal cloisonné ne protège que des inconnus** : une politique de lecture `bucket_id = '…'` laisse tout compte connecté signer n'importe quel objet. Et attention aux **doublons de politiques** — il y en avait deux par bucket, permissives, donc en OU : en laisser une annule le cloisonnement.
 51. **Les contrôles de mot de passe des pages d'authentification ne garantissent rien** : ils tournent dans le navigateur et `supabase.auth.signUp` est appelable directement. La contrainte qui engage est celle de Supabase Auth (longueur minimale, refus des mots de passe compromis), réglable uniquement dans le tableau de bord — ni par le code, ni par une migration.
+52. **`getLimits()` est une barrière par rôle, pas par abonnement** : elle vit dans `src/lib/roles/limites.ts` (auparavant `lib/stripe/`, ce qui trompait) et ne lit jamais la table `subscriptions`. Six routes métier s'en servent pour autoriser PDF et email ; un compte « invité » ne peut faire ni l'un ni l'autre.
 
 ---
 

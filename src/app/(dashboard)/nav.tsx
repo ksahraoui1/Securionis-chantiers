@@ -32,9 +32,6 @@ export function DashboardNav({
   const links = [
     { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
     { href: "/chantiers", label: "Chantiers", icon: "foundation" },
-    ...(userRole === "invité"
-      ? [{ href: "/dashboard/abonnement", label: "Abonnement", icon: "workspace_premium" }]
-      : []),
     ...(userRole === "administrateur"
       ? [
           { href: "/admin/points-controle", label: "Points de contrôle", icon: "checklist" },

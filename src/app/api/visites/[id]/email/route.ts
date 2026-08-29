@@ -3,7 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendRapport } from "@/lib/email/send-rapport";
 import { canAccessVisite, getUserRole, extractRapportStoragePath } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { getLimits } from "@/lib/stripe/limits";
+import { getLimits } from "@/lib/roles/limites";
 import { journaliser } from "@/lib/audit";
 
 export async function POST(
