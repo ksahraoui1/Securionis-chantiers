@@ -364,6 +364,16 @@ export function ComparaisonPlans({
    * superposer à un 1:100 du même ouvrage.
    */
   const [echelleCalque, setEchelleCalque] = useState(1);
+
+  /**
+   * Rotation du calque du dessus, en degrés.
+   *
+   * Deux dessins du même ouvrage ne sont pas toujours orientés pareil : un
+   * plan d'exécution est couramment tourné pour tenir sur la feuille, ou pour
+   * mettre le nord dans un coin. Translation et échelle ne rattrapent pas cela
+   * — et la détection compare les calques tels qu'ils sont superposés.
+   */
+  const [rotationCalque, setRotationCalque] = useState(0);
   const [differences, setDifferences] = useState(0);
   const [pleinEcran, setPleinEcran] = useState(false);
 
@@ -438,7 +448,11 @@ export function ComparaisonPlans({
   const docPE = plansPE.find((p) => p.id === idPE) ?? null;
   const docEXE = plansEXE.find((p) => p.id === idEXE) ?? null;
 
-  const recale = decalage.x !== 0 || decalage.y !== 0 || echelleCalque !== 1;
+  const recale =
+    decalage.x !== 0 ||
+    decalage.y !== 0 ||
+    echelleCalque !== 1 ||
+    rotationCalque !== 0;
 
   const appliquerCalques = useCallback(() => {
     const viewer = viewerRef.current;
@@ -458,6 +472,8 @@ export function ComparaisonPlans({
       // plus de sens et le recalage non plus.
       pe.setOpacity(1);
       exe.setOpacity(1);
+      pe.setRotation(0);
+      exe.setRotation(0);
       dessous.setPosition(new OSD.Point(0, 0));
       dessus.setPosition(new OSD.Point(1.05, 0));
       return;
@@ -467,11 +483,25 @@ export function ComparaisonPlans({
     exe.setOpacity(opaciteEXE / 100);
     dessous.setWidth(1);
     dessous.setPosition(new OSD.Point(0, 0));
+    dessous.setRotation(0);
     // L'ordre compte : la largeur d'abord, la position ensuite — `setWidth`
     // conserve le coin supérieur gauche, que `setPosition` fixe juste après.
     dessus.setWidth(echelleCalque);
     dessus.setPosition(new OSD.Point(decalage.x, decalage.y));
-  }, [inverse, split, opacitePE, opaciteEXE, decalage, echelleCalque]);
+    // La rotation vient en dernier : elle pivote autour du centre des bornes
+    // non tournées, qui dépend de la largeur et de la position posées à
+    // l'instant. Ce pivot au centre est aussi ce qui dispense de recentrer,
+    // contrairement à `setWidth`.
+    dessus.setRotation(rotationCalque);
+  }, [
+    inverse,
+    split,
+    opacitePE,
+    opaciteEXE,
+    decalage,
+    echelleCalque,
+    rotationCalque,
+  ]);
 
   // Référence toujours à jour, pour l'appeler depuis l'effet d'initialisation
   const appliquerCalquesRef = useRef(appliquerCalques);
@@ -1386,6 +1416,7 @@ export function ComparaisonPlans({
     decalageRef.current = { x: 0, y: 0 };
     setDecalage({ x: 0, y: 0 });
     setEchelleCalque(1);
+    setRotationCalque(0);
   }
 
   /**
@@ -1411,6 +1442,20 @@ export function ComparaisonPlans({
     }
 
     setEchelleCalque(facteurBorne);
+  }
+
+  /**
+   * Fait pivoter le calque du dessus.
+   *
+   * Aucun recentrage à prévoir : `setRotation` pivote autour du centre des
+   * bornes non tournées de l'image, qui ne bouge pas. C'est la différence avec
+   * `setWidth`, qui conserve le coin supérieur gauche.
+   */
+  function changerRotationCalque(degres: number) {
+    const borne = Math.min(180, Math.max(-180, degres));
+    // Arrondi au dixième : sans lui, les additions de pas laissent traîner des
+    // 0,30000000000000004 dans l'affichage.
+    setRotationCalque(Math.round(borne * 10) / 10);
   }
 
   // Alterne entre « PE seul » et « EXE seul »
@@ -1568,6 +1613,13 @@ export function ComparaisonPlans({
                 valeur={echelleCalque}
                 plan={inverse ? "PE" : "EXE"}
                 onChange={changerEchelleCalque}
+              />
+            )}
+            {!synchro && !split && (
+              <RotationCalque
+                valeur={rotationCalque}
+                plan={inverse ? "PE" : "EXE"}
+                onChange={changerRotationCalque}
               />
             )}
             {!synchro && recale && (
@@ -2295,6 +2347,79 @@ function EchelleCalque({
       >
         {pourcent} %
       </span>
+    </div>
+  );
+}
+
+/**
+ * Rotation du calque du dessus.
+ *
+ * Le curseur couvre le tour complet, pour le cas où un plan est mis en page à
+ * 90° de l'autre ; les boutons avancent au dixième de degré, parce que c'est à
+ * cette finesse que deux murs finissent par se superposer. Les deux repères
+ * ±90° évitent d'avoir à traîner le curseur jusqu'au bout pour un quart de
+ * tour, qui est le cas courant.
+ */
+function RotationCalque({
+  valeur,
+  plan,
+  onChange,
+}: {
+  valeur: number;
+  plan: string;
+  onChange: (valeur: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 ml-1 flex-wrap max-w-full rounded-lg border border-gray-300 bg-white px-1.5 py-1">
+      <span
+        translate="no"
+        className="material-symbols-outlined text-base"
+        style={{ color: COULEUR_EXE }}
+        title={`Rotation du plan ${plan}, celui du dessus`}
+      >
+        rotate_right
+      </span>
+      <BoutonPas
+        icone="remove"
+        titre={`Tourner le plan ${plan} de 0,1° vers la gauche`}
+        desactive={valeur <= -180}
+        onClick={() => onChange(valeur - 0.1)}
+      />
+      <input
+        type="range"
+        min={-180}
+        max={180}
+        step={0.5}
+        value={valeur}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={`Rotation du plan ${plan}`}
+        className="w-20 sm:w-24"
+        style={{ accentColor: COULEUR_EXE }}
+      />
+      <BoutonPas
+        icone="add"
+        titre={`Tourner le plan ${plan} de 0,1° vers la droite`}
+        desactive={valeur >= 180}
+        onClick={() => onChange(valeur + 0.1)}
+      />
+      <span
+        className="text-xs font-semibold tabular-nums w-14 text-right"
+        style={{ color: NAVY }}
+      >
+        {valeur.toFixed(1).replace(".", ",")}°
+      </span>
+      <BoutonPas
+        icone="rotate_90_degrees_ccw"
+        titre={`Faire pivoter le plan ${plan} d'un quart de tour vers la gauche`}
+        desactive={valeur - 90 < -180}
+        onClick={() => onChange(valeur - 90)}
+      />
+      <BoutonPas
+        icone="rotate_90_degrees_cw"
+        titre={`Faire pivoter le plan ${plan} d'un quart de tour vers la droite`}
+        desactive={valeur + 90 > 180}
+        onClick={() => onChange(valeur + 90)}
+      />
     </div>
   );
 }
