@@ -1078,6 +1078,34 @@ Alternative sans heuristique, quand la certitude prime : cadrer la vue sur le
 bâtiment avant de lancer la détection. En mode « vue recalée », ce qui est hors
 écran est hors analyse.
 
+### Rotation du calque au recalage (2026-08-29)
+
+Deux dessins du même ouvrage ne sont pas toujours orientés pareil : un plan
+d'exécution est couramment tourné pour tenir sur sa feuille, ou pour mettre le
+nord dans un coin. La translation et l'échelle ne rattrapent pas cela, et comme
+la détection compare les calques **tels qu'ils sont superposés**, une
+orientation fausse rend tout le bâtiment discordant.
+
+Verrou ouvert, la barre d'outils propose donc la rotation du calque du dessus à
+côté de son échelle : curseur sur le tour complet (−180° à +180°), boutons au
+dixième de degré — c'est à cette finesse que deux murs finissent par se
+superposer — et deux boutons de quart de tour, le cas courant, qu'on n'atteint
+pas en traînant un curseur de 96 pixels.
+
+> Contrairement à `setWidth`, **`setRotation` n'a besoin d'aucun recentrage** :
+> il pivote autour du centre des bornes non tournées de l'image, qui ne bouge
+> pas. Vérifié dans le navigateur — `getBoundsNoRotate().getCenter()` reste à
+> l'identique avant et après rotation, le rendu change bien (signature de pixels
+> 6 923 796 → 7 084 694 avec le dessinateur WebGL) et revient exactement à sa
+> valeur d'origine à 0°.
+
+L'ordre d'application compte : largeur, puis position, puis rotation — le pivot
+se calcule sur des bornes qui dépendent des deux premières. La rotation est
+remise à zéro en vue côte à côte et par le bouton de recentrage.
+
+Rien à changer côté détection : `capturerCalques()` lit le canevas du
+visualiseur, où la rotation est déjà appliquée.
+
 ### La comparaison porte sur les murs (2026-08-29)
 
 Signalé en usage réel, capture à l'appui : les différences remontées portaient
@@ -1218,10 +1246,11 @@ rend 12 dont 9 dans la garniture.
 30. **`setWidth` d'OpenSeadragon conserve le coin supérieur gauche** : tout redimensionnement de calque doit être recentré à la main, sinon la vue s'échappe.
 31. **Message de détection sans parenthèse** = exception, jamais un refus raisonné : les deux modes donnent toujours un motif quand ils renoncent. Les deux ne partagent que `chargerOpenCv()`.
 32. **Exclusion des cartouches** : heuristique (quadrilatère convexe, accosté au bord, taille intermédiaire), donc faillible dans les deux sens. Les zones écartées doivent rester visibles et la case débrayable — exclure à tort masque un écart réel.
-33. **La détection porte sur les murs par défaut** : `masqueMurs()` ne retient que les traits pleins, ce qui écarte par construction textes, cotes, trames et cartouches. Le noyau d'ouverture est **mesuré sur le dessin** et doit être **identique pour les deux plans** (`isolerMurs()`) — calibrés séparément, ils diffèrent (9 px contre 6 px sur les plans de production) et le plan le plus érodé voit toutes ses cloisons ressortir comme supprimées.
-34. **Filtrer une zone sur l'aire de sa boîte est un piège** : un mur oblique a une boîte presque vide. Les seuils de `examinerZone()` portent sur l'aire du **contour** ; seul le plafond d'affichage (25 %) regarde la boîte, parce que le calque dessine des rectangles.
-35. **`matchTemplate` sur un gabarit uniforme rend `NaN`** : `TM_CCOEFF_NORMED` divise par l'écart-type du gabarit. Comme `NaN < seuil` vaut faux, le score passe tous les tests et n'importe quelle position devient une correspondance parfaite. Toujours donner du contexte au gabarit, vérifier l'écart-type, et tester `Number.isFinite(maxVal)`.
-36. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+33. **`setRotation` d'OpenSeadragon pivote autour du centre**, là où `setWidth` conserve le coin supérieur gauche : la rotation d'un calque n'a pas besoin du recentrage manuel qu'exige son redimensionnement. L'appliquer **après** la largeur et la position, dont dépend le pivot.
+34. **La détection porte sur les murs par défaut** : `masqueMurs()` ne retient que les traits pleins, ce qui écarte par construction textes, cotes, trames et cartouches. Le noyau d'ouverture est **mesuré sur le dessin** et doit être **identique pour les deux plans** (`isolerMurs()`) — calibrés séparément, ils diffèrent (9 px contre 6 px sur les plans de production) et le plan le plus érodé voit toutes ses cloisons ressortir comme supprimées.
+35. **Filtrer une zone sur l'aire de sa boîte est un piège** : un mur oblique a une boîte presque vide. Les seuils de `examinerZone()` portent sur l'aire du **contour** ; seul le plafond d'affichage (25 %) regarde la boîte, parce que le calque dessine des rectangles.
+36. **`matchTemplate` sur un gabarit uniforme rend `NaN`** : `TM_CCOEFF_NORMED` divise par l'écart-type du gabarit. Comme `NaN < seuil` vaut faux, le score passe tous les tests et n'importe quelle position devient une correspondance parfaite. Toujours donner du contexte au gabarit, vérifier l'écart-type, et tester `Number.isFinite(maxVal)`.
+37. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
