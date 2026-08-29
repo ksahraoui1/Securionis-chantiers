@@ -613,7 +613,7 @@ apports :
 > l'utilisateur authentifié, et **aucun composant client n'écrit** dans cette
 > table — les écritures étaient toutes dans des routes API.
 
-#### Migration 046 — **écrite, pas encore appliquée**
+#### Migration 046 — **appliquée**
 
 Elle retire la politique d'insertion, révoque `insert/update/delete/truncate`
 à `anon` et `authenticated`, et ajoute un trigger d'ajout seul qui couvre aussi
@@ -621,10 +621,26 @@ le `service_role` (protection contre une route serveur compromise), en
 exemptant `postgres` et `supabase_admin` pour qu'une purge de conservation
 reste possible depuis une migration.
 
-> ⚠️ **L'ordre de déploiement compte.** Appliquer 046 avant que le nouveau code
-> ne soit en production ferait échouer silencieusement les cinq écritures qui
-> utilisaient encore le client utilisateur. Déployer d'abord, appliquer
-> ensuite.
+> ⚠️ **L'ordre de déploiement comptait** et a été respecté : le code est parti
+> en production d'abord. Appliquer 046 avant lui aurait fait échouer
+> silencieusement les cinq écritures qui utilisaient encore le client
+> utilisateur.
+
+**Vérification, jouée en production dans une transaction annulée :**
+
+| Rôle | Opération | Résultat |
+|---|---|---|
+| `authenticated` | INSERT | **refusé** — SQLSTATE 42501, privilège insuffisant |
+| `service_role` | INSERT | accepté — le chemin de `journaliser()` fonctionne |
+| `service_role` | UPDATE | **refusé** par le trigger |
+| `service_role` | DELETE | **refusé** par le trigger |
+| `postgres` | DELETE | accepté — la purge de conservation reste possible |
+
+Le refus côté `authenticated` est un **défaut de privilège**, pas un refus RLS :
+il n'y a plus de politique d'insertion *et* plus de droit d'écriture. Journal
+revérifié après annulation : 170 entrées, aucun résidu de test.
+`SUPABASE_SERVICE_ROLE_KEY` confirmée présente dans le conteneur de production —
+sans elle, `journaliser()` échouerait en silence.
 
 > Note : un trigger `for each statement` ignore sa valeur de retour — seul un
 > `raise` interrompt la commande, `return null` laisse passer.
@@ -635,6 +651,102 @@ Ce fichier documentait `requireServer()` comme un export de `src/lib/env.ts`
 appelable sans argument. C'est faux : la fonction est **privée** et prend
 `(name, value)`. La garde côté serveur s'obtient en passant par les getters —
 `getServiceRoleKey()`, `getResendApiKey()`… — qui l'appellent en interne.
+
+### FONC-01 — un inspecteur ne voyait aucun chantier (2026-08-29)
+
+Trouvé en audit. Migration **047 appliquée**.
+
+Tout l'accès non-administrateur passe par `chantier_inspecteurs` : **21
+politiques sur 8 tables** en dépendent. Or la table était **vide** — 12
+chantiers, **0 visible** pour le profil `inspecteur` de production. Trois
+défauts concouraient à ce qu'elle le reste : aucune politique `INSERT` pour un
+inspecteur (l'auto-rattachement de `chantier-form.tsx` était donc
+*systématiquement* refusé), le résultat de cette insertion n'était pas vérifié,
+et la lecture n'avait aucun repli. Passé au travers de quatre audits parce que
+les 12 chantiers et 90 visites ont tous été créés par l'administrateur, pour qui
+`chantiers_admin_all` ouvre tout.
+
+#### ⚠️ `INSERT ... RETURNING` évalue la politique **SELECT**
+
+Le point que je n'avais pas prévu, et qui a fait échouer ma première version.
+Mesuré sur la production :
+
+| Montage | Résultat |
+|---|---|
+| trigger `AFTER` + `insert … returning` | **échec** — violation RLS |
+| trigger `AFTER` sans `returning` | OK |
+| trigger `BEFORE` + `insert … returning` | **échec** — clé étrangère |
+
+`RETURNING` fait relire la ligne insérée, **avant** que le trigger `AFTER`
+n'ait créé la liaison. En `BEFORE`, la ligne du chantier n'existe pas encore et
+la clé étrangère saute. Aucune position de trigger ne fonctionne — or
+`chantier-form.tsx` fait exactement `.insert(...).select("id").single()`.
+
+> Le message est trompeur : PostgreSQL dit « new row violates row-level
+> security policy », ce qui fait penser au `WITH CHECK` de l'insertion, alors
+> que c'est la politique de **lecture** qui refuse.
+
+Le repli `created_by` en lecture n'est donc pas un confort mais une nécessité.
+
+#### Le modèle retenu
+
+**On voit ce qu'on a créé, on ne modifie que ce à quoi on est rattaché.**
+
+- Trigger `chantier_rattacher_createur` (`SECURITY DEFINER`, `AFTER INSERT`) :
+  le créateur est rattaché automatiquement. L'inspecteur n'a toujours pas le
+  droit d'écrire dans la table de liaison — attribuer *un autre* inspecteur
+  reste réservé à l'administrateur.
+- Rattrapage des 12 chantiers existants.
+- Lecture : liaison **ou** `created_by`. Écriture : liaison seule.
+
+En pratique les deux coïncident ; ils ne divergent que si un administrateur
+retire délibérément quelqu'un — qui continue alors de **voir** le chantier
+qu'il a créé sans pouvoir le modifier, ni toucher à ses visites, écarts ou
+documents, dont les politiques ne connaissent que la liaison.
+
+L'insertion cliente dans `chantier_inspecteurs` est retirée de
+`chantier-form.tsx` (elle était toujours refusée), et la prop `userRole`
+devenue morte a été retirée du composant et de ses deux appelants.
+
+#### Vérification, en production, dans une transaction annulée
+
+| Scénario | Résultat |
+|---|---|
+| rattrapage | 12 liaisons |
+| `insert … returning` par l'inspecteur (chemin réel de l'app) | OK |
+| chantiers vus par l'inspecteur | 1 — le sien |
+| liaison créée par le trigger | 1 |
+| il modifie son chantier | 1 ligne |
+| il modifie celui d'un autre | **0 ligne** |
+| il se rattache au chantier d'un autre | **refusé** (42501) |
+| après attribution par l'admin | 2 chantiers, 13 visites, 19 écarts, 4 documents |
+| administrateur | 13 chantiers, 90 visites — aucune régression |
+
+Base revérifiée après annulation : 12 chantiers, 0 liaison, aucun trigger, aucun
+résidu.
+
+#### Après application, sur la base migrée
+
+12 chantiers, **12 liaisons**, aucun chantier orphelin, trigger actif. Scénario
+rejoué sur la base telle qu'elle est désormais : l'inspecteur voit 0 chantier
+avant attribution, crée le sien par `insert … returning` (le point de rupture
+d'avant), reçoit sa liaison du trigger, le modifie, et ne modifie pas celui d'un
+autre ; l'administrateur garde ses 13 chantiers.
+
+> ⚠️ **La migration répare le mécanisme, pas l'attribution.** Le rattrapage lie
+> chaque chantier à son créateur — l'administrateur pour les douze. Un
+> inspecteur existant ne voit donc toujours rien tant qu'il n'a pas été
+> attribué depuis `/chantiers/<id>/modifier`. C'est une décision métier, pas un
+> défaut.
+
+#### Confirmation de bout en bout de SEC-02, au passage
+
+Un écart de comptage pendant la vérification — 89 visites au lieu de 90 —
+s'expliquait par une **suppression réelle faite depuis l'application** en cours
+de session. L'entrée `delete_visite` correspondante est bien au journal, avec
+auteur et détails : `journaliser()` écrit correctement en production, par le
+`service_role`, sur une table où `authenticated` n'a plus aucun droit
+d'écriture. Les deux corrections tiennent ensemble.
 
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
@@ -1511,6 +1623,8 @@ rend 12 dont 9 dans la garniture.
 44. **Une politique permissive `USING (true)` n'en est pas une** : les politiques permissives s'additionnent en OU, donc une seule ouverte annule toutes les autres sur la même commande. Relire `pg_policies` après chaque migration touchant la RLS (`select * from pg_policies where qual = 'true'`).
 45. **Ne jamais écrire dans `audit_logs` en direct** : passer par `journaliser()` (`src/lib/audit.ts`). Le rôle `authenticated` n'a plus le droit d'écrire dans cette table, elle est en ajout seul, et le helper est le seul endroit qui vérifie le résultat de l'insertion.
 46. **Un trigger `for each statement` ignore sa valeur de retour** : seul un `raise` interrompt la commande. `return null` y laisse passer l'opération, contrairement à un trigger `for each row`.
+47. **`INSERT ... RETURNING` évalue la politique `SELECT`** de la ligne insérée, avant tout trigger `AFTER`. Un `.insert(...).select(...)` de Supabase échoue donc si la politique de lecture dépend d'une ligne qu'un trigger `AFTER` doit encore créer — et PostgreSQL annonce « new row violates row-level security policy », ce qui désigne à tort le `WITH CHECK` de l'insertion.
+48. **L'accès aux chantiers a deux règles distinctes** : la lecture accepte la liaison `chantier_inspecteurs` **ou** `created_by`, l'écriture n'accepte que la liaison. Un créateur retiré par un administrateur voit encore son chantier mais ne peut plus rien y faire.
 
 ---
 
