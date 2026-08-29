@@ -515,6 +515,64 @@ Vérifié après application : triggers toujours activés (le privilège `EXECUT
 
 **Vérifié sain** : RLS active sur les 19 tables, toutes avec policies · signature du webhook Stripe · middleware à correspondance exacte · aucun `dangerouslySetInnerHTML`/`eval`/`innerHTML` · exports réservés aux administrateurs · validation des uploads · en-têtes complets (HSTS preload, `X-Frame-Options: DENY`, nosniff, Referrer-Policy, Permissions-Policy) · CSP stricte. `Permissions-Policy: camera=()` ne gêne pas la prise de photo : l'app utilise `capture="environment"` sur un `<input type="file">`, non soumis à cette politique.
 
+### SEC-01 — écriture sur les chantiers ouverte à tout compte (2026-08-29)
+
+Trouvé en audit, corrigé par la **migration 045, appliquée**.
+
+`chantiers_inspecteur_update` était définie `USING (true) WITH CHECK (true)`
+pour le rôle `authenticated`. Une politique permissive s'ajoute aux autres en
+**OU** : celle-ci ne restreignait donc rien. Tout porteur d'un jeton
+`authenticated` pouvait écrire sur n'importe quelle ligne de `chantiers` —
+renommer, réaffecter `created_by`, archiver les douze en une requête.
+
+`/register` étant publique, obtenir ce jeton ne demandait ni mot de passe volé
+ni accès administrateur : un compte créé en ligne, la clé anonyme (publique par
+nature) et un `PATCH` sur `/rest/v1/chantiers`. La lecture restait fermée —
+c'était une atteinte à l'**intégrité et à la disponibilité**, pas à la
+confidentialité.
+
+La politique porte désormais le périmètre voulu : le créateur du chantier, ou
+l'inspecteur qui y est rattaché. `chantiers_admin_all` couvre l'administrateur.
+
+**Un trigger complète la politique** : `enforce_chantier_owner_immutability`
+fige `created_by`. Sans lui, la brèche subsistait en petit — un inspecteur
+rattaché satisfait la clause `exists`, donc son `WITH CHECK` passe **quelle que
+soit la valeur qu'il donne à `created_by`**, ce qui lui permettrait de désigner
+un compte arbitraire comme créateur et de lui accorder du même coup le droit
+d'écriture que cette colonne confère. Une politique RLS ne peut pas comparer
+NEW et OLD ; il faut un trigger. Même forme que `enforce_role_immutability` :
+`service_role` en est exempté, les routes API serveur restent libres.
+
+> Vérifié avant écriture : `chantier-form.tsx` et `archive-toggle-button.tsx`,
+> les deux seuls écrivains de la table, n'envoient jamais `created_by`.
+
+**Vérification, jouée en production dans une transaction annulée** (rôle
+`authenticated` endossé, `request.jwt.claims` posés, `raise exception` final) :
+
+| Acteur | Tentative | Lignes touchées |
+|---|---|---|
+| invité | archiver tous les chantiers | **0** (avant : 12) |
+| invité | renommer tous les chantiers | **0** |
+| inspecteur non rattaché | renommer | **0** |
+| administrateur | écrire | **12** — aucune régression |
+| administrateur | réaffecter `created_by` | **refusé par le trigger** |
+
+Données revérifiées après coup : 12 chantiers, aucun nom `PIRATE`, 1 archivé,
+1 créateur distinct. Puis modification réelle d'un chantier depuis le
+formulaire, en session administrateur : enregistrée sans erreur.
+
+#### Une écriture refusée par la RLS ne lève pas d'erreur
+
+C'est le corollaire qu'il faut retenir : PostgREST ne renvoie **aucune erreur**
+quand la RLS écarte les lignes visées — l'`UPDATE` n'en touche simplement
+aucune. Sans `.select()`, un refus est **indiscernable d'un succès**.
+
+`archive-toggle-button.tsx` ne vérifiait rien du tout, et `chantier-form.tsx`
+ne vérifiait que `error`. Les deux ajoutent désormais `.select("id")` et
+traitent le tableau vide comme un refus, avec un message qui dit quoi faire
+(« demandez à un administrateur de vous y rattacher »). Sans cela, resserrer la
+politique aurait transformé un trou de sécurité en bug silencieux.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -1386,6 +1444,8 @@ rend 12 dont 9 dans la garniture.
 40. **`tailwind.config.ts` n'est pas chargé** : Tailwind v4 exige une directive `@config` dans le CSS, absente de `globals.css`. Toutes les extensions du fichier sont donc inertes — dont `min-h-touch` / `min-w-touch`, utilisées 191 fois : **aucune cible tactile n'est réellement contrainte à 44 px**. Écrire les tailles en dur (`min-h-[44px]`) tant que la configuration n'est pas rebranchée.
 41. **`.material-symbols-outlined` est déclarée hors couche** dans `globals.css` : son `display: inline-block` bat les utilitaires Tailwind, qui sont dans une couche. Une classe de visibilité responsive (`xl:hidden`, `md:inline`…) posée directement sur une icône **n'a aucun effet** — la poser sur un `<span>` enveloppe.
 42. **Le retour de la barre de navigation est hiérarchique**, jamais `history.back()` : en PWA installée il n'y a pas de bouton retour du navigateur et l'historique peut mener hors de l'application. Le parent ne se déduit pas du chemin — plusieurs niveaux intermédiaires n'ont pas de page (`/chantiers/<id>/visites`) — d'où la table explicite de `src/lib/utils/navigation-retour.ts`, à compléter à chaque nouvelle route.
+43. **Une écriture refusée par la RLS ne lève aucune erreur** : l'`UPDATE` ne touche simplement aucune ligne, et PostgREST renvoie un succès. Tout `.update()` dont l'échec compte doit chaîner `.select()` et traiter le tableau vide comme un refus — vérifier `error` seul ne suffit pas.
+44. **Une politique permissive `USING (true)` n'en est pas une** : les politiques permissives s'additionnent en OU, donc une seule ouverte annule toutes les autres sur la même commande. Relire `pg_policies` après chaque migration touchant la RLS (`select * from pg_policies where qual = 'true'`).
 
 ---
 

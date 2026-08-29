@@ -88,12 +88,21 @@ export function ChantierForm({
       };
 
       if (isEdit) {
-        const { error: updateError } = await supabase
+        // `.select()` est indispensable : une écriture refusée par la RLS ne
+        // lève pas d'erreur, elle ne touche aucune ligne. Sans les lignes
+        // renvoyées, le refus passerait pour un enregistrement réussi.
+        const { data: modifie, error: updateError } = await supabase
           .from("chantiers")
           .update(payload)
-          .eq("id", chantierId);
+          .eq("id", chantierId)
+          .select("id");
 
         if (updateError) throw new Error(updateError.message);
+        if (!modifie || modifie.length === 0) {
+          throw new Error(
+            "Vous n'avez pas les droits sur ce chantier. Demandez à un administrateur de vous y rattacher."
+          );
+        }
 
         router.push(`/chantiers/${chantierId}`);
         router.refresh();
