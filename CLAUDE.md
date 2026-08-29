@@ -892,6 +892,8 @@ jamais tourné avec succès**.
 
 ### DET-02 — le limiteur de débit survit aux déploiements (2026-08-29)
 
+Migration **049 appliquée**.
+
 `src/lib/rate-limit.ts` tenait ses compteurs dans une `Map` en mémoire de
 processus. Déployer consistant à reconstruire et remplacer le conteneur,
 **chaque mise à jour rendait son quota à tout le monde** — et toutes les
@@ -944,6 +946,22 @@ privilège n'est vérifié qu'à la **création** du trigger.
 maximum de 3 refusé, compteur remis à 1 après expiration de la fenêtre, clés
 indépendantes entre utilisateurs, appel par `authenticated` et par `anon`
 refusé en **42501**, appel par `service_role` autorisé.
+
+Après application, les triggers restent armés — c'était le risque du rattrapage,
+vérifié un par un : le rattachement du créateur pose toujours sa liaison,
+`created_by` reste immuable, le journal d'audit refuse toujours `UPDATE` même au
+`service_role`. `rate_limits` a la RLS active et **zéro politique**.
+
+#### La démonstration, contre l'application réelle
+
+| | |
+|---|---|
+| 10 premiers appels sur `/api/docs/manual` (limite 10/h) | **200** |
+| 11ᵉ appel | **429** |
+| **après arrêt et redémarrage complet du processus** | **429** |
+
+C'est précisément ce qui échouait : avec la `Map` en mémoire, ce dernier appel
+aurait répondu **200**.
 
 > Le constat d'origine citait `stripe/setup` (3 par jour) comme la fenêtre la
 > plus exposée. Cette route n'existe plus depuis le retrait de Stripe.
