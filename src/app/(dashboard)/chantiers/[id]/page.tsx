@@ -267,7 +267,7 @@ export default async function ChantierDetailPage({
                   Toutes les NC de la visite du {new Date(v.date_visite).toLocaleDateString("fr-CH")} sont corrigées
                 </p>
                 <p className="text-xs text-green-700 mt-0.5">
-                  Vous pouvez générer un rapport mis à jour et l'envoyer par email.
+                  Vous pouvez générer un rapport mis à jour et l&apos;envoyer par email.
                 </p>
               </div>
             </div>

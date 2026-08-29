@@ -160,7 +160,7 @@ export default async function RapportPage({
                 {new Date(visite.date_visite).toLocaleDateString("fr-CH")} ont été corrigées
               </p>
               <p className="text-xs text-green-700 mt-1">
-                Vous pouvez régénérer le rapport PDF mis à jour et l'envoyer par email aux destinataires.
+                Vous pouvez régénérer le rapport PDF mis à jour et l&apos;envoyer par email aux destinataires.
               </p>
             </div>
           </div>

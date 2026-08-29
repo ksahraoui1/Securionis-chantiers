@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PointControleForm } from "@/components/admin/point-controle-form";
@@ -84,10 +84,23 @@ export default function AdminPointsControlePage() {
     return categories.filter((c) => familleDeCategorie(c.libelle) === filterFamille);
   }, [categories, filterFamille]);
 
+  // Changer de catégorie invalide le thème sélectionné.
+  //
+  // Ces deux remises à zéro vivaient dans l'effet de chargement des thèmes, ce
+  // qui provoquait un rendu en cascade à chaque changement : l'effet
+  // s'exécutait *après* le rendu, puis reposait deux états, donc un rendu de
+  // plus. Elles appartiennent à l'événement qui change la catégorie, pas à la
+  // synchronisation qui en découle.
+  function handleChangeCategorie(categorieId: string) {
+    setFilterCat(categorieId);
+    setFilterTheme("");
+    setShowNewTheme(false);
+  }
+
   // Changer de famille invalide la catégorie (et par ricochet le thème) sélectionnée
   function handleChangeFamille(famille: Famille | "") {
     setFilterFamille(famille);
-    setFilterCat("");
+    handleChangeCategorie("");
     setShowNewCat(false);
   }
 
@@ -108,12 +121,17 @@ export default function AdminPointsControlePage() {
       if (data) setThemes(data);
     }
     load();
-    setFilterTheme("");
-    setShowNewTheme(false);
   }, [filterCat]);
 
   // Load points
+  // Numéro de la requête en cours. La recherche est débouncée à 250 ms : sans
+  // ce compteur, une réponse lente partie sur « écha » peut revenir *après*
+  // celle de « échafaudage » et réafficher les résultats de la frappe
+  // précédente. Le lint ne voit pas ce défaut-là ; il est pourtant réel.
+  const requeteRef = useRef(0);
+
   const loadPoints = useCallback(async () => {
+    const requete = ++requeteRef.current;
     setLoading(true);
     const supabase = createClient();
     let query = supabase
@@ -134,11 +152,16 @@ export default function AdminPointsControlePage() {
     }
 
     const { data } = await query;
+    if (requete !== requeteRef.current) return; // une requête plus récente a pris la main
     if (data) setPoints(data as unknown as PointWithRelations[]);
     setLoading(false);
   }, [filterFamille, filterCat, filterTheme, filterActif, debouncedSearch]);
 
+  // Chargement au montage et au changement de filtre : le seul usage d'effet
+  // que React sanctionne pour cela, et `setLoading(true)` y est synchrone par
+  // nature. Les réponses obsolètes sont écartées par `requeteRef` ci-dessus.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPoints();
   }, [loadPoints]);
 
@@ -155,7 +178,7 @@ export default function AdminPointsControlePage() {
       setCategories((prev) => [...prev, data].sort((a, b) => a.libelle.localeCompare(b.libelle)));
       // La nouvelle catégorie appartient à la famille déduite de son libellé
       setFilterFamille(familleDeCategorie(data.libelle));
-      setFilterCat(data.id);
+      handleChangeCategorie(data.id);
       setNewCatName("");
       setShowNewCat(false);
     }
@@ -299,7 +322,7 @@ export default function AdminPointsControlePage() {
             ) : (
               <select
                 value={filterCat}
-                onChange={(e) => setFilterCat(e.target.value)}
+                onChange={(e) => handleChangeCategorie(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-touch disabled:bg-gray-50 disabled:text-gray-400"
                 disabled={!filterFamille}
               >

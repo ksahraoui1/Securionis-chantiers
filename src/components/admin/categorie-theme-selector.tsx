@@ -75,8 +75,16 @@ export function CategorieThemeSelector({
     load();
   }, [currentCategorieId]);
 
+  // La ref sert à ne pas relancer l'effet quand le parent recrée `onChange`.
+  // ⚠️ Son écriture doit se faire dans un effet, jamais pendant le rendu :
+  // React peut rendre un composant sans le valider (rendu concurrent,
+  // StrictMode), et une ref mutée pendant le rendu part alors en avance sur
+  // l'état réellement affiché.
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   useEffect(() => {
     onChangeRef.current({ categorie, theme });
   }, [categorie, theme]);

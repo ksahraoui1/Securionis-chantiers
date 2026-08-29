@@ -215,7 +215,7 @@ export function PointControleForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">
-            Critère d'acceptation
+            Critère d&apos;acceptation
           </label>
           <input
             type="text"

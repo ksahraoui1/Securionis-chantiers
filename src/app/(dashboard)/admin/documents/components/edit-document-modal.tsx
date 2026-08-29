@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/modal";
 import { DOCUMENT_SOURCES } from "@/lib/utils/document-sources";
@@ -13,20 +13,16 @@ interface Props {
 }
 
 export function EditDocumentModal({ doc, onClose, onSaved }: Props) {
-  const [titre, setTitre] = useState("");
-  const [source, setSource] = useState("autre");
-  const [reference, setReference] = useState("");
-  const [description, setDescription] = useState("");
+  // Les champs sont initialisés depuis `doc`, sans effet de recopie : le
+  // parent monte ce composant avec `key={doc.id}`, donc React le remonte —
+  // et réinitialise ses états — à chaque document. C'est la réinitialisation
+  // par clé, qui remplace le motif « recopier les props dans l'état », lequel
+  // provoquait un rendu en cascade à chaque ouverture.
+  const [titre, setTitre] = useState(doc?.titre ?? "");
+  const [source, setSource] = useState(doc?.source ?? "autre");
+  const [reference, setReference] = useState(doc?.reference ?? "");
+  const [description, setDescription] = useState(doc?.description ?? "");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (doc) {
-      setTitre(doc.titre);
-      setSource(doc.source);
-      setReference(doc.reference ?? "");
-      setDescription(doc.description ?? "");
-    }
-  }, [doc]);
 
   async function handleSave() {
     if (!doc || !titre.trim()) return;
