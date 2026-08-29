@@ -413,6 +413,80 @@ Le bandeau vert « Toutes les non-conformités … ont été corrigées » de la
 - **Worktree orphelin (NETTOYÉ)** : `.claude/worktrees/practical-buck` pointait vers un gitdir inexistant (`/Users/macbookairm4/…`), contenu figé au 29 mars, aucun fichier absent de `main`. Supprimé avec la branche locale `claude/practical-buck`.
 - **Policy SELECT admin (FAIT, migration 037, appliquée manuellement depuis le SQL Editor Supabase)** : `pc_select_active` limitait la lecture à `actif = true` pour tous, administrateurs compris — désactiver un point le faisait disparaître de l'admin sans moyen de le réactiver. La policy permissive `pc_select_admin` (`user_role() = 'administrateur'`) s'ajoute en OR : les non-administrateurs restent limités aux points actifs. Cycle complet validé en production sur un point de test temporaire (créé inactif → visible sous « Désactivés uniquement » → bouton « Réactiver » fonctionnel → point supprimé). Base revérifiée : 487 points, 487 actifs, 0 sans famille, 0 résidu.
 
+### Barre de menu horizontale et bouton Retour (2026-08-29)
+
+Signalé en usage réel : en tablette, tout le menu de l'administrateur passait
+sous le bouton burger et il fallait l'ouvrir à chaque page.
+
+#### La barre cède ses libellés, plus jamais sa place
+
+Le seuil de bascule barre / menu déroulant dépendait du **nombre de liens du
+rôle** (correctif du 27 août) : `xl` (1280 px) pour l'administrateur et ses six
+liens, `md` (768 px) pour les autres. À 1024 px — une tablette en paysage —
+l'administrateur n'avait donc aucune barre.
+
+La barre horizontale s'affiche désormais dès **768 px pour tous les rôles**. Ce
+sont les **libellés** qui cèdent et non la barre : entre 768 et 1280 px, les
+liens d'un rôle chargé se réduisent à leur icône, avec le libellé en `title` et
+en `aria-label`. Le menu déroulant ne subsiste qu'en dessous de 768 px, où
+aucune barre ne tient.
+
+Mesuré à 768 px, rôle administrateur : les liens passent de **638 px** à
+**308 px**, le nom de l'utilisateur cède avant eux (`xl` au lieu de `lg`) et le
+bouton de déconnexion suit la même règle que les liens. Débordement nul de
+375 px à 1440 px, bascule vérifiée à 767/768 px et 1279/1280 px.
+
+> ⚠️ **La classe de visibilité ne peut pas être posée sur l'icône elle-même.**
+> `.material-symbols-outlined` est déclarée **hors couche** dans `globals.css` ;
+> son `display: inline-block` l'emporte donc sur les utilitaires Tailwind, qui
+> sont dans une couche. `xl:hidden` sur un `<span class="material-symbols-outlined">`
+> reste **sans effet** — l'icône et le libellé s'affichaient tous deux. La
+> classe porte sur un `<span>` enveloppe.
+
+#### Bouton Retour
+
+Présent dans la barre sur toutes les pages connectées sauf le tableau de bord,
+qui est la racine — l'emplacement y reste réservé pour que le logo ne sautille
+pas d'une page à l'autre.
+
+C'est un **retour hiérarchique**, pas un `history.back()` : en PWA installée sur
+une tablette de chantier, il n'y a pas de bouton de retour du navigateur, et
+l'historique peut tout aussi bien mener hors de l'application. Une page donnée a
+donc toujours la même destination. C'est un vrai `<Link>` : préchargé, ouvrable
+dans un nouvel onglet.
+
+> Le parent **ne s'obtient pas** en retirant le dernier segment du chemin :
+> `/chantiers/<id>/visites/nouvelle` remonterait sur `/chantiers/<id>/visites`,
+> qui n'existe pas et rendrait un 404. La table de `src/lib/utils/navigation-retour.ts`
+> est explicite, et l'infobulle nomme la destination (« Retour au chantier »,
+> « Retour à la visite »…).
+
+Vérifié sur les **19 routes** du groupe `(dashboard)` : chaque parent correspond
+à une page existante, aucun cycle, et un chemin inconnu retombe sur
+`/dashboard` plutôt que de faire disparaître le bouton.
+
+Les liens « Retour au chantier » déjà présents dans le corps de trois pages
+(NC, préparation de visite, comparaison) sont **conservés** : ils nomment leur
+destination, ce que l'icône de la barre ne fait pas.
+
+`CACHE_VERSION` passe à `v6` dans `public/sw.js` — la barre vit dans le layout,
+donc dans **toutes** les pages mises en cache par le Service Worker.
+
+#### Découvert au passage : `tailwind.config.ts` n'est jamais chargé
+
+Tailwind v4 ne lit plus la configuration JavaScript automatiquement ; il faut
+une directive `@config` dans le CSS, absente de `globals.css`. Les extensions du
+fichier sont donc **toutes inertes** : `min-h-touch` et `min-w-touch`, utilisées
+**191 fois** dans l'application, ne produisent aucune règle, et la garantie de
+44 × 44 px des éléments tactiles n'est appliquée nulle part. Les couleurs
+personnalisées (`conforme`, `ecart-ouvert`…) sont inertes elles aussi, mais
+aucune n'est utilisée.
+
+La barre et le bouton Retour posent donc leurs cibles **en dur**
+(`min-h-[44px]`). Le reste n'a pas été touché : rétablir `@config` activerait
+d'un coup les 44 px sur 191 éléments et déplacerait des mises en page dans toute
+l'application — c'est un changement à mener et à vérifier pour lui-même.
+
 ### Audit de sécurité v4 (2026-08-28)
 
 Audit complet : application, dépendances, base de données, en-têtes.
@@ -1309,6 +1383,9 @@ rend 12 dont 9 dans la garniture.
 37. **Filtrer une zone sur l'aire de sa boîte est un piège** : un mur oblique a une boîte presque vide. Les seuils de `examinerZone()` portent sur l'aire du **contour** ; seul le plafond d'affichage (25 %) regarde la boîte, parce que le calque dessine des rectangles.
 38. **`matchTemplate` sur un gabarit uniforme rend `NaN`** : `TM_CCOEFF_NORMED` divise par l'écart-type du gabarit. Comme `NaN < seuil` vaut faux, le score passe tous les tests et n'importe quelle position devient une correspondance parfaite. Toujours donner du contexte au gabarit, vérifier l'écart-type, et tester `Number.isFinite(maxVal)`.
 39. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+40. **`tailwind.config.ts` n'est pas chargé** : Tailwind v4 exige une directive `@config` dans le CSS, absente de `globals.css`. Toutes les extensions du fichier sont donc inertes — dont `min-h-touch` / `min-w-touch`, utilisées 191 fois : **aucune cible tactile n'est réellement contrainte à 44 px**. Écrire les tailles en dur (`min-h-[44px]`) tant que la configuration n'est pas rebranchée.
+41. **`.material-symbols-outlined` est déclarée hors couche** dans `globals.css` : son `display: inline-block` bat les utilitaires Tailwind, qui sont dans une couche. Une classe de visibilité responsive (`xl:hidden`, `md:inline`…) posée directement sur une icône **n'a aucun effet** — la poser sur un `<span>` enveloppe.
+42. **Le retour de la barre de navigation est hiérarchique**, jamais `history.back()` : en PWA installée il n'y a pas de bouton retour du navigateur et l'historique peut mener hors de l'application. Le parent ne se déduit pas du chemin — plusieurs niveaux intermédiaires n'ont pas de page (`/chantiers/<id>/visites`) — d'où la table explicite de `src/lib/utils/navigation-retour.ts`, à compléter à chaque nouvelle route.
 
 ---
 
