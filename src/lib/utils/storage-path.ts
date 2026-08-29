@@ -16,7 +16,10 @@ export function extractStoragePath(url: string, bucket: string): string | null {
   const marker = `/${bucket}/`;
   const idx = url.indexOf(marker);
   if (idx === -1) return null;
-  const path = url.substring(idx + marker.length);
+  // Retirer la chaîne de requête : une URL signée porte `?token=…`, qui ne
+  // fait pas partie du chemin de stockage. Sans cela, une suppression viserait
+  // un objet inexistant — et Supabase ne s'en plaint pas.
+  const path = url.substring(idx + marker.length).split("?")[0];
   if (path.includes("..") || path.startsWith("/")) return null;
-  return path;
+  return decodeURIComponent(path);
 }

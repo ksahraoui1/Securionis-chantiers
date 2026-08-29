@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractStoragePath } from "@/lib/utils/storage-path";
 import type { Tables } from "@/types/database";
+import { signerUrls } from "@/lib/utils/url-signee";
 
 export function useDocuments(filterSource: string) {
   const [documents, setDocuments] = useState<Tables<"base_documentaire">[]>([]);
@@ -20,7 +21,13 @@ export function useDocuments(filterSource: string) {
     if (filterSource) query = query.eq("source", filterSource);
 
     const { data } = await query;
-    if (data) setDocuments(data);
+    // Le bucket est privé (SEC-03) : les liens de téléchargement doivent être
+    // signés. On signe au chargement — le point de passage unique — plutôt
+    // qu'à chaque endroit qui affiche un lien.
+    if (data) {
+      const signees = await signerUrls(supabase, data.map((d) => d.fichier_url));
+      setDocuments(data.map((d, i) => ({ ...d, fichier_url: signees[i] ?? d.fichier_url })));
+    }
 
     const { data: liens } = await supabase
       .from("point_controle_doc_liens")

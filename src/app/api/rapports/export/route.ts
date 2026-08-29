@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getUserRole, isAllowedSupabaseUrl } from "@/lib/utils/security";
 import JSZip from "jszip";
+import { signerUrl } from "@/lib/utils/url-signee";
 
 export const maxDuration = 300; // 5 minutes
 
@@ -90,8 +91,13 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        // Télécharger le rapport
-        const response = await fetch(visite.rapport_url, {
+        // Le bucket est privé (SEC-03) : signer avant de télécharger.
+        const urlSignee = await signerUrl(supabase, visite.rapport_url);
+        if (!urlSignee) {
+          console.warn("Signature impossible pour un rapport");
+          continue;
+        }
+        const response = await fetch(urlSignee, {
           signal: AbortSignal.timeout(30000),
         });
         if (!response.ok) {

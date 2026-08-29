@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { signerUrl, canoniserUrlStockage } from "@/lib/utils/url-signee";
 
 interface EntrepriseData {
   id?: string;
@@ -43,6 +44,10 @@ export default function AdminEntreprisePage() {
         .limit(1)
         .maybeSingle();
       if (data) {
+        // Bucket privé (SEC-03) : le logo s'affiche par URL signée. La forme
+        // canonique est rétablie à l'enregistrement — sinon une URL expirée
+        // serait écrite en base.
+        const logoSigne = await signerUrl(supabase, data.logo_url);
         setForm({
           id: data.id,
           nom: data.nom ?? "",
@@ -51,7 +56,7 @@ export default function AdminEntreprisePage() {
           ville: data.ville ?? "",
           telephone: data.telephone ?? "",
           email: data.email ?? "",
-          logo_url: data.logo_url ?? null,
+          logo_url: logoSigne ?? data.logo_url ?? null,
         });
       }
       setLoading(false);
@@ -81,7 +86,8 @@ export default function AdminEntreprisePage() {
         data: { publicUrl },
       } = supabase.storage.from("rapports").getPublicUrl(path);
 
-      setForm((prev) => ({ ...prev, logo_url: publicUrl }));
+      const logoAffichable = (await signerUrl(supabase, publicUrl)) ?? publicUrl;
+      setForm((prev) => ({ ...prev, logo_url: logoAffichable }));
     } catch (err) {
       // Le message du stockage porte la cause réelle (type refusé, taille,
       // droits). Le masquer derrière un texte générique avait laissé passer
@@ -116,7 +122,7 @@ export default function AdminEntreprisePage() {
         ville: form.ville.trim() || null,
         telephone: form.telephone.trim() || null,
         email: form.email.trim() || null,
-        logo_url: form.logo_url,
+        logo_url: form.logo_url ? canoniserUrlStockage(form.logo_url) : null,
         updated_at: new Date().toISOString(),
       };
 

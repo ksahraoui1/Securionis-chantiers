@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { canAccessVisite, getUserRole } from "@/lib/utils/security";
 import { getLimits } from "@/lib/stripe/limits";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { signerUrl, signerUrls } from "@/lib/utils/url-signee";
 
 export async function POST(
   request: NextRequest,
@@ -92,6 +93,24 @@ export async function POST(
       })(),
     ]);
 
+    // Les buckets sont privés (SEC-03) : react-pdf va chercher les images par
+    // HTTP, il faut donc lui passer des URL signées — le logo et chaque photo
+    // de réponse. Les photos sont signées en un seul appel par bucket.
+    const logoSigne = await signerUrl(supabase, entreprise?.logo_url ?? null);
+
+    const reponsesSource = reponses ?? [];
+    const photosAPlat = reponsesSource.flatMap((r) => r.photos ?? []);
+    const photosSignees = await signerUrls(supabase, photosAPlat);
+    let curseurPhoto = 0;
+    const reponsesSignees = reponsesSource.map((r) => {
+      const nb = (r.photos ?? []).length;
+      const photos = photosSignees
+        .slice(curseurPhoto, curseurPhoto + nb)
+        .filter((u): u is string => !!u);
+      curseurPhoto += nb;
+      return { ...r, photos };
+    });
+
     // Dynamically import react-pdf to avoid SSR issues
     const { renderToBuffer } = await import("@react-pdf/renderer");
     const { RapportVisite } = await import(
@@ -103,11 +122,11 @@ export async function POST(
         chantier: chantier!,
         visite,
         inspecteur: inspecteur ?? { nom: "Inconnu", email: "" },
-        reponses: reponses ?? [],
+        reponses: reponsesSignees,
         ecarts: ecarts ?? [],
         destinataires: destinataires ?? [],
         entrepriseNom: entreprise?.nom ?? null,
-        entrepriseLogoUrl: entreprise?.logo_url ?? null,
+        entrepriseLogoUrl: logoSigne,
         entrepriseAdresse: entreprise
           ? [entreprise.adresse, entreprise.npa, entreprise.ville]
               .filter(Boolean)

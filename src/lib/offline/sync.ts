@@ -4,6 +4,7 @@
 // Appelé quand le réseau revient ou manuellement.
 
 import { createClient } from "@/lib/supabase/client";
+import { canoniserUrlsStockage } from "@/lib/utils/url-signee";
 import {
   getUnsyncedResponses,
   markResponseSynced,
@@ -128,7 +129,7 @@ export async function syncPendingData(): Promise<SyncResult> {
           point_controle_id: response.point_controle_id,
           valeur: response.valeur,
           remarque: response.remarque,
-          photos: response.photos,
+          photos: canoniserUrlsStockage(response.photos),
           updated_at: response.updated_at,
         },
         { onConflict: "visite_id,point_controle_id" }

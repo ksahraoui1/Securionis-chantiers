@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { VisiteEnCours } from "./visite-en-cours";
+import { signerUrls } from "@/lib/utils/url-signee";
 
 export default async function VisitePage({
   params,
@@ -46,12 +47,24 @@ export default async function VisitePage({
     { id: string; valeur: string; remarque: string | null; photos: string[] }
   > = {};
   if (reponses) {
+    // Le bucket est privé (SEC-03) : les photos déjà enregistrées se servent
+    // par URL signée. Un seul appel pour toute la visite.
+    const photosAPlat = reponses.flatMap((r) => r.photos ?? []);
+    const photosSignees = await signerUrls(supabase, photosAPlat);
+    let curseur = 0;
+
     for (const r of reponses) {
+      const nb = (r.photos ?? []).length;
+      const photos = photosSignees
+        .slice(curseur, curseur + nb)
+        .filter((u): u is string => !!u);
+      curseur += nb;
+
       existingReponses[r.point_controle_id] = {
         id: r.id,
         valeur: r.valeur,
         remarque: r.remarque,
-        photos: r.photos ?? [],
+        photos,
       };
     }
   }

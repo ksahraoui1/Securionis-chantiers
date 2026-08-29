@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardNav } from "./nav";
 import { OfflineBanner } from "@/components/ui/offline-banner";
+import { signerUrl } from "@/lib/utils/url-signee";
 
 export default async function DashboardLayout({
   children,
@@ -51,13 +52,16 @@ export default async function DashboardLayout({
     }
   }
 
+  // Le bucket est privé (SEC-03) : le logo se sert par URL signée.
+  const logoSigne = await signerUrl(supabase, entrepriseLogoUrl);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNav
         userName={profile?.nom ?? user.email ?? ""}
         userRole={profile?.role ?? "inspecteur"}
         entrepriseNom={entrepriseNom}
-        entrepriseLogoUrl={entrepriseLogoUrl}
+        entrepriseLogoUrl={logoSigne}
       />
       <OfflineBanner />
       <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>

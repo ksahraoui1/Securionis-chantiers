@@ -23,6 +23,7 @@ import type {
 } from "@/components/pdf/rapport-comparaison-auto";
 import type { TypeDifference } from "@/lib/plan-diff-detection";
 import { journaliser } from "@/lib/audit";
+import { signerUrl } from "@/lib/utils/url-signee";
 
 // Le rapport embarque trois images et jusqu'à 300 lignes : la génération PDF
 // peut dépasser la minute par défaut sur un petit conteneur.
@@ -97,7 +98,10 @@ function lireEcarts(brut: FormDataEntryValue | null): EcartRecu[] | null {
   });
 }
 
-/** Télécharge une image du stockage, sous la whitelist SSRF de l'application. */
+/**
+ * Télécharge une image du stockage, sous la whitelist SSRF de l'application.
+ * L'URL est signée en amont par l'appelant : les buckets sont privés (SEC-03).
+ */
 async function chargerImageDistante(url: string | null): Promise<ImagePdf | null> {
   if (!url || !isAllowedSupabaseUrl(url)) return null;
   try {
@@ -239,7 +243,7 @@ export async function POST(
       annotations: comptes.get(s.id) ?? 0,
     }));
 
-    const logo = await chargerImageDistante(entreprise?.logo_url ?? null);
+    const logo = await chargerImageDistante(await signerUrl(supabase, entreprise?.logo_url ?? null));
 
     // --- Composition des écarts
     const evalues: EcartEvalue[] = ecartsRecus.map((e) => ({

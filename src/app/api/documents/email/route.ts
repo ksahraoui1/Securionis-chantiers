@@ -4,6 +4,7 @@ import { Resend } from "resend";
 import { getResendApiKey, getResendFromEmail } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { escapeHtml, isAllowedSupabaseUrl } from "@/lib/utils/security";
+import { signerUrl } from "@/lib/utils/url-signee";
 
 /**
  * POST /api/documents/email
@@ -61,8 +62,15 @@ export async function POST(request: Request) {
     }
 
     // Download file avec limite de taille (50 Mo)
+    // Le bucket est privé (SEC-03) : l'URL stockée n'est plus résolvable telle
+    // quelle, il faut la signer. La whitelist ci-dessus reste satisfaite,
+    // l'URL signée porte le même hôte.
     const MAX_FILE_SIZE = 50 * 1024 * 1024;
-    const fileRes = await fetch(doc.fichier_url, { signal: AbortSignal.timeout(30000) });
+    const urlSignee = await signerUrl(supabase, doc.fichier_url);
+    if (!urlSignee) {
+      return NextResponse.json({ error: "Fichier introuvable" }, { status: 404 });
+    }
+    const fileRes = await fetch(urlSignee, { signal: AbortSignal.timeout(30000) });
     if (!fileRes.ok) throw new Error("Impossible de télécharger le fichier");
 
     const fileContentLength = parseInt(fileRes.headers.get("content-length") ?? "0", 10);

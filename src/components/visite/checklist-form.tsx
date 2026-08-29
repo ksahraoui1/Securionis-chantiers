@@ -8,6 +8,7 @@ import { QuickAddPoint } from "./quick-add-point";
 import { PointSelector } from "./point-selector";
 import { useAutosave } from "@/hooks/use-autosave";
 import type { Tables } from "@/types/database";
+import { signerUrls } from "@/lib/utils/url-signee";
 
 type LinkedDoc = {
   base_documentaire: { id: string; titre: string; fichier_url: string; type_fichier: string } | null;
@@ -64,7 +65,37 @@ export function ChecklistForm({
 
     const { data } = await query;
     if (data) {
-      const loaded = data as PointWithDocs[];
+      // Bucket privé (SEC-03) : les fiches jointes aux points de contrôle
+      // (documents propres et base documentaire) se servent par URL signée.
+      // Un seul appel pour toute la checklist.
+      const brut = data as PointWithDocs[];
+      const aSigner: string[] = [];
+      brut.forEach((p) => {
+        (p.point_controle_documents ?? []).forEach((d) => aSigner.push(d.fichier_url));
+        (p.point_controle_doc_liens ?? []).forEach((l) => {
+          if (l.base_documentaire) aSigner.push(l.base_documentaire.fichier_url);
+        });
+      });
+      const signees = await signerUrls(supabase, aSigner);
+      let k = 0;
+      const loaded = brut.map((p) => ({
+        ...p,
+        point_controle_documents: (p.point_controle_documents ?? []).map((d) => ({
+          ...d,
+          fichier_url: signees[k++] ?? d.fichier_url,
+        })),
+        point_controle_doc_liens: (p.point_controle_doc_liens ?? []).map((l) =>
+          l.base_documentaire
+            ? {
+                ...l,
+                base_documentaire: {
+                  ...l.base_documentaire,
+                  fichier_url: signees[k++] ?? l.base_documentaire.fichier_url,
+                },
+              }
+            : l,
+        ),
+      })) as PointWithDocs[];
       setAllPoints(loaded);
 
       // Si des réponses existent déjà, on saute la sélection (visite reprise)
