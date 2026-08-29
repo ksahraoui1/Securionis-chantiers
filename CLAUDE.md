@@ -654,7 +654,7 @@ appelable sans argument. C'est faux : la fonction est **privée** et prend
 
 ### FONC-01 — un inspecteur ne voyait aucun chantier (2026-08-29)
 
-Trouvé en audit. Migration **047 écrite et éprouvée**.
+Trouvé en audit. Migration **047 appliquée**.
 
 Tout l'accès non-administrateur passe par `chantier_inspecteurs` : **21
 politiques sur 8 tables** en dépendent. Or la table était **vide** — 12
@@ -724,6 +724,29 @@ devenue morte a été retirée du composant et de ses deux appelants.
 
 Base revérifiée après annulation : 12 chantiers, 0 liaison, aucun trigger, aucun
 résidu.
+
+#### Après application, sur la base migrée
+
+12 chantiers, **12 liaisons**, aucun chantier orphelin, trigger actif. Scénario
+rejoué sur la base telle qu'elle est désormais : l'inspecteur voit 0 chantier
+avant attribution, crée le sien par `insert … returning` (le point de rupture
+d'avant), reçoit sa liaison du trigger, le modifie, et ne modifie pas celui d'un
+autre ; l'administrateur garde ses 13 chantiers.
+
+> ⚠️ **La migration répare le mécanisme, pas l'attribution.** Le rattrapage lie
+> chaque chantier à son créateur — l'administrateur pour les douze. Un
+> inspecteur existant ne voit donc toujours rien tant qu'il n'a pas été
+> attribué depuis `/chantiers/<id>/modifier`. C'est une décision métier, pas un
+> défaut.
+
+#### Confirmation de bout en bout de SEC-02, au passage
+
+Un écart de comptage pendant la vérification — 89 visites au lieu de 90 —
+s'expliquait par une **suppression réelle faite depuis l'application** en cours
+de session. L'entrée `delete_visite` correspondante est bien au journal, avec
+auteur et détails : `journaliser()` écrit correctement en production, par le
+`service_role`, sur une table où `authenticated` n'a plus aucun droit
+d'écriture. Les deux corrections tiennent ensemble.
 
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
