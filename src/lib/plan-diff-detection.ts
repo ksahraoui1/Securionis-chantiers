@@ -23,6 +23,7 @@ import {
   chargerImage,
   convertToGrayscale,
   libererTout,
+  masqueMurs,
   matDepuisImage,
   normalizeBrightness,
   resizeToSameDimensions,
@@ -40,6 +41,35 @@ function respirer(): Promise<void> {
 }
 
 export type TypeDifference = "added" | "removed" | "modified" | "moved";
+
+/**
+ * Ce sur quoi porte la comparaison.
+ *
+ * `murs` ne retient que les traits pleins : le bâti. C'est le défaut, parce
+ * que c'est la seule chose dont la coïncidence entre deux versions d'un plan
+ * ait un sens — le reste du dessin change d'un dossier à l'autre sans que
+ * l'ouvrage ait bougé.
+ *
+ * `dessin` compare tout le tracé, cotes, textes et trames comprises. À réserver
+ * aux cas où la modification cherchée n'est pas dans les murs.
+ */
+export type CibleAnalyse = "murs" | "dessin";
+
+/** Ce que rend un détecteur, quel que soit le mode. */
+export interface ResultatDetection {
+  zones: ZoneAvancee[];
+  /** Contours bruts examinés, avant tout filtrage. */
+  contours: number;
+  /** Part de la surface comparée qui diffère, entre 0 et 1. */
+  discordance: number;
+  /**
+   * Zones écartées parce qu'elles couvraient une part démesurée de la page ou
+   * n'étaient qu'une enveloppe presque vide. Leur nombre dit à l'utilisateur
+   * qu'il reste quelque chose à voir, et que c'est le recalage qu'il faut
+   * reprendre — non que les plans coïncident.
+   */
+  etendues: number;
+}
 
 export interface ZoneDifference {
   /** Coordonnées en pixels, dans le repère de l'image d'analyse (plan PE). */
@@ -86,6 +116,20 @@ export interface ResultatAnalyse {
    * Renvoyés pour être montrés : une exclusion invisible serait invérifiable.
    */
   cartouches: Rect[];
+  /** Ce sur quoi la comparaison a porté. */
+  cible: CibleAnalyse;
+  /**
+   * Zones écartées faute d'être localisables — trop étendues, ou presque
+   * vides. Un nombre non nul signale un recalage à reprendre, et interdit de
+   * lire « 0 différence » comme « les plans coïncident ».
+   */
+  zonesEcartees: number;
+  /**
+   * Épaisseur minimale, en pixels, d'un trait retenu comme mur.
+   * `0` en mode « dessin », ou lorsque les murs n'ont pas pu être isolés du
+   * reste du tracé — le résultat porte alors sur tout le dessin.
+   */
+  epaisseurMur: number;
   /**
    * Conversion des coordonnées d'une zone vers les unités monde OpenSeadragon.
    * Elle rend le repère explicite, que l'analyse ait porté sur les plans
@@ -184,8 +228,74 @@ const CORRELATION_DEPLACEMENT = 0.72;
 /** Décalage minimal, en pixels, pour parler de déplacement et non de bruit. */
 const DECALAGE_MINIMAL = 4;
 
+/**
+ * Rayon maximal de la recherche de motif, en pixels.
+ *
+ * Sans plafond, la fenêtre d'un long mur couvre la moitié de la page, et
+ * `matchTemplate` y trouve forcément un autre mur qui lui ressemble — un plan
+ * n'est fait que de segments parallèles de même épaisseur. La zone est alors
+ * déclarée « déplacée » vers un élément qui n'a rien à voir avec elle.
+ *
+ * Au-delà de ce rayon, un mur qui disparaît ici et un mur qui apparaît là-bas
+ * ne sont de toute façon pas le même ouvrage déplacé : ce sont bien une
+ * suppression et un ajout, et les nommer ainsi est plus juste.
+ */
+const RAYON_RECHERCHE_MAX = 120;
+
+/** Liseré de contexte ajouté autour d'un gabarit de recherche, en pixels. */
+const MARGE_GABARIT = 6;
+
+/** En deçà, le gabarit est uniforme : aucune corrélation n'a de sens. */
+const ECART_TYPE_MINIMAL = 1;
+
 /** Nombre de recherches de motif par analyse : chacune a un coût. */
 const NB_RECHERCHES_DEPLACEMENT = 40;
+
+/**
+ * Part maximale de la surface analysée qu'une **seule** zone peut occuper.
+ *
+ * Une différence qui couvre le quart de la page n'est pas une différence : la
+ * fermeture morphologique a soudé des résidus épars sur tout le dessin en un
+ * contour unique. Une telle zone ne désigne rien, ne se vérifie pas et
+ * repousse les vraies différences en bas du tableau — elle est écartée.
+ */
+const AIRE_MAXIMALE_RELATIVE = 0.08;
+
+/**
+ * Part maximale de la page que peut couvrir la **boîte** d'une zone.
+ *
+ * Plus permissif que le plafond d'aire, parce qu'un long mur oblique a une
+ * boîte bien plus grande que lui. Mais le calque et le tableau désignent les
+ * écarts par des rectangles : au-delà d'un quart de la page, le rectangle ne
+ * montre plus rien — c'est le grand cadre orange qui recouvrait tout le plan.
+ */
+const AIRE_BOITE_MAXIMALE = 0.25;
+
+/**
+ * Densité minimale d'une zone : part de sa boîte réellement occupée par la
+ * différence. Une boîte presque vide est le signe d'un contour étiré entre
+ * deux résidus éloignés, non d'un élément qui aurait changé.
+ */
+const REMPLISSAGE_MINIMAL = 0.1;
+
+/**
+ * Tolérance de superposition des murs, en pixels.
+ *
+ * Un recalage manuel ne place jamais deux traits au pixel près. Chaque masque
+ * est dilaté de cette valeur avant d'être soustrait à l'autre : un mur décalé
+ * de moins que cela est tenu pour coïncidant.
+ */
+const TOLERANCE_MURS_PX = 4;
+
+/** Remplissage à partir duquel une zone de mur est jugée pleinement dense. */
+const REMPLISSAGE_PLEIN = 0.35;
+
+/** Répartition de la confiance en mode « murs ». */
+const POIDS_MURS = {
+  remplissage: 0.5,
+  contraste: 0.35,
+  surface: 0.15,
+};
 
 /**
  * Détecte les différences structurelles entre deux plans alignés.
@@ -393,6 +503,8 @@ export async function analyserPlans(
     nbApercus?: number;
     /** Écarter les cartouches de la comparaison. */
     ignorerCartouches?: boolean;
+    /** Ce sur quoi porte la comparaison. Les murs par défaut. */
+    cible?: CibleAnalyse;
   } = {}
 ): Promise<ResultatAnalyse> {
   const {
@@ -401,6 +513,7 @@ export async function analyserPlans(
     onEtape,
     nbApercus = NB_APERCUS,
     ignorerCartouches = true,
+    cible = "murs",
   } = options;
 
   const etape = async (valeur: EtapeAnalyse) => {
@@ -429,6 +542,8 @@ export async function analyserPlans(
   let masqueCartouches: Mat | null = null;
   let masqueComparaison: Mat | null = null;
   let cartouches: Rect[] = [];
+  let murPE: Mat | null = null;
+  let murEXE: Mat | null = null;
 
   try {
     await etape("preparation-1");
@@ -471,11 +586,23 @@ export async function analyserPlans(
 
     await etape("detection");
     masqueComparaison = combinerMasques(masqueRecouvrement, masqueCartouches);
-    const detection = detectStructuralDiffsAdvanced(
-      normalisePE,
-      alignee,
-      masqueComparaison
-    );
+
+    let epaisseurMur = 0;
+    let detection: ResultatDetection;
+
+    if (cible === "murs") {
+      const murs = isolerMurs(normalisePE, alignee);
+      murPE = murs.pe;
+      murEXE = murs.exe;
+      epaisseurMur = murs.epaisseur;
+      detection = detecterEcartsMurs(murPE, murEXE, masqueComparaison);
+    } else {
+      detection = detectStructuralDiffsAdvanced(
+        normalisePE,
+        alignee,
+        masqueComparaison
+      );
+    }
 
     await etape("classification");
     const zones = filterNoise(detection.zones, seuilBruit) as ZoneAvancee[];
@@ -500,8 +627,18 @@ export async function analyserPlans(
         origineY: 0,
         unitesParPixel: 1 / Math.max(1, normalisePE.cols),
       },
-      avertissement: null,
+      avertissement:
+        detection.etendues > 0
+          ? `${detection.etendues} zone${detection.etendues > 1 ? "s" : ""} de ` +
+            "différence trop étendue" +
+            `${detection.etendues > 1 ? "s" : ""} pour être localisée` +
+            `${detection.etendues > 1 ? "s" : ""} : le recalage automatique ` +
+            "n'a pas superposé les deux plans assez finement."
+          : null,
       cartouches,
+      cible,
+      epaisseurMur,
+      zonesEcartees: detection.etendues,
       // Une homographie plausible ne suffit pas : si le résidu couvre une part
       // importante de la page, les deux plans ne se correspondent pas.
       aligne,
@@ -525,7 +662,9 @@ export async function analyserPlans(
       // `combinerMasques` réutilise le premier masque quand les deux existent :
       // les libérer tous deux le supprimerait deux fois.
       masqueRecouvrement,
-      masqueComparaison === masqueRecouvrement ? null : masqueCartouches
+      masqueComparaison === masqueRecouvrement ? null : masqueCartouches,
+      murPE,
+      murEXE
     );
   }
 }
@@ -886,7 +1025,7 @@ export function detectStructuralDiffsAdvanced(
    * n'a rien posé : la comparaison n'y a pas de sens et ne doit rien signaler.
    */
   masqueRecouvrement: Mat | null = null
-): { zones: ZoneAvancee[]; contours: number; discordance: number } {
+): ResultatDetection {
   const cv = opencv();
 
   const lisse1 = new cv.Mat();
@@ -965,6 +1104,7 @@ export function detectStructuralDiffsAdvanced(
     );
 
     const zones: ZoneAvancee[] = [];
+    let etendues = 0;
     const nbContours = Math.min(contours.size(), NB_CONTOURS_MAX);
 
     for (let i = 0; i < nbContours; i += 1) {
@@ -972,12 +1112,26 @@ export function detectStructuralDiffsAdvanced(
       try {
         const boite = cv.boundingRect(contour);
         const aireBoite = boite.width * boite.height;
-        if (aireBoite < AIRE_MINIMALE_PX) continue;
+        const aireRelative = aireBoite / airePlan;
+        const aireContour = cv.contourArea(contour);
+        // `nettoyee` porte le masque des différences : sa densité dit si le
+        // contour désigne un objet ou n'est qu'une enveloppe presque vide.
+        const remplissage = partEncre(nettoyee, boite);
+
+        const recevabilite = examinerZone({
+          aireBoite,
+          aireContour,
+          airePlan,
+          pixelsDiff: remplissage * aireBoite,
+        });
+        if (recevabilite !== "retenue") {
+          if (recevabilite === "trop-etendue") etendues += 1;
+          continue;
+        }
 
         const encrePE = partEncre(encre1, boite);
         const encreEXE = partEncre(encre2, boite);
         const dissim = moyenneRegion(dissimilarite, boite) / 255;
-        const aireRelative = aireBoite / airePlan;
 
         const contientBlob = blobs.some(
           (centre) =>
@@ -992,7 +1146,7 @@ export function detectStructuralDiffsAdvanced(
           y: boite.y,
           width: boite.width,
           height: boite.height,
-          area: cv.contourArea(contour),
+          area: aireContour,
           aireRelative,
           encrePE,
           encreEXE,
@@ -1035,6 +1189,7 @@ export function detectStructuralDiffsAdvanced(
       zones: retenues,
       contours: contours.size(),
       discordance,
+      etendues,
     };
   } finally {
     libererTout(
@@ -1042,6 +1197,314 @@ export function detectStructuralDiffsAdvanced(
       dissimilarite, encre1, encre2, noyauOuverture, noyauFermeture
     );
   }
+}
+
+/**
+ * Compare les **murs** de deux plans superposés.
+ *
+ * C'est la question que se pose réellement l'utilisateur devant deux versions
+ * d'un plan : *les murs coïncident-ils ?* Tout le reste du dessin — cotes,
+ * textes, axes, hachures, contenu des cartouches, garniture de la feuille —
+ * change d'un dossier à l'autre sans que le bâtiment ait bougé d'un
+ * centimètre, et le signaler serait au mieux inutile, au pire trompeur.
+ *
+ * Les deux masques viennent de `masqueMurs()`, qui ne retient que les traits
+ * pleins. La comparaison est alors une simple soustraction :
+ *
+ * - un mur du PE qui ne rencontre aucun mur de l'EXE → **supprimé** ;
+ * - un mur de l'EXE qui ne rencontre aucun mur du PE → **ajouté** ;
+ * - un mur supprimé dont le motif se retrouve un peu plus loin → **déplacé**.
+ *
+ * Chaque masque est dilaté de `TOLERANCE_MURS_PX` avant la soustraction :
+ * sans cette marge, deux murs recalés à la main mais décalés de deux pixels
+ * ressortiraient tous les deux, l'un comme supprimé, l'autre comme ajouté.
+ *
+ * Les deux masques doivent être binaires, de même taille et superposés.
+ */
+export function detecterEcartsMurs(
+  murPE: Mat,
+  murEXE: Mat,
+  masqueExclusion: Mat | null = null
+): ResultatDetection {
+  const cv = opencv();
+
+  const dilatePE = new cv.Mat();
+  const dilateEXE = new cv.Mat();
+  const inversePE = new cv.Mat();
+  const inverseEXE = new cv.Mat();
+  const absentEXE = new cv.Mat();
+  const absentPE = new cv.Mat();
+  const cumul = new cv.Mat();
+  let noyauTolerance: Mat | null = null;
+  let noyauNettoyage: Mat | null = null;
+
+  try {
+    const cote = TOLERANCE_MURS_PX * 2 + 1;
+    noyauTolerance = cv.getStructuringElement(
+      cv.MORPH_RECT,
+      new cv.Size(cote, cote)
+    );
+    cv.morphologyEx(murPE, dilatePE, cv.MORPH_DILATE, noyauTolerance);
+    cv.morphologyEx(murEXE, dilateEXE, cv.MORPH_DILATE, noyauTolerance);
+
+    cv.bitwise_not(dilateEXE, inverseEXE);
+    cv.bitwise_not(dilatePE, inversePE);
+    cv.bitwise_and(murPE, inverseEXE, absentEXE);
+    cv.bitwise_and(murEXE, inversePE, absentPE);
+
+    // Un liseré subsiste toujours au bout d'un trait, là où la dilatation ne
+    // rattrape pas tout à fait : l'ouverture le retire.
+    noyauNettoyage = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+    cv.morphologyEx(absentEXE, absentEXE, cv.MORPH_OPEN, noyauNettoyage);
+    cv.morphologyEx(absentPE, absentPE, cv.MORPH_OPEN, noyauNettoyage);
+
+    if (masqueExclusion) {
+      cv.bitwise_and(absentEXE, masqueExclusion, absentEXE);
+      cv.bitwise_and(absentPE, masqueExclusion, absentPE);
+    }
+
+    const airePlan = masqueExclusion
+      ? Math.max(1, cv.countNonZero(masqueExclusion))
+      : Math.max(1, murPE.cols * murPE.rows);
+
+    cv.bitwise_or(absentEXE, absentPE, cumul);
+    // Même définition qu'en mode « dessin » — une part de la surface comparée,
+    // et non des murs — pour que les seuils gardent le même sens.
+    const discordance = cv.countNonZero(cumul) / airePlan;
+
+    const zones: ZoneAvancee[] = [];
+    let contoursVus = 0;
+    let etendues = 0;
+
+    for (const cas of [
+      { carte: absentEXE, type: "removed" as const },
+      { carte: absentPE, type: "added" as const },
+    ]) {
+      const trouve = zonesDepuisMasque(
+        cas.carte,
+        cas.type,
+        murPE,
+        murEXE,
+        airePlan
+      );
+      contoursVus += trouve.contours;
+      etendues += trouve.etendues;
+      zones.push(...trouve.zones);
+    }
+
+    zones.sort((a, b) => b.confiance - a.confiance);
+    const retenues = zones.slice(0, NB_ZONES_MAX);
+
+    // Un mur absent ici mais retrouvé un peu plus loin n'a pas disparu : il a
+    // été déplacé. C'est l'écart le plus courant entre une enquête publique et
+    // une exécution, et le plus utile à signaler comme tel.
+    //
+    // Un déplacement laisse **deux** traces : un manque à l'ancienne place et
+    // un ajout à la nouvelle. Les compter toutes deux doublerait le nombre de
+    // différences et laisserait croire à un mur de plus. La destination est
+    // donc retirée dès qu'elle est identifiée.
+    const aRetirer = new Set<ZoneAvancee>();
+    let recherches = 0;
+
+    for (const zone of retenues) {
+      if (recherches >= NB_RECHERCHES_DEPLACEMENT) break;
+      if (zone.type !== "removed") continue;
+      recherches += 1;
+
+      const decalage = motifDeplace(murPE, murEXE, zone);
+      if (!decalage) continue;
+
+      zone.type = "moved";
+
+      const arriveeX = zone.x + decalage.dx + zone.width / 2;
+      const arriveeY = zone.y + decalage.dy + zone.height / 2;
+      const portee = Math.max(8, Math.max(zone.width, zone.height) * 0.5);
+
+      for (const autre of retenues) {
+        if (autre.type !== "added" || aRetirer.has(autre)) continue;
+        const distance = Math.hypot(
+          autre.x + autre.width / 2 - arriveeX,
+          autre.y + autre.height / 2 - arriveeY
+        );
+        if (distance <= portee) aRetirer.add(autre);
+      }
+    }
+
+    const finales = aRetirer.size
+      ? retenues.filter((zone) => !aRetirer.has(zone))
+      : retenues;
+
+    return { zones: finales, contours: contoursVus, discordance, etendues };
+  } finally {
+    libererTout(
+      dilatePE, dilateEXE, inversePE, inverseEXE,
+      absentEXE, absentPE, cumul, noyauTolerance, noyauNettoyage
+    );
+  }
+}
+
+/**
+ * Extrait les zones d'un masque d'écarts de murs.
+ *
+ * Le type est connu d'avance : il vient du masque dont la zone est issue, non
+ * d'une mesure d'encre. C'est ce qui rend la classification fiable ici, là où
+ * elle reste inférée en mode « dessin ».
+ */
+function zonesDepuisMasque(
+  carte: Mat,
+  type: TypeDifference,
+  murPE: Mat,
+  murEXE: Mat,
+  airePlan: number
+): { zones: ZoneAvancee[]; contours: number; etendues: number } {
+  const cv = opencv();
+
+  const hierarchie = new cv.Mat();
+  const contours = new cv.MatVector();
+
+  try {
+    cv.findContours(
+      carte,
+      contours,
+      hierarchie,
+      cv.RETR_EXTERNAL,
+      cv.CHAIN_APPROX_SIMPLE
+    );
+
+    const zones: ZoneAvancee[] = [];
+    let etendues = 0;
+    const nbContours = Math.min(contours.size(), NB_CONTOURS_MAX);
+
+    for (let i = 0; i < nbContours; i += 1) {
+      const contour = contours.get(i);
+      try {
+        const boite = cv.boundingRect(contour);
+        const aireBoite = boite.width * boite.height;
+        const aireRelative = aireBoite / airePlan;
+        const aireContour = cv.contourArea(contour);
+        const remplissage = partEncre(carte, boite);
+
+        const recevabilite = examinerZone({
+          aireBoite,
+          aireContour,
+          airePlan,
+          pixelsDiff: remplissage * aireBoite,
+        });
+        if (recevabilite !== "retenue") {
+          if (recevabilite === "trop-etendue") etendues += 1;
+          continue;
+        }
+
+        const encrePE = partEncre(murPE, boite);
+        const encreEXE = partEncre(murEXE, boite);
+
+        zones.push({
+          x: boite.x,
+          y: boite.y,
+          width: boite.width,
+          height: boite.height,
+          area: aireContour,
+          aireRelative,
+          encrePE,
+          encreEXE,
+          type,
+          // La dissimilarité n'a pas de sens sur un masque binaire : le
+          // remplissage joue le même rôle, en plus direct.
+          dissimilarite: remplissage,
+          blob: false,
+          confiance: confianceMurs({
+            remplissage,
+            encrePE,
+            encreEXE,
+            aireRelative,
+          }),
+        });
+      } finally {
+        libererTout(contour);
+      }
+    }
+
+    return { zones, contours: contours.size(), etendues };
+  } finally {
+    libererTout(hierarchie, contours);
+  }
+}
+
+/**
+ * Garde-fous communs aux deux modes de détection.
+ *
+ * Trois façons pour un contour de ne rien vouloir dire : trop petit pour être
+ * mesuré, assez grand pour couvrir le plan, ou si peu rempli qu'il n'est
+ * qu'une enveloppe tendue entre des résidus épars.
+ *
+ * Les deux derniers cas ont la même origine et la même conséquence : quand le
+ * recalage est légèrement faux, le liseré laissé le long de chaque trait finit
+ * par se souder en **un** contour qui enveloppe tout le dessin. Il ne désigne
+ * rien, ne se vérifie pas, et repousse les vraies différences en bas du
+ * tableau. Ils sont donc distingués du simple bruit et **comptés** : une zone
+ * écartée pour cette raison est un signe que le recalage est à reprendre, et
+ * l'utilisateur doit l'apprendre plutôt que de lire « 0 différence ».
+ */
+type Recevabilite = "retenue" | "bruit" | "trop-etendue";
+
+function examinerZone(mesures: {
+  /** Aire de la boîte englobante, en pixels. */
+  aireBoite: number;
+  /** Aire du contour lui-même, en pixels. */
+  aireContour: number;
+  /** Aire comparée, en pixels : de quoi rapporter les deux précédentes. */
+  airePlan: number;
+  /** Pixels de différence comptés dans la boîte. */
+  pixelsDiff: number;
+}): Recevabilite {
+  if (mesures.aireBoite < AIRE_MINIMALE_PX) return "bruit";
+
+  // ⚠️ Les deux tests portent sur l'aire du **contour**, jamais sur celle de
+  // sa boîte. Un mur en diagonale — et ce projet n'en manque pas, les
+  // bâtiments y sont pentagonaux — a une boîte presque vide : la juger sur sa
+  // boîte reviendrait à écarter systématiquement les murs obliques, c'est-à-
+  // dire à rendre l'outil aveugle là où il doit voir.
+  if (mesures.aireContour / mesures.airePlan > AIRE_MAXIMALE_RELATIVE) {
+    return "trop-etendue";
+  }
+  // Reste le cas d'une forme fine mais démesurée : légitime comme différence,
+  // illisible comme rectangle.
+  if (mesures.aireBoite / mesures.airePlan > AIRE_BOITE_MAXIMALE) {
+    return "trop-etendue";
+  }
+  if (mesures.pixelsDiff / Math.max(1, mesures.aireContour) < REMPLISSAGE_MINIMAL) {
+    return "trop-etendue";
+  }
+  return "retenue";
+}
+
+/**
+ * Confiance d'un écart de murs, de 0 à 1.
+ *
+ * Trois indices concordants : la densité de la zone, l'écart de matière entre
+ * les deux plans à cet endroit, et la surface. Ni dissimilarité structurelle
+ * ni détection de blob ici — sur un masque binaire, elles n'apportent rien que
+ * le remplissage ne dise déjà.
+ */
+function confianceMurs(mesures: {
+  remplissage: number;
+  encrePE: number;
+  encreEXE: number;
+  aireRelative: number;
+}): number {
+  const remplissage = borner01(mesures.remplissage / REMPLISSAGE_PLEIN);
+  const contraste = borner01(
+    Math.abs(mesures.encrePE - mesures.encreEXE) /
+      Math.max(0.02, Math.max(mesures.encrePE, mesures.encreEXE))
+  );
+  const surface = borner01(mesures.aireRelative / SURFACE_PLEINE);
+
+  const score =
+    POIDS_MURS.remplissage * remplissage +
+    POIDS_MURS.contraste * contraste +
+    POIDS_MURS.surface * surface;
+
+  return Math.round(borner01(score) * 100) / 100;
 }
 
 /**
@@ -1055,42 +1518,66 @@ function motifDeplace(
   plan1: Mat,
   plan2: Mat,
   zone: { x: number; y: number; width: number; height: number }
-): boolean {
+): { dx: number; dy: number } | null {
   const cv = opencv();
 
   // Une recherche n'a de sens que sur un motif assez grand pour être identifié.
-  if (zone.width < 8 || zone.height < 8) return false;
+  if (zone.width < 8 || zone.height < 8) return null;
 
-  const marge = Math.round(Math.max(zone.width, zone.height) * 1.5) + 8;
-  const rx = Math.max(0, zone.x - marge);
-  const ry = Math.max(0, zone.y - marge);
-  const rw = Math.min(plan2.cols - rx, zone.width + marge * 2);
-  const rh = Math.min(plan2.rows - ry, zone.height + marge * 2);
+  // Le gabarit déborde la zone : sans ce liseré de contexte, la boîte d'un mur
+  // ne contient **que** le mur, donc une image uniforme. `TM_CCOEFF_NORMED`
+  // divise par l'écart-type du gabarit : sur une image uniforme il vaut zéro,
+  // le score sort en NaN, et `NaN < seuil` étant faux, n'importe quelle
+  // position passait pour une correspondance parfaite.
+  const tx = Math.max(0, zone.x - MARGE_GABARIT);
+  const ty = Math.max(0, zone.y - MARGE_GABARIT);
+  const tw = Math.min(plan1.cols - tx, zone.width + MARGE_GABARIT * 2);
+  const th = Math.min(plan1.rows - ty, zone.height + MARGE_GABARIT * 2);
+
+  const marge = Math.min(
+    RAYON_RECHERCHE_MAX,
+    Math.round(Math.max(tw, th) * 1.5) + 8
+  );
+  const rx = Math.max(0, tx - marge);
+  const ry = Math.max(0, ty - marge);
+  const rw = Math.min(plan2.cols - rx, tw + marge * 2);
+  const rh = Math.min(plan2.rows - ry, th + marge * 2);
 
   // matchTemplate exige une fenêtre strictement plus grande que le gabarit.
-  if (rw <= zone.width || rh <= zone.height) return false;
+  if (rw <= tw || rh <= th) return null;
 
   let modele: Mat | null = null;
   let fenetre: Mat | null = null;
   const scores = new cv.Mat();
+  const moyenne = new cv.Mat();
+  const ecartType = new cv.Mat();
 
   try {
-    modele = plan1.roi(new cv.Rect(zone.x, zone.y, zone.width, zone.height));
+    modele = plan1.roi(new cv.Rect(tx, ty, tw, th));
     fenetre = plan2.roi(new cv.Rect(rx, ry, rw, rh));
+
+    // Un gabarit sans contraste ne peut rien identifier : le refuser
+    // explicitement vaut mieux que de laisser passer un score indéfini.
+    cv.meanStdDev(modele, moyenne, ecartType);
+    if (ecartType.doubleAt(0, 0) < ECART_TYPE_MINIMAL) return null;
 
     cv.matchTemplate(fenetre, modele, scores, cv.TM_CCOEFF_NORMED);
     const { maxVal, maxLoc } = cv.minMaxLoc(scores);
 
-    if (maxVal < CORRELATION_DEPLACEMENT) return false;
+    if (!Number.isFinite(maxVal) || maxVal < CORRELATION_DEPLACEMENT) {
+      return null;
+    }
 
     // Position du meilleur score, ramenée dans le repère du plan.
-    const decalage = Math.hypot(rx + maxLoc.x - zone.x, ry + maxLoc.y - zone.y);
-    return decalage >= DECALAGE_MINIMAL;
+    const dx = rx + maxLoc.x - tx;
+    const dy = ry + maxLoc.y - ty;
+    if (Math.hypot(dx, dy) < DECALAGE_MINIMAL) return null;
+    return { dx, dy };
   } catch {
-    // Une recherche impossible laisse simplement la zone en « modifié ».
-    return false;
+    // Une recherche impossible laisse simplement la zone en l'état.
+    return null;
   } finally {
-    libererTout(modele, fenetre, scores);
+    libererTout(modele, fenetre, scores, moyenne, ecartType);
   }
 }
 
@@ -1400,6 +1887,8 @@ export async function analyserVue(
     nbApercus?: number;
     /** Écarter les cartouches de la comparaison. */
     ignorerCartouches?: boolean;
+    /** Ce sur quoi porte la comparaison. Les murs par défaut. */
+    cible?: CibleAnalyse;
   } = {}
 ): Promise<ResultatAnalyse> {
   const {
@@ -1407,6 +1896,7 @@ export async function analyserVue(
     onEtape,
     nbApercus = NB_APERCUS,
     ignorerCartouches = true,
+    cible = "murs",
   } = options;
 
   const etape = async (valeur: EtapeAnalyse) => {
@@ -1425,6 +1915,8 @@ export async function analyserVue(
   let normaliseEXE: Mat | null = null;
   let masqueCartouches: Mat | null = null;
   let cartouches: Rect[] = [];
+  let murPE: Mat | null = null;
+  let murEXE: Mat | null = null;
 
   try {
     await etape("preparation-1");
@@ -1456,11 +1948,23 @@ export async function analyserVue(
     }
 
     await etape("detection");
-    const detection = detectStructuralDiffsAdvanced(
-      normalisePE,
-      normaliseEXE,
-      masqueCartouches
-    );
+
+    let epaisseurMur = 0;
+    let detection: ResultatDetection;
+
+    if (cible === "murs") {
+      const murs = isolerMurs(normalisePE, normaliseEXE);
+      murPE = murs.pe;
+      murEXE = murs.exe;
+      epaisseurMur = murs.epaisseur;
+      detection = detecterEcartsMurs(murPE, murEXE, masqueCartouches);
+    } else {
+      detection = detectStructuralDiffsAdvanced(
+        normalisePE,
+        normaliseEXE,
+        masqueCartouches
+      );
+    }
 
     await etape("classification");
     const zones = filterNoise(detection.zones, seuilBruit) as ZoneAvancee[];
@@ -1486,7 +1990,15 @@ export async function analyserVue(
         : "Les deux calques diffèrent sur la quasi-totalité de la vue",
       repere: calques.repere,
       cartouches,
-      avertissement: composerAvertissement(aligne, detection.discordance, echelle),
+      cible,
+      epaisseurMur,
+      zonesEcartees: detection.etendues,
+      avertissement: composerAvertissement(
+        aligne,
+        detection.discordance,
+        echelle,
+        detection.etendues
+      ),
     };
   } finally {
     libererTout(
@@ -1496,7 +2008,9 @@ export async function analyserVue(
       grisEXE,
       normalisePE,
       normaliseEXE,
-      masqueCartouches
+      masqueCartouches,
+      murPE,
+      murEXE
     );
   }
 }
@@ -1511,11 +2025,23 @@ export async function analyserVue(
 function composerAvertissement(
   aligne: boolean,
   discordance: number,
-  echelle: ResultatEchelle
+  echelle: ResultatEchelle,
+  zonesEcartees: number
 ): string | null {
   if (!aligne) return null;
 
   const reserves: string[] = [];
+
+  if (zonesEcartees > 0) {
+    reserves.push(
+      `${zonesEcartees} zone${zonesEcartees > 1 ? "s" : ""} de différence ` +
+        `s'étend${zonesEcartees > 1 ? "ent" : ""} sur une trop grande part du ` +
+        "plan pour être localisée" +
+        `${zonesEcartees > 1 ? "s" : ""} et n'${zonesEcartees > 1 ? "ont" : "a"} ` +
+        "pas été retenue" + `${zonesEcartees > 1 ? "s" : ""} : ` +
+        "affinez le recalage des deux calques"
+    );
+  }
 
   if (echelle.fiable && Math.abs(echelle.echelle - 1) > 0.08) {
     reserves.push(
@@ -1552,6 +2078,43 @@ function exclureCartouches(
   return {
     masque: masqueHorsCartouches(planPE.cols, planPE.rows, zones),
     zones,
+  };
+}
+
+/**
+ * Isole les murs des deux plans **avec le même noyau**.
+ *
+ * `masqueMurs()` calibre son noyau sur le dessin qu'on lui donne. Appelée
+ * séparément sur les deux plans, elle peut donc retenir un seuil différent de
+ * part et d'autre — mesuré sur les plans de production : 9 pixels pour le
+ * dossier d'enquête, 6 pour celui d'exécution. Le plan érodé le plus fort
+ * perdrait alors ses cloisons, qui ressortiraient toutes comme des murs
+ * supprimés. Le plus petit des deux seuils s'impose aux deux.
+ */
+function isolerMurs(
+  planPE: Mat,
+  planEXE: Mat
+): { pe: Mat; exe: Mat; epaisseur: number } {
+  const essaiPE = masqueMurs(planPE);
+  const essaiEXE = masqueMurs(planEXE);
+
+  // Une séparation impossible d'un côté (0) ne doit pas imposer 0 à l'autre.
+  const epaisseurs = [essaiPE.epaisseur, essaiEXE.epaisseur].filter((e) => e > 0);
+  const commune = epaisseurs.length === 2 ? Math.min(...epaisseurs) : 0;
+
+  if (essaiPE.epaisseur === essaiEXE.epaisseur) {
+    return { pe: essaiPE.masque, exe: essaiEXE.masque, epaisseur: commune };
+  }
+
+  libererTout(essaiPE.masque, essaiEXE.masque);
+
+  // Un échec d'un seul côté impose le repli aux **deux** : comparer le tracé
+  // entier d'un plan aux seuls murs de l'autre ferait ressortir tout le texte
+  // du premier comme une différence.
+  return {
+    pe: masqueMurs(planPE, commune).masque,
+    exe: masqueMurs(planEXE, commune).masque,
+    epaisseur: commune,
   };
 }
 

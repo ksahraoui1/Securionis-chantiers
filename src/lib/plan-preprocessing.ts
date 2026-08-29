@@ -857,3 +857,148 @@ export function masqueHorsCartouches(
     throw erreur;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Isolement des murs                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * En dessous de cette intensité, un pixel est du trait plein.
+ *
+ * Plus sévère que le seuil d'encre général : un mur est dessiné en noir franc,
+ * là où les hachures, les trames et les traits d'axe sont gris.
+ */
+const SEUIL_TRAIT_PLEIN = 150;
+
+/**
+ * Part de l'encre en deçà de laquelle il ne reste plus de trait plein.
+ *
+ * Sert à mesurer l'épaisseur du **trait le plus épais** du plan : c'est le
+ * dernier noyau qui laisse encore quelque chose debout.
+ */
+const RESIDU_MURS = 0.01;
+
+/**
+ * Fraction de cette épaisseur maximale retenue comme seuil de mur.
+ *
+ * Un plan comporte des murs porteurs épais et des cloisons plus fines : viser
+ * le trait le plus épais ne garderait que le noyau du bâtiment. Un peu moins
+ * de la moitié conserve les cloisons tout en laissant partir le texte et la
+ * cotation, mesurés entre un tiers et un quart de l'épaisseur d'un mur.
+ */
+const FRACTION_MUR = 0.45;
+
+/** Bornes du noyau d'ouverture, en pixels. */
+const NOYAU_MURS_MIN = 2;
+const NOYAU_MURS_MAX = 14;
+
+export interface MasqueMurs {
+  /** Masque binaire des murs : 255 sur le trait, 0 ailleurs. */
+  masque: Mat;
+  /**
+   * Côté du noyau d'ouverture retenu, en pixels — donc l'épaisseur minimale
+   * d'un trait conservé. `0` signale que la séparation a échoué et que le
+   * masque est celui de toute l'encre.
+   */
+  epaisseur: number;
+}
+
+/**
+ * Isole les murs d'un plan.
+ *
+ * Ce qui distingue un mur du reste du dessin n'est ni sa forme ni sa position,
+ * c'est son **épaisseur** : un mur est un trait plein de plusieurs pixels,
+ * quand le texte, les cotes, les axes, les hachures et le contenu des
+ * cartouches sont des traits fins. Une ouverture morphologique ne conserve que
+ * ce qui contient entièrement le noyau : elle efface donc tout ce qui est plus
+ * fin que lui et laisse les murs intacts.
+ *
+ * C'est ce qui permet à la comparaison de ne porter que sur le bâti. Aucune
+ * heuristique de position n'y est nécessaire — la garniture d'un plan disparaît
+ * parce qu'elle est fine, pas parce qu'on aurait deviné où elle se trouve.
+ *
+ * **Le noyau est mesuré sur le dessin, pas fixé d'avance** : voir
+ * `choisirNoyauMurs()`. `noyauImpose` permet de forcer la même valeur sur les
+ * deux plans d'une comparaison — sans quoi le plus dense des deux serait
+ * érodé plus fort que l'autre, et la moitié de ses murs ressortirait comme
+ * une différence.
+ *
+ * Si aucun trait ne se distingue, la séparation est déclarée impossible et
+ * tout le tracé est renvoyé (`epaisseur: 0`) — mieux vaut une comparaison
+ * bruitée qu'une comparaison vide.
+ *
+ * Attend une image en niveaux de gris. À libérer par l'appelant.
+ */
+export function masqueMurs(img: Mat, noyauImpose?: number): MasqueMurs {
+  const cv = opencv();
+
+  const encre = new cv.Mat();
+
+  try {
+    cv.threshold(img, encre, SEUIL_TRAIT_PLEIN, 255, cv.THRESH_BINARY_INV);
+    const totalEncre = cv.countNonZero(encre);
+
+    if (totalEncre === 0) {
+      return { masque: encre.clone(), epaisseur: 0 };
+    }
+
+    const cote = noyauImpose ?? choisirNoyauMurs(encre, totalEncre);
+    if (cote === 0) {
+      // Aucun trait plein assez épais pour se distinguer du reste : le dessin
+      // est trop fin ou trop uniforme. On rend tout plutôt que rien.
+      return { masque: encre.clone(), epaisseur: 0 };
+    }
+
+    return { masque: ouvrir(encre, cote), epaisseur: cote };
+  } finally {
+    libererTout(encre);
+  }
+}
+
+/**
+ * Choisit le noyau qui sépare les murs du reste du tracé.
+ *
+ * L'épaisseur d'un mur n'est pas une constante : elle dépend de l'échelle du
+ * dessin, du format de la feuille et de la résolution à laquelle on l'analyse.
+ * Un plan de rez rendu sur 1600 px a des murs de 8 pixels ; le même plan vu au
+ * travers du visualiseur, calque réduit à 60 %, en a 4. Un noyau fixe se
+ * tromperait dans les deux sens — garder tout le texte, ou effacer le
+ * bâtiment.
+ *
+ * On mesure donc le dessin par lui-même. Des ouvertures successives font
+ * disparaître les traits par ordre d'épaisseur : le dernier noyau qui laisse
+ * encore quelque chose debout donne l'épaisseur du trait le plus épais du
+ * plan, c'est-à-dire des murs porteurs. Le seuil est pris à un peu moins de la
+ * moitié de cette valeur, pour conserver aussi les cloisons.
+ */
+function choisirNoyauMurs(encre: Mat, totalEncre: number): number {
+  const cv = opencv();
+
+  let plusEpais = 0;
+  for (let cote = NOYAU_MURS_MIN; cote <= NOYAU_MURS_MAX; cote += 1) {
+    const ouvert = ouvrir(encre, cote);
+    const reste = cv.countNonZero(ouvert) / totalEncre;
+    libererTout(ouvert);
+    if (reste < RESIDU_MURS) break;
+    plusEpais = cote;
+  }
+
+  if (plusEpais < NOYAU_MURS_MIN) return 0;
+  return Math.max(NOYAU_MURS_MIN, Math.round(plusEpais * FRACTION_MUR));
+}
+
+/** Ouverture morphologique par un carré de `cote` pixels. */
+function ouvrir(source: Mat, cote: number): Mat {
+  const cv = opencv();
+  const noyau = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(cote, cote));
+  const resultat = new cv.Mat();
+  try {
+    cv.morphologyEx(source, resultat, cv.MORPH_OPEN, noyau);
+    return resultat;
+  } catch (erreur) {
+    libererTout(resultat);
+    throw erreur;
+  } finally {
+    libererTout(noyau);
+  }
+}

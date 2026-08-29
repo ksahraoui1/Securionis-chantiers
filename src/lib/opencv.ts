@@ -304,6 +304,7 @@ export interface CV {
   INTER_LINEAR: number;
   INTER_NEAREST: number;
   MORPH_ERODE: number;
+  MORPH_DILATE: number;
   THRESH_BINARY: number;
   THRESH_BINARY_INV: number;
   MORPH_RECT: number;

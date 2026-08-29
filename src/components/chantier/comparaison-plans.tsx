@@ -27,6 +27,7 @@ import {
 } from "@/lib/utils/comparaison-libelles";
 import {
   analyserPlans,
+  type CibleAnalyse,
   analyserVue,
   HEX_TYPE,
   LIBELLES_ETAPE,
@@ -156,6 +157,33 @@ const MODES_DETECTION: {
     titre: "Avec recalage automatique",
     detail:
       "Aligne les plans entiers par points d'intérêt (ORB), puis compare. Fait pour deux versions d'un même dessin.",
+  },
+];
+
+/**
+ * Ce sur quoi porte la comparaison.
+ *
+ * Les murs par défaut : c'est la seule chose dont la coïncidence entre deux
+ * versions d'un plan ait un sens. Cotes, textes, axes, trames et garniture de
+ * la feuille changent d'un dossier à l'autre sans que l'ouvrage ait bougé, et
+ * les signaler noyait les vraies différences.
+ */
+const CIBLES_DETECTION: {
+  valeur: CibleAnalyse;
+  titre: string;
+  detail: string;
+}[] = [
+  {
+    valeur: "murs",
+    titre: "Les murs",
+    detail:
+      "Ne compare que les traits pleins du bâti. Ignore cotes, textes, trames et garniture.",
+  },
+  {
+    valeur: "dessin",
+    titre: "Tout le dessin",
+    detail:
+      "Compare l'intégralité du tracé. À réserver aux modifications qui ne sont pas dans les murs.",
   },
 ];
 
@@ -359,6 +387,13 @@ export function ComparaisonPlans({
    * défaut.
    */
   const [ignorerCartouches, setIgnorerCartouches] = useState(true);
+
+  /**
+   * Ce sur quoi porte la comparaison. Les murs par défaut : comparer tout le
+   * tracé remontait surtout des écarts de garniture et de cotation, qui n'en
+   * sont pas.
+   */
+  const [cible, setCible] = useState<CibleAnalyse>("murs");
   const menuDetectionRef = useRef<HTMLDivElement>(null);
   const [modaleRapport, setModaleRapport] = useState(false);
   // Annotation créée depuis chaque écart : permet de savoir, au moment du
@@ -948,6 +983,7 @@ export function ComparaisonPlans({
           seuilBruit: SEUIL_BRUIT_DETECTION,
           onEtape,
           ignorerCartouches,
+          cible,
         });
       } else {
         // Le recalage est celui de l'utilisateur : on compare les deux calques
@@ -957,6 +993,7 @@ export function ComparaisonPlans({
           seuilBruit: SEUIL_BRUIT_DETECTION,
           onEtape,
           ignorerCartouches,
+          cible,
         });
       }
       if (resultat.aligne) {
@@ -1588,6 +1625,41 @@ export function ComparaisonPlans({
                   role="menu"
                   className="absolute left-0 top-full mt-1 z-40 w-80 rounded-lg border border-gray-300 bg-white shadow-lg py-1"
                 >
+                  <div className="px-3 pt-2 pb-1 border-b border-gray-200">
+                    <p
+                      className="text-[11px] font-semibold uppercase tracking-wide mb-1"
+                      style={{ color: NAVY }}
+                    >
+                      Comparer
+                    </p>
+                    {CIBLES_DETECTION.map((option) => (
+                      <label
+                        key={option.valeur}
+                        className="flex items-start gap-2 py-1.5 min-h-touch cursor-pointer"
+                      >
+                        <input
+                          type="radio"
+                          name="cible-detection"
+                          value={option.valeur}
+                          checked={cible === option.valeur}
+                          onChange={() => setCible(option.valeur)}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span
+                            className="block text-xs font-semibold"
+                            style={{ color: NAVY }}
+                          >
+                            {option.titre}
+                          </span>
+                          <span className="block text-[11px] text-gray-500">
+                            {option.detail}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
                   <label className="w-full flex items-start gap-2 px-3 py-2 min-h-touch text-left hover:bg-gray-100 transition-colors cursor-pointer border-b border-gray-200">
                     <input
                       type="checkbox"
@@ -2074,6 +2146,38 @@ function ResultatDetection({
             </span>
           );
         })}
+
+      {/* Une zone écartée faute d'être localisable ne doit jamais passer sous
+          silence : sans elle, « 0 différence » se lirait « les plans
+          coïncident », alors que c'est le recalage qui est à reprendre. */}
+      {etat.resultat.zonesEcartees > 0 && (
+        <span
+          className="flex items-center gap-1 font-medium"
+          style={{ color: COULEUR_EXE }}
+          title="Ces zones s'étendent sur une trop grande part du plan pour désigner quoi que ce soit. Affinez le recalage des deux calques."
+        >
+          <span translate="no" className="material-symbols-outlined text-sm">
+            warning
+          </span>
+          {etat.resultat.zonesEcartees} zone
+          {etat.resultat.zonesEcartees > 1 ? "s" : ""} trop étendue
+          {etat.resultat.zonesEcartees > 1 ? "s" : ""} écartée
+          {etat.resultat.zonesEcartees > 1 ? "s" : ""}
+        </span>
+      )}
+
+      {/* Dire sur quoi la comparaison a porté : le nombre de différences n'a
+          pas le même sens selon qu'on a comparé le bâti ou tout le tracé. */}
+      <span className="flex items-center gap-1 text-gray-600">
+        <span translate="no" className="material-symbols-outlined text-sm">
+          {etat.resultat.cible === "murs" ? "square_foot" : "draw"}
+        </span>
+        {etat.resultat.cible === "murs"
+          ? etat.resultat.epaisseurMur > 0
+            ? `Sur les murs (traits d'au moins ${etat.resultat.epaisseurMur} px)`
+            : "Sur tout le dessin — les murs n'ont pas pu en être isolés"
+          : "Sur tout le dessin"}
+      </span>
 
       {/* La comparaison porte sur la vue telle qu'elle est recalée : il n'y a
           pas de correspondance calculée à annoncer. */}
