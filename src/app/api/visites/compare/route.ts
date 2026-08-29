@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   }
 
   // Rate limit: 20 comparaisons par heure
-  if (!checkRateLimit(`visite-compare:${user.id}`, 20, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`visite-compare:${user.id}`, 20, 60 * 60 * 1000))) {
     return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 

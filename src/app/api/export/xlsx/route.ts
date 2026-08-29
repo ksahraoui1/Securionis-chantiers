@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   }
 
   // Rate limit: 10 exports par heure
-  if (!checkRateLimit(`export:${user.id}`, 10, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`export:${user.id}`, 10, 60 * 60 * 1000))) {
     return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 

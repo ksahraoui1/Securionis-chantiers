@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   }
 
   // Rate limit: 20 analyses par heure par utilisateur
-  if (!checkRateLimit(`photo-analyze:${user.id}`, 20, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`photo-analyze:${user.id}`, 20, 60 * 60 * 1000))) {
     return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 

@@ -29,7 +29,7 @@ export async function PATCH(
     }
 
     // Rate limit: 60 changements de statut par heure
-    if (!checkRateLimit(`ecart-statut:${user.id}`, 60, 60 * 60 * 1000)) {
+    if (!(await checkRateLimit(`ecart-statut:${user.id}`, 60, 60 * 60 * 1000))) {
       return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 

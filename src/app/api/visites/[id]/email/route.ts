@@ -25,7 +25,7 @@ export async function POST(
     }
 
     // Rate limit: 10 emails par heure
-    if (!checkRateLimit(`visite-email:${user.id}`, 10, 60 * 60 * 1000)) {
+    if (!(await checkRateLimit(`visite-email:${user.id}`, 10, 60 * 60 * 1000))) {
       return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 

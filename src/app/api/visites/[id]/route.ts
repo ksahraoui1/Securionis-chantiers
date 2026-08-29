@@ -22,7 +22,7 @@ export async function DELETE(
     }
 
     // Rate limit: 30 suppressions par heure
-    if (!checkRateLimit(`visite-delete:${user.id}`, 30, 60 * 60 * 1000)) {
+    if (!(await checkRateLimit(`visite-delete:${user.id}`, 30, 60 * 60 * 1000))) {
       return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 

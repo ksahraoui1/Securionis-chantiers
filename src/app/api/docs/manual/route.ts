@@ -80,7 +80,7 @@ export async function GET() {
   }
 
   // Rate limit: génération de document coûteuse — 10 par heure
-  if (!checkRateLimit(`docs-manual:${user.id}`, 10, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`docs-manual:${user.id}`, 10, 60 * 60 * 1000))) {
     return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 
