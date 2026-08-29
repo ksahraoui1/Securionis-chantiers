@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getUserRole, isAllowedSupabaseUrl } from "@/lib/utils/security";
 import JSZip from "jszip";
+import { signerUrl } from "@/lib/utils/url-signee";
 
 export const maxDuration = 300; // 5 minutes
 
@@ -140,8 +141,13 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        // Télécharger la photo
-        const response = await fetch(photoUrl, {
+        // Le bucket est privé (SEC-03) : signer avant de télécharger.
+        const urlPhotoSignee = await signerUrl(supabase, photoUrl);
+        if (!urlPhotoSignee) {
+          console.warn("Signature impossible pour une photo");
+          continue;
+        }
+        const response = await fetch(urlPhotoSignee, {
           signal: AbortSignal.timeout(30000),
         });
         if (!response.ok) {

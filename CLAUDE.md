@@ -748,6 +748,89 @@ auteur et détails : `journaliser()` écrit correctement en production, par le
 `service_role`, sur une table où `authenticated` n'a plus aucun droit
 d'écriture. Les deux corrections tiennent ensemble.
 
+### SEC-03 — les buckets ne sont plus publics (2026-08-29)
+
+`rapports` (241 objets, 258 Mo) et `visite-photos` (120 objets, 115 Mo) étaient
+`public = true` : n'importe qui connaissant une URL téléchargeait un rapport
+d'inspection ou une photo de chantier — donc des personnes au travail
+identifiables, associées à un employeur, une date, un lieu et un constat de
+non-conformité.
+
+#### Deux prémisses fausses levées
+
+La décision de juillet reposait sur deux affirmations que la mesure contredit :
+
+- **Aucun email ne contient d'URL de stockage.** Rapports et documents partent
+  en pièce jointe ; le seul lien présent pointe vers l'application. **Rien ne
+  casse rétroactivement** pour les destinataires — c'était le risque principal.
+- **Le logo n'est utilisé dans aucun email** : aucun `<img>` dans les
+  templates. C'était pourtant l'argument qui avait fait renoncer au passage en
+  privé (« une URL signée expire en 1 h, le logo serait cassé »). Il n'est
+  affiché qu'aux utilisateurs connectés et intégré aux PDF côté serveur. **Le
+  bucket public `assets-email` que proposait l'audit est donc inutile.**
+
+#### Les URL stockées deviennent des identifiants
+
+`src/lib/utils/url-signee.ts` : `signerUrl`, `signerUrls` (un appel par bucket,
+une visite peut porter des dizaines de photos), `decomposerUrlStockage`,
+`canoniserUrlStockage`.
+
+Les URL en base gardent leur forme publique — elles n'y sont plus qu'un
+**identifiant**, retraduit en URL signée au moment de la lecture. **Aucune
+migration de données.** Les `getPublicUrl` restants sont tous des chemins
+d'écriture, ce qui est voulu.
+
+> ⚠️ **Une URL signée ne doit jamais être écrite en base.** Deux valeurs font
+> un aller-retour par le navigateur — `reponses.photos` et
+> `entreprises.logo_url` : servies signées pour l'affichage, elles
+> reviendraient telles quelles au prochain enregistrement, et la base se
+> remplirait d'URL mortes sans que rien ne le signale avant le lendemain. D'où
+> `canoniserUrlStockage()`, appliquée dans `use-autosave`, `offline/sync` et la
+> page entreprise.
+
+> ⚠️ `extractStoragePath()` retirait mal la chaîne de requête : sur une URL
+> signée, le chemin extrait aurait porté `?token=…` et la **suppression** aurait
+> visé un objet inexistant — sans erreur. Corrigé.
+
+Points de lecture traités : logo (nav, PDF de visite, rapport de comparaison),
+documents de chantier, base documentaire, documents de points de contrôle,
+plans de la comparaison (chargés par pdf.js **dans le navigateur**), photos de
+visite (existantes et fraîchement prises), capture d'une NC, exports ZIP et
+envois par email.
+
+#### Le cloisonnement, plus important que le passage en privé
+
+Rendre un bucket privé n'écarte que les inconnus. Les politiques de lecture
+disaient `bucket_id = '…'` : tout compte connecté pouvait signer n'importe quel
+objet, y compris les photos d'un chantier qui ne le concerne pas.
+
+> ⚠️ Il y avait **deux** politiques `SELECT` par bucket, une héritée et une
+> récente, toutes deux permissives. Les politiques permissives s'additionnent
+> en OU : en laisser une annulerait tout le cloisonnement. Les deux sont
+> supprimées et remplacées par une seule.
+
+Relevé des chemins réels avant d'écrire la règle : `visite-photos` a
+**toujours** un identifiant de chantier en premier dossier ; `rapports` mêle du
+référentiel partagé (`base-documentaire/`, `points-controle/`, `logos/`), des
+documents de chantier sous `chantiers/<id>/…` — identifiant au **deuxième**
+niveau — et des rapports de visite sous `<id>/…`.
+
+**Vérification, en production, dans une transaction annulée :**
+
+| | photos | rapports |
+|---|---|---|
+| inspecteur non rattaché | **0** | **86** — le référentiel seul (76 + 9 + 1) |
+| rattaché à Orllati | **12**, dont **0** d'un autre chantier | **128** = 86 + 10 rapports + 32 plans |
+| administrateur | 120 | 241 |
+
+Buckets encore publics après migration : **0**.
+
+#### Migration 048 — ⚠️ à appliquer **après** le déploiement du code
+
+Les URL en base sont de forme publique et c'est le code qui les signe. Sur
+l'ancien code, tout affichage d'image ou de document casserait. L'ordre est
+l'inverse de celui de la migration 045, et le même que celui de la 046.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -1625,6 +1708,8 @@ rend 12 dont 9 dans la garniture.
 46. **Un trigger `for each statement` ignore sa valeur de retour** : seul un `raise` interrompt la commande. `return null` y laisse passer l'opération, contrairement à un trigger `for each row`.
 47. **`INSERT ... RETURNING` évalue la politique `SELECT`** de la ligne insérée, avant tout trigger `AFTER`. Un `.insert(...).select(...)` de Supabase échoue donc si la politique de lecture dépend d'une ligne qu'un trigger `AFTER` doit encore créer — et PostgreSQL annonce « new row violates row-level security policy », ce qui désigne à tort le `WITH CHECK` de l'insertion.
 48. **L'accès aux chantiers a deux règles distinctes** : la lecture accepte la liaison `chantier_inspecteurs` **ou** `created_by`, l'écriture n'accepte que la liaison. Un créateur retiré par un administrateur voit encore son chantier mais ne peut plus rien y faire.
+49. **Une URL signée ne s'écrit jamais en base** : elle expire. Les valeurs qui font un aller-retour par le navigateur (`reponses.photos`, `entreprises.logo_url`) doivent repasser par `canoniserUrlStockage()` avant l'enregistrement, sinon la base se remplit d'URL mortes — visibles seulement le lendemain.
+50. **Un bucket privé mal cloisonné ne protège que des inconnus** : une politique de lecture `bucket_id = '…'` laisse tout compte connecté signer n'importe quel objet. Et attention aux **doublons de politiques** — il y en avait deux par bucket, permissives, donc en OU : en laisser une annule le cloisonnement.
 
 ---
 

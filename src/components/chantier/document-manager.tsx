@@ -4,6 +4,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { validateDocumentFile, getSafeExtension } from "@/lib/utils/file-validation";
 import type { Tables } from "@/types/database";
+import { signerUrls } from "@/lib/utils/url-signee";
+import { extractStoragePath } from "@/lib/utils/storage-path";
 
 interface DocumentManagerProps {
   chantierId: string;
@@ -99,7 +101,13 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
       .eq("chantier_id", chantierId)
       .order("categorie")
       .order("nom");
-    if (data) setDocuments(data);
+    // Le bucket est privé (SEC-03) : les liens de téléchargement doivent être
+    // signés. On signe au chargement — le point de passage unique — plutôt
+    // qu'à chaque endroit qui affiche un lien.
+    if (data) {
+      const signees = await signerUrls(supabase, data.map((d) => d.fichier_url));
+      setDocuments(data.map((d, i) => ({ ...d, fichier_url: signees[i] ?? d.fichier_url })));
+    }
   }, [chantierId]);
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -215,7 +223,7 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
     const supabase = createClient();
     const doc = documents.find((d) => d.id === docId);
     if (doc) {
-      const storagePath = doc.fichier_url.split("/rapports/")[1];
+      const storagePath = extractStoragePath(doc.fichier_url, "rapports");
       if (storagePath) {
         await supabase.storage.from("rapports").remove([storagePath]);
       }

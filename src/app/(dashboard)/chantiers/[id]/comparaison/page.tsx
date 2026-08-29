@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { ComparaisonPlans } from "@/components/chantier/comparaison-plans";
+import { signerUrls } from "@/lib/utils/url-signee";
 
 export default async function ComparaisonPage({
   params,
@@ -40,8 +41,17 @@ export default async function ComparaisonPage({
     .not("plan_type", "is", null)
     .order("plan_version", { ascending: false });
 
-  const plansPE = (plans ?? []).filter((p) => p.plan_type === "PE");
-  const plansEXE = (plans ?? []).filter((p) => p.plan_type === "EXE");
+  // Le bucket est privé (SEC-03) et c'est pdf.js, dans le navigateur, qui va
+  // chercher chaque plan : il lui faut des URL signées. Signées ici, au
+  // chargement de la page, et non à l'écriture — une URL signée expire.
+  const urlsSignees = await signerUrls(supabase, (plans ?? []).map((p) => p.fichier_url));
+  const plansSignes = (plans ?? []).map((p, i) => ({
+    ...p,
+    fichier_url: urlsSignees[i] ?? p.fichier_url,
+  }));
+
+  const plansPE = plansSignes.filter((p) => p.plan_type === "PE");
+  const plansEXE = plansSignes.filter((p) => p.plan_type === "EXE");
 
   const manquants = [
     plansPE.length === 0 ? "PE" : null,

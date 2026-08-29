@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { extractStoragePath } from "@/lib/utils/storage-path";
 import { uploadFileToStorage } from "@/lib/utils/storage-upload";
 import type { Tables } from "@/types/database";
+import { signerUrls } from "@/lib/utils/url-signee";
 
 const MAX_DOCS = 5;
 
@@ -41,7 +42,11 @@ export const PointControleDocumentsUploader = forwardRef<
       .select("*")
       .eq("point_controle_id", pointId)
       .order("ordre");
-    if (data) setDocs(data);
+    // Bucket privé (SEC-03) : signer les liens au chargement.
+    if (data) {
+      const signees = await signerUrls(supabase, data.map((d) => d.fichier_url));
+      setDocs(data.map((d, i) => ({ ...d, fichier_url: signees[i] ?? d.fichier_url })));
+    }
   }, [pointId]);
 
   useEffect(() => {

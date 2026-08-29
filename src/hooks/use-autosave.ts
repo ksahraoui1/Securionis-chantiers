@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { AUTOSAVE_DEBOUNCE_MS, STATUTS_VISITE } from "@/lib/utils/constants";
 import { savePendingResponse } from "@/lib/offline/db";
+import { canoniserUrlsStockage } from "@/lib/utils/url-signee";
 
 interface AutosaveData {
   visite_id: string;
@@ -38,7 +39,9 @@ export function useAutosave(visiteId: string) {
           point_controle_id: data.point_controle_id,
           valeur: data.valeur,
           remarque: data.remarque ?? null,
-          photos: data.photos ?? [],
+          // Les photos sont servies signées pour l'affichage : on
+          // réécrit toujours la forme canonique (cf. url-signee.ts).
+          photos: canoniserUrlsStockage(data.photos ?? []),
           updated_at: new Date().toISOString(),
         };
 

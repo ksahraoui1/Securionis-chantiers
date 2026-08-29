@@ -10,6 +10,7 @@ import { ChantierTabs } from "@/components/chantier/chantier-tabs";
 import { PlanComparaison } from "@/components/chantier/plan-comparaison";
 import { EcartListWithActions } from "./ecart-list-actions";
 import { ArchiveToggleButton } from "@/components/chantier/archive-toggle-button";
+import { signerUrls } from "@/lib/utils/url-signee";
 
 export default async function ChantierDetailPage({
   params,
@@ -104,6 +105,14 @@ export default async function ChantierDetailPage({
       nc_count: ncCountByVisite[v.id] ?? 0,
     })) ?? [];
 
+  // Bucket privé (SEC-03) : les documents sont affichés dès le premier rendu,
+  // avant tout rechargement client — il faut donc les signer ici aussi.
+  const urlsDocs = await signerUrls(supabase, (documents ?? []).map((d) => d.fichier_url));
+  const documentsSignes = (documents ?? []).map((d, i) => ({
+    ...d,
+    fichier_url: urlsDocs[i] ?? d.fichier_url,
+  }));
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-4 sm:py-6 space-y-5 sm:space-y-6">
       {/* Header */}
@@ -193,7 +202,7 @@ export default async function ChantierDetailPage({
           documents={
             <DocumentManager
               chantierId={chantierId}
-              initialDocuments={documents ?? []}
+              initialDocuments={documentsSignes}
             />
           }
           visites={

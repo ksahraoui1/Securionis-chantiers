@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EcartStatusBadge } from "@/components/ecart/ecart-status-badge";
+import { signerUrl } from "@/lib/utils/url-signee";
 
 const NAVY = "#002855";
 const BLEU_NC = "#2563EB";
@@ -54,6 +55,9 @@ export default async function NCDetailPage({
     )
     .eq("nc_id", ncId)
     .maybeSingle();
+
+  // Le bucket est privé (SEC-03) : la capture se sert par URL signée.
+  const captureSignee = await signerUrl(supabase, lien?.capture_url ?? null);
 
   const annotation = lien?.comparaison_annotations as unknown as
     | {
@@ -173,10 +177,10 @@ export default async function NCDetailPage({
               </div>
             </dl>
 
-            {lien?.capture_url && (
+            {captureSignee && (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
-                src={lien.capture_url}
+                src={captureSignee}
                 alt="Capture de la zone annotée sur la comparaison des plans"
                 className="w-full rounded-lg border border-gray-300"
               />

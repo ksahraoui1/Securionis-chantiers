@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { compressPhoto, validatePhoto } from "@/lib/utils/photo-compress";
 import { MAX_PHOTOS } from "@/lib/utils/constants";
 import { extractStoragePath } from "@/lib/utils/storage-path";
+import { signerUrl } from "@/lib/utils/url-signee";
 
 interface UsePhotoUploadOptions {
   chantierId: string;
@@ -55,12 +56,17 @@ export function usePhotoUpload({
           return null;
         }
 
+        // Le bucket est privé (SEC-03) : sans signature, la photo qu'on vient
+        // de prendre ne s'afficherait pas. L'état porte donc l'URL signée ;
+        // elle est ramenée à sa forme canonique à l'enregistrement
+        // (`canoniserUrlsStockage`, cf. url-signee.ts).
         const {
           data: { publicUrl },
         } = supabase.storage.from("visite-photos").getPublicUrl(path);
+        const url = (await signerUrl(supabase, publicUrl)) ?? publicUrl;
 
-        setPhotos((prev) => [...prev, publicUrl]);
-        return publicUrl;
+        setPhotos((prev) => [...prev, url]);
+        return url;
       } catch {
         setError("Erreur lors de la compression de la photo.");
         return null;
@@ -111,9 +117,10 @@ export function usePhotoUpload({
         const {
           data: { publicUrl },
         } = supabase.storage.from("visite-photos").getPublicUrl(path);
+        const url = (await signerUrl(supabase, publicUrl)) ?? publicUrl;
 
-        setPhotos((prev) => prev.map((p) => (p === oldUrl ? publicUrl : p)));
-        return publicUrl;
+        setPhotos((prev) => prev.map((p) => (p === oldUrl ? url : p)));
+        return url;
       } catch {
         setError("Erreur lors du remplacement de la photo.");
         return null;
