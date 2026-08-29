@@ -131,6 +131,19 @@ export function extractRapportStoragePath(rapportUrl: string): string {
  * Valide la complexité d'un mot de passe.
  * Retourne null si valide, un message d'erreur sinon.
  */
+/**
+ * Règle de mot de passe de l'application — définition **unique**, partagée par
+ * l'inscription publique, la réinitialisation et la création de compte par un
+ * administrateur. Elle était auparavant recopiée à l'identique dans les deux
+ * pages d'authentification.
+ *
+ * ⚠️ Dans les pages d'authentification, c'est un contrôle de **confort** :
+ * il s'exécute dans le navigateur, et `supabase.auth.signUp` est appelable
+ * directement. La seule contrainte qui engage réellement est celle de Supabase
+ * Auth — longueur minimale et refus des mots de passe compromis (HIBP) — qui se
+ * règle dans le tableau de bord, hors du code. Sur la route
+ * `admin/create-user`, en revanche, l'appel est côté serveur et fait autorité.
+ */
 export function validatePassword(password: string): string | null {
   if (password.length < 8) {
     return "Le mot de passe doit contenir au moins 8 caractères";

@@ -831,6 +831,56 @@ Les URL en base sont de forme publique et c'est le code qui les signe. Sur
 l'ancien code, tout affichage d'image ou de document casserait. L'ordre est
 l'inverse de celui de la migration 045, et le même que celui de la 046.
 
+### SEC-04 — règle de mot de passe, et ce que le code ne peut pas garantir (2026-08-29)
+
+Deux moitiés, dont une seule relève du code.
+
+**`user_role()` exécutable par `authenticated` en `SECURITY DEFINER`** : rien à
+faire. Le retirer casserait la RLS, les politiques l'appellent dans le contexte
+de l'utilisateur. Décision déjà prise et toujours correcte.
+
+**La règle de mot de passe était recopiée trois fois** — inscription publique,
+réinitialisation, création par un administrateur — à l'identique. Les trois
+appellent désormais `validatePassword()`, définition unique.
+
+> ⚠️ **Dans les pages d'authentification, ce contrôle ne garantit rien.** Il
+> s'exécute dans le navigateur, et `supabase.auth.signUp` est appelable
+> directement sans passer par le formulaire. La seule contrainte qui engage est
+> celle de **Supabase Auth** — longueur minimale et refus des mots de passe
+> compromis (HIBP) — qui se règle dans le tableau de bord, hors du code et hors
+> de portée d'une migration. Sur `admin/create-user`, en revanche, l'appel est
+> côté serveur et fait autorité.
+
+**Reste à activer, à la main** — tableau de bord Supabase, page
+*Authentication → Providers*, fournisseur **Email**
+(`/dashboard/project/<ref>/auth/providers?provider=Email`). Trois réglages y
+sont groupés : longueur minimale (**8**), caractères requis (minuscules,
+majuscules, chiffres) et **Prevent use of leaked passwords**, qui interroge
+l'API *Pwned Passwords* de HaveIBeenPwned. Sur une application dont
+l'inscription est publique, c'est la mesure qui compte réellement.
+
+> Le réglage **n'est pas** sous « Policies » — cette rubrique concerne la RLS
+> des tables. Il demande le plan **Pro** ou supérieur ; l'organisation y est.
+
+> ⚠️ **Aligner les caractères requis sur `validatePassword()`**, qui exige
+> minuscule + majuscule + chiffre **sans symbole**. Choisir l'option la plus
+> stricte de Supabase rendrait le serveur plus exigeant que le formulaire :
+> l'utilisateur passerait la validation à l'écran pour se faire refuser ensuite,
+> avec un message moins clair.
+
+#### Ce que dit la base sur l'inscription publique
+
+Les **trois** comptes de production ont été créés par `/register` : aucun ne
+porte d'entrée `create_user` au journal d'audit. `admin/create-user` — réparé
+en août avec le rattachement des profils à l'entreprise — **n'a donc encore
+jamais tourné avec succès**.
+
+> Fermer `/register` supprimerait d'un coup toute la classe de risques « un
+> inconnu obtient un jeton `authenticated` » — celle qui rendait SEC-01
+> exploitable à distance. Mais ce serait prématuré tant que la création par un
+> administrateur n'a pas été éprouvée au moins une fois : l'application se
+> retrouverait sans aucun moyen vérifié de créer un compte.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -1710,6 +1760,7 @@ rend 12 dont 9 dans la garniture.
 48. **L'accès aux chantiers a deux règles distinctes** : la lecture accepte la liaison `chantier_inspecteurs` **ou** `created_by`, l'écriture n'accepte que la liaison. Un créateur retiré par un administrateur voit encore son chantier mais ne peut plus rien y faire.
 49. **Une URL signée ne s'écrit jamais en base** : elle expire. Les valeurs qui font un aller-retour par le navigateur (`reponses.photos`, `entreprises.logo_url`) doivent repasser par `canoniserUrlStockage()` avant l'enregistrement, sinon la base se remplit d'URL mortes — visibles seulement le lendemain.
 50. **Un bucket privé mal cloisonné ne protège que des inconnus** : une politique de lecture `bucket_id = '…'` laisse tout compte connecté signer n'importe quel objet. Et attention aux **doublons de politiques** — il y en avait deux par bucket, permissives, donc en OU : en laisser une annule le cloisonnement.
+51. **Les contrôles de mot de passe des pages d'authentification ne garantissent rien** : ils tournent dans le navigateur et `supabase.auth.signUp` est appelable directement. La contrainte qui engage est celle de Supabase Auth (longueur minimale, refus des mots de passe compromis), réglable uniquement dans le tableau de bord — ni par le code, ni par une migration.
 
 ---
 
