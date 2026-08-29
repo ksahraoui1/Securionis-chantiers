@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canAccessChantier, getUserRole } from "@/lib/utils/security";
-import { getLimits } from "@/lib/stripe/limits";
+import { getLimits } from "@/lib/roles/limites";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   chargerComparaison,

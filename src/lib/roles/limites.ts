@@ -1,7 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Limites par rôle pour le modèle freemium.
+ * Limites de fonctionnalités **par rôle**.
+ *
+ * Ce module vivait dans `lib/stripe/`, ce qui laissait croire qu'il dépendait
+ * d'un abonnement. Il n'en a jamais rien fait : il ne lit pas la table
+ * `subscriptions` et ne connaît que le rôle du profil. Le retrait de Stripe
+ * (août 2026) ne l'a donc pas touché — seul son emplacement était trompeur.
+ *
+ * Six routes métier s'en servent pour autoriser la génération de PDF et l'envoi
+ * d'emails : un compte « invité » ne peut faire ni l'un ni l'autre.
  */
 export const PLAN_LIMITS = {
   invité: {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { canAccessVisite, getUserRole } from "@/lib/utils/security";
-import { getLimits } from "@/lib/stripe/limits";
+import { getLimits } from "@/lib/roles/limites";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { signerUrl, signerUrls } from "@/lib/utils/url-signee";
 
