@@ -851,11 +851,22 @@ appellent désormais `validatePassword()`, définition unique.
 > de portée d'une migration. Sur `admin/create-user`, en revanche, l'appel est
 > côté serveur et fait autorité.
 
-**Reste à activer, à la main** : tableau de bord Supabase →
-*Authentication* → *Policies* (rubrique **Password security**) → *Prevent use
-of leaked passwords*, et vérifier la longueur minimale au passage. Sur une
-application dont l'inscription est publique, c'est la mesure qui compte
-réellement.
+**Reste à activer, à la main** — tableau de bord Supabase, page
+*Authentication → Providers*, fournisseur **Email**
+(`/dashboard/project/<ref>/auth/providers?provider=Email`). Trois réglages y
+sont groupés : longueur minimale (**8**), caractères requis (minuscules,
+majuscules, chiffres) et **Prevent use of leaked passwords**, qui interroge
+l'API *Pwned Passwords* de HaveIBeenPwned. Sur une application dont
+l'inscription est publique, c'est la mesure qui compte réellement.
+
+> Le réglage **n'est pas** sous « Policies » — cette rubrique concerne la RLS
+> des tables. Il demande le plan **Pro** ou supérieur ; l'organisation y est.
+
+> ⚠️ **Aligner les caractères requis sur `validatePassword()`**, qui exige
+> minuscule + majuscule + chiffre **sans symbole**. Choisir l'option la plus
+> stricte de Supabase rendrait le serveur plus exigeant que le formulaire :
+> l'utilisateur passerait la validation à l'écran pour se faire refuser ensuite,
+> avec un message moins clair.
 
 #### Ce que dit la base sur l'inscription publique
 
