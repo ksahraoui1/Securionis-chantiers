@@ -1078,6 +1078,112 @@ Alternative sans heuristique, quand la certitude prime : cadrer la vue sur le
 bâtiment avant de lancer la détection. En mode « vue recalée », ce qui est hors
 écran est hors analyse.
 
+### La comparaison porte sur les murs (2026-08-29)
+
+Signalé en usage réel, capture à l'appui : les différences remontées portaient
+sur la **garniture** des plans — blocs de légende, cartouches, textes — et un
+seul grand rectangle orange couvrait toute la superposition sans désigner la
+moindre modification.
+
+Deux causes distinctes, deux corrections.
+
+#### 1. Comparer les murs, pas le dessin
+
+Ce que l'utilisateur regarde entre deux versions d'un plan, c'est **si les murs
+coïncident**. Cotes, textes, axes, trames, contenu des cartouches et garniture
+de la feuille changent d'un dossier d'enquête à un dossier d'exécution sans que
+l'ouvrage ait bougé d'un centimètre.
+
+`masqueMurs()` (`plan-preprocessing.ts`) les isole. Ce qui distingue un mur du
+reste n'est ni sa forme ni sa position mais son **épaisseur** : une ouverture
+morphologique ne conserve que ce qui contient entièrement son noyau, donc efface
+tout trait plus fin que lui. Aucune heuristique de position n'est nécessaire —
+la garniture disparaît parce qu'elle est fine, pas parce qu'on aurait deviné où
+elle se trouve. C'est structurellement plus solide que l'exclusion des
+cartouches, qui reste en place et la complète.
+
+**Le noyau est mesuré sur le dessin, jamais fixé d'avance.** L'épaisseur d'un
+mur en pixels dépend de l'échelle, du format de la feuille et de la résolution
+d'analyse — 8 px sur un plan rendu à 1600 px, 4 px sur le même plan vu au
+travers du visualiseur avec un calque réduit. Des ouvertures successives font
+tomber les traits par ordre d'épaisseur : le dernier noyau qui laisse encore
+1 % de l'encre donne l'épaisseur du trait le plus épais, et le seuil est pris à
+`FRACTION_MUR` (0,45) de cette valeur, pour garder aussi les cloisons.
+
+> ⚠️ **Le même noyau doit s'appliquer aux deux plans** (`isolerMurs()`).
+> Mesuré sur les plans de production : 9 px pour le dossier PE, 6 px pour
+> l'EXE. Calibrés séparément, le plan le plus érodé perd ses cloisons, qui
+> ressortent toutes comme des murs supprimés. Le plus petit des deux s'impose.
+
+La comparaison devient une soustraction, chaque masque étant dilaté de
+`TOLERANCE_MURS_PX` (4 px) avant : un recalage manuel ne pose jamais deux traits
+au pixel près. Un mur du PE sans vis-à-vis → **supprimé** ; un mur de l'EXE sans
+vis-à-vis → **ajouté** ; un mur supprimé dont le motif se retrouve à moins de
+`RAYON_RECHERCHE_MAX` → **déplacé**, et la trace d'arrivée est retirée, sinon un
+déplacement compterait double.
+
+Le menu « Détecter les différences » propose **Les murs** (défaut) et **Tout le
+dessin**, et la ligne de résultat rappelle lequel a servi.
+
+#### 2. Le grand rectangle qui ne désignait rien
+
+Quand le recalage est légèrement faux, le liseré laissé le long de chaque trait
+finit par se souder en **un** contour qui enveloppe tout le dessin. Trois
+garde-fous, dans `examinerZone()` :
+
+| Règle | Seuil | Ce qu'elle écarte |
+|---|---|---|
+| aire du **contour** / page | > 8 % | l'enveloppe soudée sur tout le plan |
+| aire de la **boîte** / page | > 25 % | ce qui, dessiné en rectangle, ne montre plus rien |
+| pixels de différence / aire du contour | < 10 % | l'enveloppe tendue entre deux résidus lointains |
+
+> ⚠️ **Les deux premiers tests portent sur l'aire du contour, pas sur celle de
+> sa boîte.** Un mur en diagonale — et les bâtiments de ce projet sont
+> pentagonaux — a une boîte presque vide : le juger sur sa boîte reviendrait à
+> écarter systématiquement les murs obliques. Vérifié sur les plans réels : un
+> mur oblique du Rez, écarté par la première version de la règle, est
+> correctement retenu et classé « déplacé » par la seconde.
+
+Une zone écartée pour cette raison est **comptée et annoncée** (`zonesEcartees`,
+badge orange dans la ligne de résultat, phrase dans l'avertissement). Sans quoi
+« 0 différence » se lirait « les plans coïncident » là où c'est le recalage qui
+est à reprendre.
+
+#### 3. Un piège de `matchTemplate` corrigé au passage
+
+La boîte d'un mur ne contient **que** le mur : une image uniforme.
+`TM_CCOEFF_NORMED` divise par l'écart-type du gabarit, nul dans ce cas, d'où un
+score `NaN` — et `NaN < seuil` valant faux, **n'importe quelle position passait
+pour une correspondance parfaite**. D'où des « déplacés » vers des murs sans
+rapport. Le gabarit déborde désormais de `MARGE_GABARIT` (6 px) pour porter du
+contexte, l'écart-type est vérifié avant l'appel, et `maxVal` doit être fini.
+La fenêtre de recherche est en outre plafonnée à `RAYON_RECHERCHE_MAX` (120 px) :
+sans plafond, un plan n'étant fait que de segments parallèles de même épaisseur,
+la corrélation trouve toujours un sosie à l'autre bout de la page.
+
+#### Vérification
+
+Menée sur les **plans de production** du chantier Orllati (Villeneuve 1441-1442,
+bâtiment A), rendus par pdf.js comme le fait l'application, puis passés dans les
+modules réels.
+
+| Cas | Murs | Tout le dessin |
+|---|---|---|
+| Rez comparé à lui-même | **0** différence | 0 différence |
+| Rez contre Niveau 01, même bâtiment et même échelle | **10** différences localisées, 36 ms | 45 différences, 243 ms |
+
+Le masque de murs a été rendu en superposition sur les deux plans réels et
+inspecté : il suit les murs et **n'attrape ni le cartouche, ni les blocs de
+texte, ni les cotes, ni le mobilier, ni les lignes de site**. Sur un jeu
+synthétique où la vérité est connue (une cloison déplacée, un mur ajouté,
+garniture entièrement différente), le mode murs rend exactement les 3
+différences réelles et **aucune** dans la garniture, là où le mode dessin en
+rend 12 dont 9 dans la garniture.
+
+> Limite connue : les murs d'enveloppe dessinés en trait clair ou hachuré ne
+> sont pas des traits pleins et n'entrent donc pas dans le masque. Le mode
+> « Tout le dessin » reste disponible pour ces cas.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -1112,7 +1218,10 @@ bâtiment avant de lancer la détection. En mode « vue recalée », ce qui est 
 30. **`setWidth` d'OpenSeadragon conserve le coin supérieur gauche** : tout redimensionnement de calque doit être recentré à la main, sinon la vue s'échappe.
 31. **Message de détection sans parenthèse** = exception, jamais un refus raisonné : les deux modes donnent toujours un motif quand ils renoncent. Les deux ne partagent que `chargerOpenCv()`.
 32. **Exclusion des cartouches** : heuristique (quadrilatère convexe, accosté au bord, taille intermédiaire), donc faillible dans les deux sens. Les zones écartées doivent rester visibles et la case débrayable — exclure à tort masque un écart réel.
-33. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
+33. **La détection porte sur les murs par défaut** : `masqueMurs()` ne retient que les traits pleins, ce qui écarte par construction textes, cotes, trames et cartouches. Le noyau d'ouverture est **mesuré sur le dessin** et doit être **identique pour les deux plans** (`isolerMurs()`) — calibrés séparément, ils diffèrent (9 px contre 6 px sur les plans de production) et le plan le plus érodé voit toutes ses cloisons ressortir comme supprimées.
+34. **Filtrer une zone sur l'aire de sa boîte est un piège** : un mur oblique a une boîte presque vide. Les seuils de `examinerZone()` portent sur l'aire du **contour** ; seul le plafond d'affichage (25 %) regarde la boîte, parce que le calque dessine des rectangles.
+35. **`matchTemplate` sur un gabarit uniforme rend `NaN`** : `TM_CCOEFF_NORMED` divise par l'écart-type du gabarit. Comme `NaN < seuil` vaut faux, le score passe tous les tests et n'importe quelle position devient une correspondance parfaite. Toujours donner du contexte au gabarit, vérifier l'écart-type, et tester `Number.isFinite(maxVal)`.
+36. **`updated_at` non auto-géré** : aucune table n'a de trigger PostgreSQL pour rafraîchir `updated_at` automatiquement — il faut le fixer explicitement dans chaque `.update(...)` qui en dépend (cf. `ecarts`, `visites`).
 
 ---
 
