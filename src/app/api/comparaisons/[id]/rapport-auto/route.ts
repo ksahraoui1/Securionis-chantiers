@@ -133,7 +133,7 @@ export async function POST(
     }
 
     // Rate limit : 5 rapports complets par heure — chacun écrit un document.
-    if (!checkRateLimit(`comparaison-rapport:${user.id}`, 5, 60 * 60 * 1000)) {
+    if (!(await checkRateLimit(`comparaison-rapport:${user.id}`, 5, 60 * 60 * 1000))) {
       return NextResponse.json(
         { error: "Trop de requêtes. Réessayez plus tard." },
         { status: 429 }

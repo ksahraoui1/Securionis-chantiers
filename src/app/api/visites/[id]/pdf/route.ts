@@ -24,7 +24,7 @@ export async function POST(
     }
 
     // Rate limit: 5 générations de PDF par heure
-    if (!checkRateLimit(`pdf-gen:${user.id}`, 5, 60 * 60 * 1000)) {
+    if (!(await checkRateLimit(`pdf-gen:${user.id}`, 5, 60 * 60 * 1000))) {
       return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 

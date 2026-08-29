@@ -26,7 +26,7 @@ export async function PATCH(request: Request) {
   }
 
   // Rate limit: 30 modifications par heure
-  if (!checkRateLimit(`admin-update-user:${user.id}`, 30, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`admin-update-user:${user.id}`, 30, 60 * 60 * 1000))) {
     return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 

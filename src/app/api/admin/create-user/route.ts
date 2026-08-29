@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   // Rate limit: 10 créations par heure
-  if (!checkRateLimit(`create-user:${user.id}`, 10, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`create-user:${user.id}`, 10, 60 * 60 * 1000))) {
     return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
   }
 

@@ -1,46 +1,57 @@
-// Simple in-memory rate limiter (no external dependency)
-// For production at scale, use Redis-based rate limiting (e.g. @upstash/ratelimit)
-
-const MAX_ENTRIES = 10000; // Limite mémoire pour éviter le memory exhaustion
-const requests = new Map<string, { count: number; resetAt: number }>();
-
-// Cleanup old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of requests) {
-    if (now > val.resetAt) requests.delete(key);
-  }
-}, 5 * 60 * 1000);
+import { createServiceClient } from "@/lib/supabase/server";
 
 /**
- * Check rate limit for a given key.
- * @param key - Unique identifier (e.g. userId + endpoint)
- * @param maxRequests - Max requests allowed in the window
- * @param windowMs - Time window in milliseconds
- * @returns true if allowed, false if rate limited
+ * Limiteur de débit, compteurs en base.
+ *
+ * Les compteurs vivaient dans une `Map` en mémoire de processus. Or déployer
+ * consiste à reconstruire et remplacer le conteneur : **chaque mise à jour
+ * rendait son quota à tout le monde**, et toutes les fenêtres de cette
+ * application durent une heure. Deux répliques derrière le proxy auraient par
+ * ailleurs donné deux fois le quota, chacune avec sa propre `Map`.
+ *
+ * Postgres plutôt que Redis : la base est déjà là, l'opération tient en une
+ * instruction atomique (`insert … on conflict do update`, qui prend un verrou
+ * de ligne), et cela n'ajoute ni service à exploiter ni dépendance.
+ *
+ * ⚠️ La fonction `consommer_quota` n'est exécutable que par le `service_role`.
+ * Elle renvoie un `boolean`, donc PostgREST l'exposerait sur `/rest/v1/rpc/` :
+ * un compte connecté pourrait sinon appeler
+ * `consommer_quota('photo-analyze:<autre>', 1, 3600)` en boucle et **épuiser le
+ * quota de quelqu'un d'autre**. Voir migration 049.
  */
-export function checkRateLimit(
+
+/**
+ * Consomme un jeton pour `key`.
+ *
+ * @param key          identifiant, par convention `<route>:<userId>`
+ * @param maxRequests  nombre d'appels autorisés dans la fenêtre
+ * @param windowMs     durée de la fenêtre, en millisecondes
+ * @returns `true` si l'appel est autorisé, `false` s'il dépasse le quota
+ *
+ * **En cas de panne de la base, l'appel est autorisé.** Un limiteur de débit
+ * indisponible ne doit pas rendre l'application indisponible ; l'échec est
+ * journalisé côté serveur — donc remonté à Sentry — pour rester visible.
+ */
+export async function checkRateLimit(
   key: string,
   maxRequests: number,
   windowMs: number
-): boolean {
-  const now = Date.now();
-  const entry = requests.get(key);
+): Promise<boolean> {
+  try {
+    const serviceClient = await createServiceClient();
+    const { data, error } = await serviceClient.rpc("consommer_quota", {
+      p_cle: key,
+      p_max: maxRequests,
+      p_fenetre_s: Math.max(1, Math.round(windowMs / 1000)),
+    });
 
-  if (!entry || now > entry.resetAt) {
-    // Protection contre le memory exhaustion
-    if (requests.size >= MAX_ENTRIES) {
-      const oldest = requests.entries().next().value;
-      if (oldest) requests.delete(oldest[0]);
+    if (error) {
+      console.error(`[rate-limit] Échec du comptage pour « ${key} » :`, error.message);
+      return true;
     }
-    requests.set(key, { count: 1, resetAt: now + windowMs });
+    return data !== false;
+  } catch (err) {
+    console.error(`[rate-limit] Exception lors du comptage pour « ${key} » :`, err);
     return true;
   }
-
-  if (entry.count >= maxRequests) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
 }

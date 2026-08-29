@@ -890,6 +890,64 @@ jamais tourné avec succès**.
 > administrateur n'a pas été éprouvée au moins une fois : l'application se
 > retrouverait sans aucun moyen vérifié de créer un compte.
 
+### DET-02 — le limiteur de débit survit aux déploiements (2026-08-29)
+
+`src/lib/rate-limit.ts` tenait ses compteurs dans une `Map` en mémoire de
+processus. Déployer consistant à reconstruire et remplacer le conteneur,
+**chaque mise à jour rendait son quota à tout le monde** — et toutes les
+fenêtres de cette application durent une heure. Deux répliques derrière le
+proxy auraient par ailleurs donné deux fois le quota, chacune avec sa `Map`.
+
+Compteurs portés en base (migration 049) : table `rate_limits` et fonction
+`consommer_quota(cle, max, fenetre_s)`. Postgres plutôt que Redis — la base est
+déjà là, l'opération tient en une instruction atomique, et cela n'ajoute ni
+service à exploiter ni dépendance.
+
+`insert … on conflict do update` prend un verrou de ligne : deux appels
+concurrents sur la même clé se sérialisent, aucun ne lit un compteur périmé.
+Aucune transaction explicite n'est nécessaire. Dans la clause `do update`,
+l'alias désigne la ligne **existante** et `RETURNING` renvoie la ligne **après**
+mise à jour.
+
+`checkRateLimit()` devient asynchrone ; les 18 appelants l'attendent. Sa
+signature ne change pas autrement (`key`, `maxRequests`, `windowMs`).
+
+> **En cas de panne de la base, l'appel est autorisé.** Un limiteur
+> indisponible ne doit pas rendre l'application indisponible ; l'échec est
+> journalisé côté serveur, donc remonté à Sentry. Vérifié : sans la fonction en
+> base, `/api/docs/manual` répond toujours 200.
+
+#### ⚠️ `revoke … from public` ne suffit pas — et cela valait pour 045 à 047
+
+Trouvé en éprouvant cette migration. **Supabase accorde `EXECUTE` directement
+aux rôles `anon` et `authenticated`** sur toute nouvelle fonction du schéma
+`public`, via `alter default privileges`. Révoquer sur le pseudo-rôle `PUBLIC`
+laisse donc les grants directs intacts — le contraire de ce que le piège n° 10
+laisse croire, qui ne vaut que pour les privilèges *hérités*.
+
+Relevé en production avant correction : `enforce_chantier_owner_immutability`,
+`audit_logs_ajout_seul` et `chantier_rattacher_createur` étaient toutes trois
+encore exécutables par `anon` et `authenticated`.
+
+Le risque y était faible — ce sont des fonctions de trigger, qui renvoient
+`trigger` : PostgREST ne les expose pas et PL/pgSQL refuse de les exécuter hors
+contexte de déclenchement. **Pour `consommer_quota`, il ne l'est pas** : elle
+renvoie un `boolean`, donc PostgREST l'expose sur `/rest/v1/rpc/`, et un compte
+connecté pourrait appeler `consommer_quota('photo-analyze:<autre>', 1, 3600)` en
+boucle pour **épuiser le quota de quelqu'un d'autre**.
+
+La migration 049 révoque explicitement sur `public, anon, authenticated` pour
+les quatre fonctions. Révoquer `EXECUTE` ne désarme pas les triggers : le
+privilège n'est vérifié qu'à la **création** du trigger.
+
+**Vérifié, en production, dans une transaction annulée** : 4ᵉ appel sur un
+maximum de 3 refusé, compteur remis à 1 après expiration de la fenêtre, clés
+indépendantes entre utilisateurs, appel par `authenticated` et par `anon`
+refusé en **42501**, appel par `service_role` autorisé.
+
+> Le constat d'origine citait `stripe/setup` (3 par jour) comme la fenêtre la
+> plus exposée. Cette route n'existe plus depuis le retrait de Stripe.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -1728,7 +1786,7 @@ rend 12 dont 9 dans la garniture.
 7. **Variables `NEXT_PUBLIC_*`** : inlinées par Next.js au build — les getters dans `env.ts` sont des fonctions (pas des constantes) pour préserver ce comportement.
 8. **Service Worker cache** : incrémenter `CACHE_VERSION` dans `public/sw.js` pour forcer la mise à jour chez les clients.
 9. **Migrations Supabase** : les migrations 001-015 sont hors tracking CLI. Ne pas utiliser `supabase db push` sans vérifier l'état réel de la base distante.
-10. **`revoke ... from anon` est insuffisant** : les privilèges des fonctions viennent du pseudo-rôle `PUBLIC`, dont `anon` hérite. Révoquer sur `PUBLIC`, puis `grant` explicitement aux rôles nécessaires.
+10. **Révoquer `EXECUTE` sur une fonction demande les deux** : les privilèges viennent du pseudo-rôle `PUBLIC` **et** de grants directs que Supabase pose sur `anon` et `authenticated` (`alter default privileges`). Écrire `revoke execute on function … from public, anon, authenticated`, puis `grant` aux rôles nécessaires. `revoke … from public` seul laisse la fonction appelable — constaté sur trois fonctions des migrations 045 à 047, corrigé en 049.
 11. **Modifier `profiles.role` ou `profiles.entreprise_id`** exige `set role service_role;` — le trigger `enforce_role_immutability` refuse toute autre origine.
 12. **Familles des points de contrôle** : `famille` est renseignée par le trigger `points_controle_famille_trg` (migration 038) si l'appelant ne la fournit pas ; `mots_cles` n'a pas d'équivalent et doit être fourni par l'appelant (`genererMotsCles()`).
 13. **Plans PE/EXE** : `plan_type`, `plan_version` et `parent_version_id` sont renseignés uniquement côté application (aucun trigger). Le chaînage `parent_version_id` est calculé au marquage à partir des documents déjà chargés.
@@ -1771,6 +1829,7 @@ rend 12 dont 9 dans la garniture.
 50. **Un bucket privé mal cloisonné ne protège que des inconnus** : une politique de lecture `bucket_id = '…'` laisse tout compte connecté signer n'importe quel objet. Et attention aux **doublons de politiques** — il y en avait deux par bucket, permissives, donc en OU : en laisser une annule le cloisonnement.
 51. **Les contrôles de mot de passe des pages d'authentification ne garantissent rien** : ils tournent dans le navigateur et `supabase.auth.signUp` est appelable directement. La contrainte qui engage est celle de Supabase Auth (longueur minimale, refus des mots de passe compromis), réglable uniquement dans le tableau de bord — ni par le code, ni par une migration.
 52. **`getLimits()` est une barrière par rôle, pas par abonnement** : elle vit dans `src/lib/roles/limites.ts` (auparavant `lib/stripe/`, ce qui trompait) et ne lit jamais la table `subscriptions`. Six routes métier s'en servent pour autoriser PDF et email ; un compte « invité » ne peut faire ni l'un ni l'autre.
+53. **`checkRateLimit()` est asynchrone** depuis la migration 049 : elle interroge Postgres. Tout nouvel appelant doit l'attendre, sinon la condition porte sur une `Promise` — toujours vraie, donc aucune limite.
 
 ---
 
