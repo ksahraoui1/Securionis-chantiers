@@ -613,7 +613,7 @@ apports :
 > l'utilisateur authentifié, et **aucun composant client n'écrit** dans cette
 > table — les écritures étaient toutes dans des routes API.
 
-#### Migration 046 — **écrite, pas encore appliquée**
+#### Migration 046 — **appliquée**
 
 Elle retire la politique d'insertion, révoque `insert/update/delete/truncate`
 à `anon` et `authenticated`, et ajoute un trigger d'ajout seul qui couvre aussi
@@ -621,10 +621,26 @@ le `service_role` (protection contre une route serveur compromise), en
 exemptant `postgres` et `supabase_admin` pour qu'une purge de conservation
 reste possible depuis une migration.
 
-> ⚠️ **L'ordre de déploiement compte.** Appliquer 046 avant que le nouveau code
-> ne soit en production ferait échouer silencieusement les cinq écritures qui
-> utilisaient encore le client utilisateur. Déployer d'abord, appliquer
-> ensuite.
+> ⚠️ **L'ordre de déploiement comptait** et a été respecté : le code est parti
+> en production d'abord. Appliquer 046 avant lui aurait fait échouer
+> silencieusement les cinq écritures qui utilisaient encore le client
+> utilisateur.
+
+**Vérification, jouée en production dans une transaction annulée :**
+
+| Rôle | Opération | Résultat |
+|---|---|---|
+| `authenticated` | INSERT | **refusé** — SQLSTATE 42501, privilège insuffisant |
+| `service_role` | INSERT | accepté — le chemin de `journaliser()` fonctionne |
+| `service_role` | UPDATE | **refusé** par le trigger |
+| `service_role` | DELETE | **refusé** par le trigger |
+| `postgres` | DELETE | accepté — la purge de conservation reste possible |
+
+Le refus côté `authenticated` est un **défaut de privilège**, pas un refus RLS :
+il n'y a plus de politique d'insertion *et* plus de droit d'écriture. Journal
+revérifié après annulation : 170 entrées, aucun résidu de test.
+`SUPABASE_SERVICE_ROLE_KEY` confirmée présente dans le conteneur de production —
+sans elle, `journaliser()` échouerait en silence.
 
 > Note : un trigger `for each statement` ignore sa valeur de retour — seul un
 > `raise` interrompt la commande, `return null` laisse passer.
