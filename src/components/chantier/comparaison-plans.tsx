@@ -270,6 +270,109 @@ function borner(valeur: number): number {
 
 // OpenSeadragon n'affiche que des images : une page de PDF est donc rendue
 // dans un canvas, puis fournie au visualiseur sous forme d'URL blob.
+/**
+ * Teintes de superposition.
+ *
+ * ⚠️ **Elles doivent rester sombres.** Le plan teinté est ce que la détection
+ * capture ensuite, et `masqueMurs()` ne retient que les pixels sous 150 en
+ * niveaux de gris. Le vert et l'orange de l'interface (#2E7D32, #E67E22)
+ * sortent à 93 et 147 : le second passerait tout juste, ses bords adoucis
+ * pas du tout. Les variantes ci-dessous se lisent comme les mêmes couleurs et
+ * pèsent 67, 94 et 84 — sans ambiguïté possible.
+ */
+const TEINTE_PE = "#1B5E20";
+const TEINTE_EXE = "#A64B00";
+const TEINTE_GRIS = "#4B5563";
+
+/** Patience accordée au rechargement des deux calques, en millisecondes. */
+const DELAI_POSE_MS = 15_000;
+
+export type ModeCouleur = "naturel" | "couleurs" | "pe-couleur";
+
+const MODES_COULEUR: {
+  valeur: ModeCouleur;
+  titre: string;
+  detail: string;
+}[] = [
+  {
+    valeur: "naturel",
+    titre: "Naturel",
+    detail: "Les plans tels qu'ils sont dessinés.",
+  },
+  {
+    valeur: "couleurs",
+    titre: "Une couleur par plan",
+    detail: "PE en vert, EXE en orange, fond transparent.",
+  },
+  {
+    valeur: "pe-couleur",
+    titre: "PE coloré, EXE gris",
+    detail: "Fait ressortir le plan d'enquête sur celui d'exécution.",
+  },
+];
+
+/** Couleur à appliquer à un plan, `null` pour le laisser tel quel. */
+function teinteDuPlan(mode: ModeCouleur, plan: "pe" | "exe"): string | null {
+  if (mode === "naturel") return null;
+  if (plan === "pe") return TEINTE_PE;
+  return mode === "couleurs" ? TEINTE_EXE : TEINTE_GRIS;
+}
+
+/**
+ * Recolore un plan et rend son fond transparent.
+ *
+ * Superposer deux plans opaques revient à regarder le second à travers une
+ * page blanche : à 50 % d'opacité, le plan du dessous est délavé et le trait
+ * du dessus l'est autant. En faisant du blanc de la feuille de la
+ * transparence, seuls les traits se superposent — et deux couleurs distinctes
+ * disent au premier coup d'œil à quel dossier appartient chaque trait.
+ *
+ * L'opacité de chaque pixel est prise sur l'**encre** (1 − luminance) : un
+ * trait noir devient opaque, un gris de trame devient translucide, le blanc
+ * disparaît. Les nuances du dessin sont donc conservées, portées par l'alpha
+ * au lieu de la couleur.
+ */
+async function teinterPlan(url: string, couleur: string): Promise<string> {
+  const image = await new Promise<HTMLImageElement>((resoudre, rejeter) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resoudre(img);
+    img.onerror = () => rejeter(new Error("Le plan n'a pas pu être relu."));
+    img.src = url;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Le navigateur n'a pas fourni de contexte de dessin.");
+
+  ctx.drawImage(image, 0, 0);
+  const donnees = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const px = donnees.data;
+
+  const r = parseInt(couleur.slice(1, 3), 16);
+  const v = parseInt(couleur.slice(3, 5), 16);
+  const b = parseInt(couleur.slice(5, 7), 16);
+
+  for (let i = 0; i < px.length; i += 4) {
+    const luminance = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000;
+    // Un pixel déjà transparent le reste : rien n'y a été dessiné.
+    const encre = px[i + 3] === 0 ? 0 : 255 - luminance;
+    px[i] = r;
+    px[i + 1] = v;
+    px[i + 2] = b;
+    px[i + 3] = encre;
+  }
+  ctx.putImageData(donnees, 0, 0);
+
+  const blob = await new Promise<Blob | null>((resoudre) =>
+    canvas.toBlob(resoudre, "image/png")
+  );
+  if (!blob) throw new Error("La recoloration du plan a échoué.");
+  return URL.createObjectURL(blob);
+}
+
 async function construireSource(doc: PlanDoc, page: number): Promise<SourcePlan> {
   if (EXTENSIONS_IMAGE.test(doc.fichier_nom)) {
     return { url: doc.fichier_url, nbPages: 1 };
@@ -374,6 +477,9 @@ export function ComparaisonPlans({
    * — et la détection compare les calques tels qu'ils sont superposés.
    */
   const [rotationCalque, setRotationCalque] = useState(0);
+
+  /** Recoloration des calques, pour distinguer les deux plans superposés. */
+  const [modeCouleur, setModeCouleur] = useState<ModeCouleur>("naturel");
   const [differences, setDifferences] = useState(0);
   const [pleinEcran, setPleinEcran] = useState(false);
 
@@ -433,6 +539,11 @@ export function ComparaisonPlans({
   // c'est sur elles que porte la détection de différences, pas sur le canevas
   // du visualiseur, qui n'en montre qu'un cadrage à l'opacité du moment.
   const sourcesRef = useRef<{ pe: string; exe: string } | null>(null);
+  /** Plans recolorés, par URL d'origine et couleur — la recoloration coûte un
+   *  décodage et un balayage de tous les pixels, inutile de la refaire. */
+  const teintesRef = useRef(new Map<string, string>());
+  /** URLs actuellement posées dans le visualiseur, pour ne rien reposer en vain. */
+  const urlsPoseesRef = useRef<{ pe: string; exe: string } | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const osdRef = useRef<OSDStatic | null>(null);
   const itemPERef = useRef<TiledImage | null>(null);
@@ -507,6 +618,106 @@ export function ComparaisonPlans({
   const appliquerCalquesRef = useRef(appliquerCalques);
   appliquerCalquesRef.current = appliquerCalques;
 
+  /**
+   * Pose (ou repose) les deux plans dans le visualiseur.
+   *
+   * Recoloriser un calque impose de le reposer : OpenSeadragon ne sait pas
+   * changer la source d'une image déjà ajoutée. Le visualiseur, lui, est
+   * conservé — et avec lui le cadrage, sauf à la première pose.
+   */
+  const poserCalques = useCallback(
+    (
+      urlPE: string,
+      urlEXE: string,
+      options: { recentrer: boolean; nomPE: string; nomEXE: string }
+    ) => {
+      const viewer = viewerRef.current;
+      if (!viewer) return;
+
+      // ⚠️ Vider le monde **remet le cadrage à zéro** : OpenSeadragon revient
+      // à la vue d'ensemble dès que le monde se retrouve vide, puis se
+      // redimensionne sur le nouveau contenu. Vérifié dans le navigateur — un
+      // centre à (0,31 ; 0,42) et un zoom de 4 reviennent à (0,5 ; 0,5) et
+      // 0,78. Il faut donc relever le cadrage avant, et le reposer après.
+      const cadrage = options.recentrer
+        ? null
+        : {
+            centre: viewer.viewport.getCenter(true),
+            zoom: viewer.viewport.getZoom(true),
+          };
+
+      urlsPoseesRef.current = { pe: urlPE, exe: urlEXE };
+      itemPERef.current = null;
+      itemEXERef.current = null;
+      viewer.world.removeAll();
+
+      const ajouter = (
+        url: string,
+        index: number,
+        cible: typeof itemPERef,
+        nom: string
+      ) => {
+        viewer.addTiledImage({
+          tileSource: { type: "image", url },
+          index,
+          width: 1,
+          success: (event) => {
+            cible.current = (event as unknown as { item: TiledImage }).item;
+            if (itemPERef.current && itemEXERef.current) {
+              appliquerCalquesRef.current();
+              const vue = viewerRef.current?.viewport;
+              if (options.recentrer) {
+                vue?.goHome(true);
+              } else if (cadrage && vue) {
+                vue.zoomTo(cadrage.zoom, undefined, true);
+                vue.panTo(cadrage.centre, true);
+              }
+              setPret(true);
+            }
+          },
+          error: () => {
+            // Le visualiseur détruit met sa référence à null : c'est le signe
+            // que l'échec n'intéresse plus personne.
+            if (viewerRef.current) {
+              setErreur(`Le plan « ${nom} » n'a pas pu être affiché.`);
+            }
+          },
+        });
+      };
+
+      ajouter(urlPE, 0, itemPERef, options.nomPE);
+      ajouter(urlEXE, 1, itemEXERef, options.nomEXE);
+    },
+    []
+  );
+
+  const poserCalquesRef = useRef(poserCalques);
+  poserCalquesRef.current = poserCalques;
+
+  /** Même chose, mais rendue quand les deux plans sont entièrement chargés. */
+  const poserCalquesCharges = useCallback(
+    (urlPE: string, urlEXE: string, nomPE: string, nomEXE: string) =>
+      new Promise<void>((resoudre, rejeter) => {
+        const debut = Date.now();
+        poserCalquesRef.current(urlPE, urlEXE, {
+          recentrer: false,
+          nomPE,
+          nomEXE,
+        });
+        const verifier = () => {
+          const pe = itemPERef.current;
+          const exe = itemEXERef.current;
+          if (pe?.getFullyLoaded() && exe?.getFullyLoaded()) return resoudre();
+          if (Date.now() - debut > DELAI_POSE_MS) {
+            return rejeter(new Error("les plans n'ont pas fini de se charger"));
+          }
+          requestAnimationFrame(verifier);
+        };
+        requestAnimationFrame(verifier);
+      }),
+    []
+  );
+
   // Préparation des sources puis initialisation du visualiseur
   useEffect(() => {
     if (!charge || !docPE || !docEXE) return;
@@ -516,6 +727,10 @@ export function ComparaisonPlans({
     let annule = false;
     let viewer: Viewer | null = null;
     const aLiberer: Array<() => void> = [];
+    // Capturé ici plutôt que lu au nettoyage : la `Map` est créée une fois
+    // pour toutes, les deux références désignent donc le même objet — et
+    // l'écrire ainsi dit clairement lequel on libère.
+    const teintes = teintesRef.current;
 
     (async () => {
       setPreparation(true);
@@ -582,34 +797,11 @@ export function ComparaisonPlans({
           setDecalage(decalageRef.current);
         });
 
-        const ajouter = (
-          url: string,
-          index: number,
-          cible: typeof itemPERef,
-          nom: string
-        ) => {
-          viewer?.addTiledImage({
-            tileSource: { type: "image", url },
-            index,
-            width: 1,
-            success: (event) => {
-              cible.current = (event as unknown as { item: TiledImage }).item;
-              if (itemPERef.current && itemEXERef.current) {
-                appliquerCalquesRef.current();
-                viewerRef.current?.viewport.goHome(true);
-                setPret(true);
-              }
-            },
-            error: () => {
-              if (!annule) {
-                setErreur(`Le plan « ${nom} » n'a pas pu être affiché.`);
-              }
-            },
-          });
-        };
-
-        ajouter(srcPE.url, 0, itemPERef, docPE.nom);
-        ajouter(srcEXE.url, 1, itemEXERef, docEXE.nom);
+        poserCalquesRef.current(srcPE.url, srcEXE.url, {
+          recentrer: true,
+          nomPE: docPE.nom,
+          nomEXE: docEXE.nom,
+        });
       } catch (err) {
         if (!annule) {
           setErreur(
@@ -631,6 +823,11 @@ export function ComparaisonPlans({
       itemPERef.current = null;
       itemEXERef.current = null;
       aLiberer.forEach((liberer) => liberer());
+      // Les plans recolorés sont indexés sur l'URL d'origine, qui vient d'être
+      // révoquée : le cache n'a plus rien à désigner.
+      teintes.forEach((url) => URL.revokeObjectURL(url));
+      teintes.clear();
+      urlsPoseesRef.current = null;
       sourcesRef.current = null;
       setDetection({ statut: "inactif" });
       setPanneauOuvert(false);
@@ -644,6 +841,67 @@ export function ComparaisonPlans({
       setSelection(null);
     };
   }, [charge, docPE, docEXE, pagePE, pageEXE]);
+
+  // Recoloration des calques
+  useEffect(() => {
+    const naturel = sourcesRef.current;
+    if (!pret || !naturel || !docPE || !docEXE) return;
+
+    let annule = false;
+
+    const resoudre = async (url: string, plan: "pe" | "exe") => {
+      const couleur = teinteDuPlan(modeCouleur, plan);
+      if (!couleur) return url;
+
+      const cle = `${url}|${couleur}`;
+      const connue = teintesRef.current.get(cle);
+      if (connue) return connue;
+
+      const teintee = await teinterPlan(url, couleur);
+      // Une autre passe a pu gagner la course : on garde la première et on
+      // révoque la seconde, sans quoi elle fuirait.
+      const deja = teintesRef.current.get(cle);
+      if (deja) {
+        URL.revokeObjectURL(teintee);
+        return deja;
+      }
+      teintesRef.current.set(cle, teintee);
+      return teintee;
+    };
+
+    (async () => {
+      try {
+        const [urlPE, urlEXE] = await Promise.all([
+          resoudre(naturel.pe, "pe"),
+          resoudre(naturel.exe, "exe"),
+        ]);
+        if (annule) return;
+
+        const posees = urlsPoseesRef.current;
+        if (posees && posees.pe === urlPE && posees.exe === urlEXE) return;
+
+        // Sans recentrage : l'utilisateur a cadré et recalé ses plans, changer
+        // de couleur ne doit pas le renvoyer à la vue d'ensemble.
+        poserCalquesRef.current(urlPE, urlEXE, {
+          recentrer: false,
+          nomPE: docPE.nom,
+          nomEXE: docEXE.nom,
+        });
+      } catch (err) {
+        if (!annule) {
+          setErreur(
+            err instanceof Error
+              ? err.message
+              : "Les plans n'ont pas pu être recolorés."
+          );
+        }
+      }
+    })();
+
+    return () => {
+      annule = true;
+    };
+  }, [modeCouleur, pret, docPE, docEXE]);
 
   // Opacités, ordre des calques, disposition, recalage
   useEffect(() => {
@@ -1284,6 +1542,27 @@ export function ComparaisonPlans({
         requestAnimationFrame(() => requestAnimationFrame(() => resoudre()))
       );
 
+    // ⚠️ **La détection ne doit jamais analyser des plans recolorés.**
+    // La recoloration porte l'encre par l'alpha : composée sur blanc, elle ne
+    // peut qu'éclaircir — les bords adoucis d'un trait passent au-dessus du
+    // seuil d'encre et le mur maigrit. Mesuré sur les plans de production :
+    // 10 différences détectées sur les plans naturels, 3 seulement une fois
+    // teintés. Une aide à la lecture ne doit pas coûter des écarts sur un
+    // document de sécurité : on repose donc les plans d'origine le temps de la
+    // capture, la géométrie posée par l'utilisateur étant rejouée à
+    // l'identique depuis l'état.
+    const naturel = sourcesRef.current;
+    const posees = urlsPoseesRef.current;
+    const teinte =
+      !!naturel &&
+      !!posees &&
+      (posees.pe !== naturel.pe || posees.exe !== naturel.exe);
+
+    if (teinte && naturel && docPE && docEXE) {
+      await poserCalquesCharges(naturel.pe, naturel.exe, docPE.nom, docEXE.nom);
+      await attendreRendu();
+    }
+
     const rendre = async (
       visible: TiledImage,
       cache: TiledImage
@@ -1330,6 +1609,9 @@ export function ComparaisonPlans({
       // Rétablit les opacités choisies par l'utilisateur.
       appliquerCalques();
       viewer.forceRedraw();
+      if (teinte && posees && docPE && docEXE) {
+        void poserCalquesCharges(posees.pe, posees.exe, docPE.nom, docEXE.nom);
+      }
     }
   }
 
@@ -1596,6 +1878,7 @@ export function ComparaisonPlans({
               actif={inverse}
               onClick={() => setInverse((v) => !v)}
             />
+            <CouleursCalques valeur={modeCouleur} onChange={setModeCouleur} />
             <OutilBouton
               icone={synchro ? "lock" : "lock_open"}
               titre={
@@ -2360,6 +2643,55 @@ function EchelleCalque({
  * ±90° évitent d'avoir à traîner le curseur jusqu'au bout pour un quart de
  * tour, qui est le cas courant.
  */
+/**
+ * Choix de la recoloration des calques.
+ *
+ * Un `select` plutôt qu'un menu déroulant maison : trois choix exclusifs, une
+ * valeur courante à lire d'un coup d'œil, et la barre d'outils en compte déjà
+ * assez sans un menu de plus à ouvrir.
+ */
+function CouleursCalques({
+  valeur,
+  onChange,
+}: {
+  valeur: ModeCouleur;
+  onChange: (valeur: ModeCouleur) => void;
+}) {
+  const choisi = MODES_COULEUR.find((m) => m.valeur === valeur);
+
+  return (
+    <div className="flex items-center gap-1 ml-1">
+      <label
+        htmlFor="couleurs-calques"
+        title={choisi?.detail}
+        className="inline-flex items-center"
+      >
+        <span
+          translate="no"
+          className="material-symbols-outlined text-lg"
+          style={{ color: valeur === "naturel" ? NAVY : COULEUR_EXE }}
+        >
+          palette
+        </span>
+        <span className="sr-only">Couleurs des calques</span>
+      </label>
+      <select
+        id="couleurs-calques"
+        value={valeur}
+        title={choisi?.detail}
+        onChange={(e) => onChange(e.target.value as ModeCouleur)}
+        className="rounded-lg border border-gray-300 px-2 py-1 min-h-touch text-xs"
+      >
+        {MODES_COULEUR.map((mode) => (
+          <option key={mode.valeur} value={mode.valeur}>
+            {mode.titre}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function RotationCalque({
   valeur,
   plan,
