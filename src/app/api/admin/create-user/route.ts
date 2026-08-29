@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { validatePassword } from "@/lib/utils/security";
+import { journaliser } from "@/lib/audit";
 
 const VALID_ROLES = ["invité", "inspecteur", "administrateur"];
 
@@ -102,20 +103,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Audit log
-    const { error: auditError } = await serviceClient.from("audit_logs").insert({
-      user_id: user.id,
+    // Audit log. Le compte est valide : un échec de journalisation ne l'annule
+    // pas, mais `journaliser()` le rend visible dans les logs serveur.
+    await journaliser({
+      userId: user.id,
       action: "create_user",
       resource: "profiles",
-      resource_id: newUser.user.id,
+      resourceId: newUser.user.id,
       details: { nom, email, role },
     });
-
-    if (auditError) {
-      // Le compte est valide : on ne l'annule pas, mais la perte de traçabilité
-      // doit être visible dans les logs serveur.
-      console.error("Create user — échec du journal d'audit:", auditError.message);
-    }
   }
 
   return NextResponse.json({ success: true, userId: newUser.user?.id });

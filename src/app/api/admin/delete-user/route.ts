@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { journaliser } from "@/lib/audit";
 
 export async function DELETE(request: Request) {
   const supabase = await createClient();
@@ -73,11 +74,11 @@ export async function DELETE(request: Request) {
   }
 
   // Audit log
-  await serviceClient.from("audit_logs").insert({
-    user_id: user.id,
+  await journaliser({
+    userId: user.id,
     action: "delete_user",
     resource: "profiles",
-    resource_id: userId,
+    resourceId: userId,
     details: { nom: targetProfile.nom, email: targetProfile.email },
   });
 

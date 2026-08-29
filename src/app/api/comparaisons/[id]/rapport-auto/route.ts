@@ -22,6 +22,7 @@ import type {
   ImagePdf,
 } from "@/components/pdf/rapport-comparaison-auto";
 import type { TypeDifference } from "@/lib/plan-diff-detection";
+import { journaliser } from "@/lib/audit";
 
 // Le rapport embarque trois images et jusqu'à 300 lignes : la génération PDF
 // peut dépasser la minute par défaut sur un petit conteneur.
@@ -435,11 +436,11 @@ export async function POST(
       }
     }
 
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
+    await journaliser({
+      userId: user.id,
       action: "generate_comparaison_report",
       resource: "comparaisons",
-      resource_id: comparaisonId,
+      resourceId: comparaisonId,
       details: {
         chantier_id: donnees.chantierId,
         format,

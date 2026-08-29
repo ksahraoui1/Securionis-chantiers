@@ -4,6 +4,7 @@ import { sendRapport } from "@/lib/email/send-rapport";
 import { canAccessVisite, getUserRole, extractRapportStoragePath } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getLimits } from "@/lib/stripe/limits";
+import { journaliser } from "@/lib/audit";
 
 export async function POST(
   request: NextRequest,
@@ -173,11 +174,11 @@ export async function POST(
       .eq("id", visiteId);
 
     // Audit log
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
+    await journaliser({
+      userId: user.id,
       action: "send_rapport_email",
       resource: "visite",
-      resource_id: visiteId,
+      resourceId: visiteId,
       details: { sent_to: sentTo, count: sentTo.length },
     });
 

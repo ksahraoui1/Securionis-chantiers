@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canAccessVisite } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { journaliser } from "@/lib/audit";
 
 export async function DELETE(
   _request: NextRequest,
@@ -70,11 +71,11 @@ export async function DELETE(
     }
 
     // Audit log
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
+    await journaliser({
+      userId: user.id,
       action: "delete_visite",
       resource: "visite",
-      resource_id: visiteId,
+      resourceId: visiteId,
       details: { chantier_id: visite.chantier_id, statut: visite.statut },
     });
 
