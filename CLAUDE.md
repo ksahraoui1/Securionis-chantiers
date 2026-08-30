@@ -1238,10 +1238,19 @@ un garde-corps ou échafaudage est impossible » — OTConst (7,0).
 - `construireTsQuery()` est sorti de la page d'administration vers
   `src/lib/utils/recherche.ts`, pour éviter une deuxième copie.
 
-**Éprouvé de bout en bout** sur la question réelle « Quelle est la
-réglementation applicable aux garde-corps d'échafaudage ? » : réponse en 7,2 s
-citant *Suva 33024* et *Suva 33028*, marquées `citee: true`, les deux extraits
-non pertinents restant à `false`.
+**Éprouvé de bout en bout, migration appliquée**, sur la question réelle
+« Quelle est la réglementation applicable aux garde-corps d'échafaudage ? » :
+**8 points et 4 documents** remontés, réponse en 11,9 s, `citee: true` sur les
+extraits effectivement cités.
+
+La différence est qualitative, pas seulement quantitative. Avant l'ancrage, la
+réponse listait des titres de directives. Après, elle est opérationnelle et
+tirée du référentiel&nbsp;: « garde-corps obligatoire en cas de risque de chute
+supérieure à 2 m […] cela découle de l'OTConst [P7] », « trois éléments selon
+Suva 33017 [P6] : une lisse haute, une lisse intermédiaire, une plinthe ».
+
+> Le contexte plus fourni allonge la réponse — 7,2 s sans corpus, **11,9 s**
+> avec. Acceptable pour un usage de terrain où l'inspecteur lit la réponse.
 
 > Un échec de recherche est **journalisé** : sans la migration 050 la RPC
 > n'existe pas, et l'assistant répondrait sans corpus — silencieusement.
