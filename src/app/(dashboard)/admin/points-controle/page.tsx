@@ -13,6 +13,7 @@ import {
   type Famille,
 } from "@/lib/utils/familles";
 import type { Tables } from "@/types/database";
+import { construireTsQuery } from "@/lib/utils/recherche";
 
 type PointWithRelations = Tables<"points_controle"> & {
   categories: { libelle: string } | null;
@@ -24,20 +25,6 @@ const POINT_COLUMNS =
   "id, phase_id, categorie_id, theme_id, intitule, critere, base_legale, objet, " +
   "explications, famille, mots_cles, is_custom, actif, created_by, created_at, " +
   "updated_at, categories(libelle), themes(libelle)";
-
-/**
- * Transforme la saisie libre en tsquery à préfixe (« echa » trouve
- * « échafaudage »). Le découpage sur les non-alphanumériques neutralise au
- * passage tous les opérateurs de la syntaxe tsquery.
- */
-function buildTsQuery(input: string): string | null {
-  const terms = input
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((t) => t.length >= 2);
-  if (terms.length === 0) return null;
-  return terms.map((t) => `${t}:*`).join(" & ");
-}
 
 export default function AdminPointsControlePage() {
   const [categories, setCategories] = useState<Tables<"categories">[]>([]);
@@ -146,7 +133,7 @@ export default function AdminPointsControlePage() {
     if (filterActif === "actif") query = query.eq("actif", true);
     if (filterActif === "inactif") query = query.eq("actif", false);
 
-    const tsQuery = buildTsQuery(debouncedSearch);
+    const tsQuery = construireTsQuery(debouncedSearch);
     if (tsQuery) {
       query = query.textSearch("search_vector", tsQuery, { config: "french_unaccent" });
     }

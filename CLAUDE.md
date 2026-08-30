@@ -1171,6 +1171,90 @@ s'exécute.
 > vérification qui manque** : opacités, inversion, côte à côte, échelle,
 > rotation, recentrage.
 
+### Assistant juridique ancré sur le corpus (2026-08-30)
+
+L'assistant répondait **de mémoire**. Un modèle de langue invente très bien un
+numéro d'article — la forme est parfaite, le contenu peut être faux — et son
+instruction lui demandait de « citer systématiquement les articles » et de
+« proposer des formulations utilisables directement dans un rapport
+d'inspection ». Sans avertissement nulle part (constat IA-01).
+
+Or l'application contenait déjà de quoi répondre, et l'infrastructure pour le
+retrouver.
+
+#### Ce que le corpus contient vraiment — et ce qu'il ne contient pas
+
+Mesuré avant d'écrire quoi que ce soit, et cela a changé la conception :
+
+| | |
+|---|---|
+| points de contrôle actifs | **487** |
+| avec une `base_legale` | **448** (92 %) |
+| avec des `explications` | 278 |
+| avec un `objet` | 365 |
+| avec un `critere` | **0** |
+
+> ⚠️ **`base_legale` nomme un texte, jamais un article** : « OTConst », « RPAC »,
+> « Suva 33024 ». Le corpus permet donc de désigner **la bonne ordonnance**, pas
+> l'alinéa. L'instruction ne dit plus « cite l'article » mais **« n'invente
+> jamais un numéro d'article ni un alinéa »** — le modèle nomme le texte, cite
+> le repère de l'extrait, et renvoie au document pour l'article précis.
+>
+> C'est la différence entre une fonctionnalité qui réduit l'invention et une qui
+> en donne l'apparence.
+
+#### ⚠️ La recherche se fait en OU pondéré, pas en ET
+
+La barre de recherche de l'administration joint les termes par **ET** — c'est ce
+qu'on veut quand on tape « garde corps ». Mais l'assistant reçoit une
+**question** : « Quelle est la réglementation applicable aux garde-corps
+d'échafaudage ? ». Avec un ET, il faudrait qu'un point contienne aussi
+« réglementation » et « applicable ».
+
+**Mesuré : zéro point remonté**, alors que le corpus en contient plusieurs
+dizaines de pertinents. D'où la migration **050** et sa fonction
+`rechercher_points_controle(termes[], limite)`, qui joint par OU et classe par
+`ts_rank_cd` — sans classement, un OU remonterait n'importe quel point contenant
+un mot courant. `SECURITY INVOKER` : la RLS de `points_controle` s'applique.
+
+Résultat sur la même question, désormais 8 points, dans cet ordre :
+« Gardes-corps de l'échafaudage » (8,0) · « Contrôler le garde-corps de
+l'échafaudage lui-même » — Suva 33024 (7,3) · « Contrôler les justificatifs si
+un garde-corps ou échafaudage est impossible » — OTConst (7,0).
+
+#### Ce qui a été ajouté
+
+- `src/lib/assistant/recherche-corpus.ts` — recherche, mise en forme du corpus
+  (bloc `<corpus>` annoncé comme **données de référence sans instructions**,
+  même précaution que le contexte de visite), et repérage des sources
+  réellement citées par le modèle (`[P3]`, `[D1]`).
+- La route renvoie `{ answer, sources }`, chaque source portant `citee`.
+- Sous chaque réponse, un bloc **Sources** : les extraits cités en évidence, les
+  autres repliés derrière « + N autres extraits consultés ». Afficher huit
+  sources dont deux servent diluerait la vérifiabilité recherchée.
+- Les documents de référence sont **cliquables** — URL signées, les buckets
+  étant privés depuis SEC-03.
+- **L'avertissement d'IA-01**, en tête du panneau et non en note de bas de page.
+- `construireTsQuery()` est sorti de la page d'administration vers
+  `src/lib/utils/recherche.ts`, pour éviter une deuxième copie.
+
+**Éprouvé de bout en bout, migration appliquée**, sur la question réelle
+« Quelle est la réglementation applicable aux garde-corps d'échafaudage ? » :
+**8 points et 4 documents** remontés, réponse en 11,9 s, `citee: true` sur les
+extraits effectivement cités.
+
+La différence est qualitative, pas seulement quantitative. Avant l'ancrage, la
+réponse listait des titres de directives. Après, elle est opérationnelle et
+tirée du référentiel&nbsp;: « garde-corps obligatoire en cas de risque de chute
+supérieure à 2 m […] cela découle de l'OTConst [P7] », « trois éléments selon
+Suva 33017 [P6] : une lisse haute, une lisse intermédiaire, une plinthe ».
+
+> Le contexte plus fourni allonge la réponse — 7,2 s sans corpus, **11,9 s**
+> avec. Acceptable pour un usage de terrain où l'inspecteur lit la réponse.
+
+> Un échec de recherche est **journalisé** : sans la migration 050 la RPC
+> n'existe pas, et l'assistant répondrait sans corpus — silencieusement.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -2058,6 +2142,8 @@ rend 12 dont 9 dans la garniture.
 56. **Le serveur de dev ne reflète pas les changements de `@theme`** : Turbopack peut servir un CSS sans la variable ni la règle, `min-height` restant à `auto`, là où `npm run build` les génère. Vérifier toute modification du thème contre le build de production (`prod-local` dans `.claude/launch.json`), sinon on mesure un effet nul et on conclut à tort.
 57. **Les valeurs de thème vivent dans le CSS, plus dans un fichier de config** : Tailwind v4 ignore `tailwind.config.ts` sans directive `@config`. Ajouter une valeur passe par `@theme { --spacing-… }` dans `globals.css`.
 58. **La géométrie des calques se décide dans `comparaison/geometrie-calques.ts`**, module pur sans React ni OpenSeadragon. Toute règle nouvelle (ordre, opacité, échelle, rotation) s'y ajoute et s'y vérifie ; le hook ne fait que l'appliquer, dans l'ordre largeur → position → rotation.
+59. **La recherche de l'assistant joint les termes par OU, celle de l'administration par ET** : une question en langue naturelle ne peut pas exiger que tous ses mots figurent dans un point de contrôle. `rechercher_points_controle` (migration 050) fait le OU **et** le classement `ts_rank_cd` — l'un sans l'autre ne vaut rien.
+60. **`points_controle.base_legale` nomme un texte, pas un article** (« OTConst », « Suva 33024 ») et `critere` est vide sur les 487 lignes. Toute fonctionnalité qui promet une citation d'article précise se heurte à cela.
 
 ---
 
