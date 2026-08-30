@@ -1250,7 +1250,29 @@ supérieure à 2 m […] cela découle de l'OTConst [P7] », « trois éléments
 Suva 33017 [P6] : une lisse haute, une lisse intermédiaire, une plinthe ».
 
 > Le contexte plus fourni allonge la réponse — 7,2 s sans corpus, **11,9 s**
-> avec. Acceptable pour un usage de terrain où l'inspecteur lit la réponse.
+> avec 8 points. Ramené à **5 points filtrés** ensuite : 7,9 s.
+
+#### ⚠️ `ts_rank_cd` classe sur le titre, pas sur le contenu
+
+Constat fait en réduisant le nombre de points de 8 à 5. Le classement récompense
+la densité des termes dans le **titre** — et sur « réglementation applicable aux
+garde-corps d'échafaudage », les rangs 1 et 4 sont « Gardes-corps de
+l'échafaudage » et « Garde-corps » : titres parfaits, mais **ni base légale, ni
+explications, ni objet**. Rien à citer.
+
+La substance était aux rangs **6 et 7** : « il doit comporter une lisse haute,
+intermédiaire, et une plinthe » (Suva 33017) et « obligatoire si chute > 2 m,
+talus > 2 m (pente > 45°), ou près de l'eau » (OTConst). **Couper simplement à 5
+supprimait donc exactement les points utiles** — vérifié, la réponse perdait les
+deux faits concrets.
+
+La recherche demande donc **14 points** à la base et **écarte ceux qui n'ont ni
+base légale, ni explications, ni objet** avant d'en retenir 5. Un point sans
+contenu occupe une place dans le contexte sans rien y apporter.
+
+**Mesuré après filtrage** : 7,9 s, cinq points tous porteurs d'une base légale,
+**tous les cinq cités** par le modèle, et la réponse conserve les deux faits.
+Plus rapide *et* meilleure que la version à 8 points non filtrés.
 
 > Un échec de recherche est **journalisé** : sans la migration 050 la RPC
 > n'existe pas, et l'assistant répondrait sans corpus — silencieusement.
@@ -2144,6 +2166,7 @@ rend 12 dont 9 dans la garniture.
 58. **La géométrie des calques se décide dans `comparaison/geometrie-calques.ts`**, module pur sans React ni OpenSeadragon. Toute règle nouvelle (ordre, opacité, échelle, rotation) s'y ajoute et s'y vérifie ; le hook ne fait que l'appliquer, dans l'ordre largeur → position → rotation.
 59. **La recherche de l'assistant joint les termes par OU, celle de l'administration par ET** : une question en langue naturelle ne peut pas exiger que tous ses mots figurent dans un point de contrôle. `rechercher_points_controle` (migration 050) fait le OU **et** le classement `ts_rank_cd` — l'un sans l'autre ne vaut rien.
 60. **`points_controle.base_legale` nomme un texte, pas un article** (« OTConst », « Suva 33024 ») et `critere` est vide sur les 487 lignes. Toute fonctionnalité qui promet une citation d'article précise se heurte à cela.
+61. **`ts_rank_cd` classe sur la densité des termes dans le titre, pas sur la richesse du contenu** : un point intitulé « Garde-corps » sans base légale ni explications sort devant un point qui porte la règle des 2 m. Toute réduction du nombre de résultats doit être précédée d'un filtrage sur le contenu, sinon elle supprime exactement ce qui sert.
 
 ---
 
