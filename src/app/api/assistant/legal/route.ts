@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicApiKey } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { chercherCorpus, formaterCorpus, sourcesCitees } from "@/lib/assistant/recherche-corpus";
 
 /**
  * POST /api/assistant/legal
@@ -76,6 +77,12 @@ export async function POST(request: Request) {
     }
   }
 
+  // Ancrage sur le corpus de l'application : 487 points de contrôle SUVA avec
+  // leur base légale, 76 documents de référence. Sans cela le modèle répond de
+  // mémoire, et un numéro d'article inventé a exactement la bonne forme.
+  const sources = await chercherCorpus(supabase, question);
+  const blocCorpus = formaterCorpus(sources);
+
   const systemPrompt = `Tu es un assistant juridique expert en sécurité sur les chantiers de construction en Suisse. Tu assistes des inspecteurs de terrain pendant leurs visites de contrôle.
 
 Tes domaines d'expertise :
@@ -90,12 +97,13 @@ Tes domaines d'expertise :
 
 Règles :
 1. Réponds toujours en français correct avec tous les accents
-2. Cite systématiquement les articles de loi ou normes pertinents (ex: "OTConst Art. 22, al. 1")
-3. Sois concis et pratique — l'inspecteur est sur le terrain
-4. Si tu n'es pas sûr d'une référence précise, indique-le clairement
-5. Propose des formulations utilisables directement dans un rapport d'inspection
-6. Si la question sort du domaine construction/sécurité, indique poliment que tu ne peux aider que sur ces sujets
-7. Réponds en texte brut uniquement. N'utilise JAMAIS de formatage markdown. Utilise des retours à la ligne et des espaces pour structurer ta réponse. Pour les listes, utilise des numéros (1. 2. 3.) ou des tirets simples suivis d'un espace${contextBlock}`;
+2. **Les références réglementaires que tu donnes doivent provenir du corpus fourni ci-dessous.** Reprends la base légale telle qu'elle y figure — elle nomme un texte, par exemple "OTConst", "RPAC" ou "Suva 33024" — et fais-la suivre du repère de l'extrait : "OTConst [P3]".
+3. **N'invente JAMAIS un numéro d'article ni un alinéa.** Le corpus nomme les textes applicables, il ne contient pas leur découpage en articles. Si l'inspecteur a besoin de l'article précis, dis-lui de se reporter au texte que tu as nommé, et signale le document de référence correspondant s'il figure dans le corpus.
+4. Sois concis et pratique — l'inspecteur est sur le terrain
+5. Si le corpus ne contient pas de quoi répondre, dis-le franchement — "le référentiel de l'application ne couvre pas ce point" — et donne une réponse générale en indiquant explicitement qu'elle n'est pas sourcée. Mieux vaut une réponse incomplète qu'une référence inventée.
+6. Propose des formulations utilisables directement dans un rapport d'inspection
+7. Si la question sort du domaine construction/sécurité, indique poliment que tu ne peux aider que sur ces sujets
+8. Réponds en texte brut uniquement. N'utilise JAMAIS de formatage markdown. Utilise des retours à la ligne et des espaces pour structurer ta réponse. Pour les listes, utilise des numéros (1. 2. 3.) ou des tirets simples suivis d'un espace${contextBlock}${blocCorpus}`;
 
   const anthropic = new Anthropic({ apiKey });
 
@@ -127,7 +135,13 @@ Règles :
     const textBlock = response.content.find((b) => b.type === "text");
     const answer = textBlock && "text" in textBlock ? textBlock.text : "";
 
-    return NextResponse.json({ answer });
+    // On marque celles que le modèle a réellement citées : afficher huit
+    // sources dont deux servent diluerait la vérifiabilité recherchée.
+    const cites = sourcesCitees(answer, sources);
+    return NextResponse.json({
+      answer,
+      sources: sources.map((s) => ({ ...s, citee: cites.has(s.ref) })),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur API";
     console.error("Anthropic error:", message);
