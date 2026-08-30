@@ -45,8 +45,30 @@ export interface DocumentSource {
 
 export type Source = PointSource | DocumentSource;
 
-/** Au-delà, le contexte coûte plus qu'il n'apporte. */
-export const MAX_POINTS = 8;
+/**
+ * Nombre de points de contrôle réellement fournis au modèle.
+ *
+ * Ramené de 8 à 5 : mesuré à 8, la réponse demandait ~12 s contre ~7 s sans
+ * corpus, et l'inspecteur attend devant son téléphone sur un chantier.
+ */
+export const MAX_POINTS = 5;
+
+/**
+ * Nombre de points demandés à la base, avant filtrage.
+ *
+ * ⚠️ On en demande plus qu'on n'en garde, parce que **`ts_rank_cd` récompense
+ * la densité des termes dans le titre, pas la richesse du contenu**. Mesuré sur
+ * « réglementation applicable aux garde-corps d'échafaudage » : les rangs 1 et
+ * 4 sont « Gardes-corps de l'échafaudage » et « Garde-corps » — titres parfaits,
+ * mais **ni base légale, ni explications, ni objet**, donc rien à citer. La
+ * substance était aux rangs 6 et 7 : « il doit comporter une lisse haute,
+ * intermédiaire, et une plinthe » (Suva 33017) et « obligatoire si chute > 2 m,
+ * talus > 2 m (pente > 45°), ou près de l'eau » (OTConst).
+ *
+ * Couper simplement à 5 supprimait donc exactement les points utiles.
+ */
+const POINTS_DEMANDES = 14;
+
 export const MAX_DOCUMENTS = 4;
 
 /** Longueur maximale d'un champ recopié dans le contexte du modèle. */
@@ -104,7 +126,7 @@ export async function chercherCorpus(
   const [resPoints, resDocs] = await Promise.all([
     supabase.rpc("rechercher_points_controle", {
       p_termes: termes,
-      p_limite: MAX_POINTS,
+      p_limite: POINTS_DEMANDES,
     }),
     motifs.length > 0
       ? supabase
@@ -142,7 +164,14 @@ export async function chercherCorpus(
     theme: string | null;
   };
 
-  (resPoints.data as unknown as LignePoint[] | null)?.forEach((p, i) => {
+  // Un point sans base légale, sans explications et sans objet ne donne rien à
+  // citer : il occupe une place dans le contexte sans rien y apporter. On les
+  // écarte avant de retenir les meilleurs, l'ordre de pertinence étant conservé.
+  const pointsUtiles = ((resPoints.data as unknown as LignePoint[] | null) ?? [])
+    .filter((p) => p.base_legale || p.explications || p.objet)
+    .slice(0, MAX_POINTS);
+
+  pointsUtiles.forEach((p, i) => {
     sources.push({
       type: "point",
       ref: `P${i + 1}`,
