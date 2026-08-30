@@ -222,10 +222,15 @@ export function ChecklistItem({
         onCapture={handlePhotoCapture}
         onRemove={handlePhotoRemove}
         onReplaceAnnotated={handleReplaceAnnotated}
+        resoudreApercu={photoUpload.resoudreApercu}
+        nbEnAttente={photoUpload.nbEnAttente}
       />
 
-      {/* Analyse IA — visible quand au moins 1 photo est uploadée */}
-      {photoUpload.photos.length > 0 && (
+      {/* Analyse IA — seulement sur une photo réellement montée : la route
+          serveur télécharge l'image, une photo encore en attente n'existe pas
+          pour elle. */}
+      {photoUpload.photos.length > 0 &&
+        photoUpload.nbEnAttente === 0 && (
         <PhotoAiAnalysis
           photoUrl={photoUpload.photos[photoUpload.photos.length - 1]}
           visiteId={visiteId}

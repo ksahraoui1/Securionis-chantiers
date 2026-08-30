@@ -1277,6 +1277,78 @@ Plus rapide *et* meilleure que la version à 8 points non filtrés.
 > Un échec de recherche est **journalisé** : sans la migration 050 la RPC
 > n'existe pas, et l'assistant répondrait sans corpus — silencieusement.
 
+### OFF-01 — une photo prise hors ligne n'est plus perdue (2026-08-30)
+
+Toute la machinerie existait : un magasin IndexedDB `pending_photos`, une boucle
+de synchronisation qui téléverse au retour du réseau, un compteur d'éléments en
+attente. **Rien n'y écrivait jamais** — `savePendingPhoto()` n'avait aucun
+appelant. `use-photo-upload` téléversait en direct ; sans réseau, l'appel
+échouait, l'inspecteur voyait « Erreur lors de l'upload » et la photo
+n'existait nulle part.
+
+Le contraste rendait la chose plus nette encore : les **réponses** de la
+checklist, elles, avaient bien leur repli. Un inspecteur qui perdait le réseau
+gardait son constat écrit et perdait la preuve photographique — sur un document
+de sécurité, l'inverse de ce qu'on veut.
+
+#### Ce qui rend le repli possible : le chemin est déterministe
+
+Le chemin de stockage est connu **avant** l'envoi —
+`<chantier>/<visite>/<réponse>/<fichier>` — et `offline/sync.ts` le reconstruit
+à l'identique. On peut donc enregistrer **dès la prise de vue l'URL définitive**
+dans `reponses.photos` : elle ne résout pas encore, elle deviendra valide au
+retour du réseau.
+
+> ⚠️ **Les deux constructions de chemin doivent rester d'accord.** Le champ
+> `reponse_key` de `PendingPhoto` était documenté comme
+> `visite_id:point_controle_id`, alors que `use-photo-upload` utilise un
+> identifiant simple — celui de la réponse si elle existe, du point de contrôle
+> sinon. Le commentaire est corrigé : c'est le troisième segment du chemin, ni
+> plus ni moins. S'ils divergent, la photo est montée ailleurs que là où l'URL
+> enregistrée la cherche.
+
+#### L'état porte l'URL définitive, l'affichage passe par un aperçu local
+
+C'est le point délicat : `photos` sert **à la fois** à l'affichage et à
+l'écriture en base. Une `blob:` locale écrite en base serait morte au
+rechargement — le même piège que les URL signées, traité par
+`canoniserUrlsStockage()`.
+
+L'état porte donc l'URL canonique ; un dictionnaire séparé associe à chacune son
+aperçu `blob:`, et `resoudreApercu(url)` tranche à l'affichage. Les `blob:` sont
+révoquées au démontage.
+
+Le repli se déclenche sur `navigator.onLine === false` **et** sur un échec
+d'envoi alors que le navigateur se croyait en ligne — réseau instable, ce qui
+est la norme sur un chantier.
+
+#### Deux effets de bord traités
+
+- **Suppression** d'une photo encore en attente : le fichier est retiré
+  d'IndexedDB, sans quoi la synchronisation le monterait pour une réponse qui ne
+  le référence plus.
+- **Analyse IA** masquée tant qu'une photo est en attente : la route serveur
+  télécharge l'image, une photo non montée n'existe pas pour elle.
+- Un badge « N en attente d'envoi » apparaît au-dessus de la grille.
+
+#### Vérification
+
+Aucune visite en cours en production, et je n'en ai pas créé une pour un test.
+Les **deux invariants** dont dépend tout le correctif ont été éprouvés dans le
+navigateur, sur la vraie base IndexedDB :
+
+| | |
+|---|---|
+| chemin de l'envoi = chemin reconstruit par la synchro | **identique** |
+| `extractStoragePath` sur l'URL canonique | rend exactement ce chemin |
+| aller-retour IndexedDB | écrit, relu, **octets du JPEG intacts** |
+| aperçu `blob:` | créé |
+| suppression | magasin vide après |
+
+> Reste à éprouver en conditions réelles : couper le réseau, prendre une photo,
+> le rétablir, vérifier qu'elle arrive. C'est le premier geste à faire avec le
+> compte inspecteur.
+
 ### Rattachement des profils à l'entreprise (2026-08-28)
 
 Les 3 profils de production avaient `entreprise_id = null` alors que l'entreprise FWN existait. Conséquences :
@@ -2167,6 +2239,7 @@ rend 12 dont 9 dans la garniture.
 59. **La recherche de l'assistant joint les termes par OU, celle de l'administration par ET** : une question en langue naturelle ne peut pas exiger que tous ses mots figurent dans un point de contrôle. `rechercher_points_controle` (migration 050) fait le OU **et** le classement `ts_rank_cd` — l'un sans l'autre ne vaut rien.
 60. **`points_controle.base_legale` nomme un texte, pas un article** (« OTConst », « Suva 33024 ») et `critere` est vide sur les 487 lignes. Toute fonctionnalité qui promet une citation d'article précise se heurte à cela.
 61. **`ts_rank_cd` classe sur la densité des termes dans le titre, pas sur la richesse du contenu** : un point intitulé « Garde-corps » sans base légale ni explications sort devant un point qui porte la règle des 2 m. Toute réduction du nombre de résultats doit être précédée d'un filtrage sur le contenu, sinon elle supprime exactement ce qui sert.
+62. **Une photo prise hors ligne enregistre son URL *définitive*, pas son aperçu** : le chemin de stockage est déterministe et `offline/sync.ts` le reconstruit à l'identique. L'aperçu `blob:` vit dans un dictionnaire séparé (`resoudreApercu`) et ne doit jamais atteindre la base — même piège que les URL signées.
 
 ---
 
