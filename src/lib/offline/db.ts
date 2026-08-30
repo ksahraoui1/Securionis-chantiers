@@ -170,7 +170,14 @@ export interface PendingPhoto {
   id: string; // UUID
   visite_id: string;
   chantier_id: string;
-  reponse_key: string; // visite_id:point_controle_id
+  /**
+   * Troisième segment du chemin de stockage, tel que `use-photo-upload` le
+   * construit : l'identifiant de la réponse si elle existe déjà, celui du point
+   * de contrôle sinon. ⚠️ `offline/sync.ts` le réutilise tel quel pour
+   * reconstruire `<chantier>/<visite>/<réponse>/<fichier>` — les deux doivent
+   * rester d'accord, sinon la photo montée n'est pas à l'URL enregistrée.
+   */
+  reponse_key: string;
   blob: Blob;
   filename: string;
 }

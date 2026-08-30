@@ -12,6 +12,14 @@ interface PhotoCaptureProps {
   onCapture: (file: File) => void;
   onRemove: (url: string) => void;
   onReplaceAnnotated?: (oldUrl: string, blob: Blob) => void;
+  /**
+   * URL réellement affichable pour une photo. Une photo prise hors ligne porte
+   * son URL définitive — qui ne résout pas encore — et s'affiche via un aperçu
+   * local. Par défaut, l'URL est utilisée telle quelle.
+   */
+  resoudreApercu?: (url: string) => string;
+  /** Nombre de photos en attente d'envoi, pour le dire à l'inspecteur. */
+  nbEnAttente?: number;
 }
 
 export function PhotoCapture({
@@ -22,6 +30,8 @@ export function PhotoCapture({
   onCapture,
   onRemove,
   onReplaceAnnotated,
+  resoudreApercu,
+  nbEnAttente,
 }: PhotoCaptureProps) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -85,6 +95,12 @@ export function PhotoCapture({
         <span className="text-sm font-medium text-gray-700">
           Photos ({photos.length}/{MAX_PHOTOS})
         </span>
+        {!!nbEnAttente && nbEnAttente > 0 && (
+          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+            <span translate="no" className="material-symbols-outlined text-[13px]">cloud_off</span>
+            {nbEnAttente} en attente d&apos;envoi
+          </span>
+        )}
       </div>
 
       {photos.length > 0 && (
@@ -92,7 +108,7 @@ export function PhotoCapture({
           {photos.map((url) => (
             <div key={url} className="relative group aspect-square">
               <img
-                src={url}
+                src={resoudreApercu ? resoudreApercu(url) : url}
                 alt="Photo contrôle"
                 className="w-full h-full object-cover rounded-lg"
               />
