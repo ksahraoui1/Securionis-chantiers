@@ -21,6 +21,40 @@ const DELAI_MAX_MS = 120_000;
 
 const INTERVALLE_SONDAGE_MS = 50;
 
+/**
+ * Huit octets : l'en-tête d'un module WebAssembly vide. Assez pour que le
+ * navigateur applique sa politique de sécurité, trop peu pour coûter quoi que
+ * ce soit.
+ */
+const MODULE_WASM_VIDE = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
+
+/**
+ * La page courante peut-elle compiler du WebAssembly ?
+ *
+ * ⚠️ **La CSP est une propriété du document, pas de l'URL.** La politique
+ * permissive de `next.config.ts` n'est portée que par le document servi pour
+ * `/chantiers/:id/comparaison` ; atteindre cette page par une navigation
+ * client-side de Next.js conserve la CSP **stricte** du document d'origine, où
+ * `WebAssembly.instantiate()` est refusé faute de `'unsafe-eval'`.
+ *
+ * Sans ce test, la panne est indiscernable : Emscripten appelle `abort()` dans
+ * une promesse interne, `cv.Mat` n'apparaît jamais, et le chargeur ne rend la
+ * main qu'au bout du délai maximal — avec un message de temps dépassé qui
+ * désigne la mauvaise cause.
+ */
+export function wasmCompilable(): boolean {
+  try {
+    new WebAssembly.Module(MODULE_WASM_VIDE);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const MESSAGE_WASM_REFUSE =
+  "le navigateur refuse de compiler WebAssembly sur cette page. " +
+  "Rechargez-la (touche F5) : la détection a besoin d'un chargement complet";
+
 // ============================================================
 // Typage minimal d'OpenCV.js
 //
@@ -322,6 +356,8 @@ export interface CV {
 
 interface ModuleOpenCv extends Partial<CV> {
   onRuntimeInitialized?: () => void;
+  /** Rappel d'Emscripten sur abandon fatal du runtime. */
+  onAbort?: (cause: unknown) => void;
 }
 
 type FenetreOpenCv = Window & { cv?: ModuleOpenCv };
@@ -352,6 +388,13 @@ function injecter(): Promise<void> {
     const fenetre = window as FenetreOpenCv;
     if (estUtilisable(fenetre.cv)) {
       resoudre();
+      return;
+    }
+
+    // Vérifié d'abord : sans WebAssembly, le module s'interrompt en silence et
+    // l'attente ne mènerait qu'à un message de délai dépassé trompeur.
+    if (!wasmCompilable()) {
+      rejeter(new Error(MESSAGE_WASM_REFUSE));
       return;
     }
 
@@ -397,6 +440,18 @@ function injecter(): Promise<void> {
       // Emscripten signale la fin de l'initialisation par ce rappel…
       if (fenetre.cv) {
         fenetre.cv.onRuntimeInitialized = () => verifier();
+        // …et signale un échec fatal par celui-ci. Sans lui, un abandon du
+        // runtime (mémoire, binaire illisible, politique de sécurité) ne se
+        // manifesterait que par l'expiration du délai.
+        fenetre.cv.onAbort = (cause: unknown) => {
+          const detail =
+            cause instanceof Error ? cause.message : String(cause ?? "");
+          echouer(
+            detail
+              ? `OpenCV.js s'est interrompu au chargement : ${detail}`
+              : "OpenCV.js s'est interrompu au chargement."
+          );
+        };
       }
       // …mais il a pu être consommé avant qu'on l'installe : on sonde aussi.
       sondage = setInterval(verifier, INTERVALLE_SONDAGE_MS);

@@ -1,5 +1,14 @@
-import Link from "next/link";
-
+/**
+ * ⚠️ **Volontairement un `<a>`, jamais un `<Link>`.**
+ *
+ * La page de comparaison est la seule de l'application dont la CSP autorise la
+ * compilation de WebAssembly, dont OpenCV.js a besoin pour la détection des
+ * différences (`next.config.ts`). Or **la CSP est portée par le document, pas
+ * par l'URL** : une navigation client-side de Next.js conserve la politique
+ * stricte de la page de départ, et la détection échoue alors sans que rien
+ * n'indique pourquoi. Un lien ordinaire force le chargement d'un document neuf,
+ * servi avec sa propre politique.
+ */
 export function PlanComparaison({ chantierId }: { chantierId: string }) {
   return (
     <div className="text-center py-10 px-4">
@@ -18,13 +27,13 @@ export function PlanComparaison({ chantierId }: { chantierId: string }) {
         pour repérer les écarts, avec réglage de l&apos;opacité et vue côte à côte.
       </p>
 
-      <Link
+      <a
         href={`/chantiers/${chantierId}/comparaison`}
         className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 mt-4 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#002855]/90 transition-colors text-sm"
       >
         <span translate="no" className="material-symbols-outlined text-lg">rule</span>
         Sélectionner les plans à comparer
-      </Link>
+      </a>
     </div>
   );
 }

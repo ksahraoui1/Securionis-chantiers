@@ -2176,6 +2176,87 @@ rend 12 dont 9 dans la garniture.
 > sont pas des traits pleins et n'entrent donc pas dans le masque. Le mode
 > « Tout le dessin » reste disponible pour ces cas.
 
+### La détection échouait selon la façon d'arriver sur la page (2026-09-01)
+
+Signalé en usage réel, capture à l'appui : « Détection impossible […]
+(OpenCV.js n'a pas fini de s'initialiser dans le temps imparti. Rechargez la
+page, puis réessayez.) » — après deux minutes d'attente, sur une paire de plans
+correctement superposée.
+
+#### ⚠️ La CSP est portée par le document, pas par l'URL
+
+C'est toute la cause. `next.config.ts` n'accorde `'unsafe-eval'` — donc le droit
+de compiler du WebAssembly — qu'à la route `/chantiers/:id/comparaison`. Mais un
+en-tête de réponse ne s'applique qu'au **document** qu'il accompagne : arriver
+sur cette page par une navigation client-side de Next.js (`<Link>`) ne change ni
+le document ni sa politique. La page vit alors sous la CSP **stricte** de la
+page de départ, où `WebAssembly.instantiate()` est refusé.
+
+Mesuré en production, sur le chemin réel de l'utilisateur :
+
+| Arrivée sur `/chantiers/<id>/comparaison` | Document effectif | WebAssembly |
+|---|---|---|
+| liste → chantier → onglet Comparaison → bouton | `/chantiers` | **refusé** |
+| chargement direct ou rechargement (F5) | la page elle-même | autorisé |
+
+D'où l'intermittence : la fonctionnalité marchait quand on rechargeait la page
+(ce que faisaient les vérifications de développement), et jamais quand on y
+arrivait normalement. Les trois rapports de comparaison présents en base ont été
+produits les jours où la page avait été rechargée.
+
+Le message d'erreur, lui, était exact et trompeur à la fois : le runtime
+**n'avait effectivement pas fini** de s'initialiser. Emscripten appelle
+`abort()` dans une promesse interne, `cv.Mat` n'apparaît jamais, et le chargeur
+ne rendait la main qu'au bout de son délai de 120 s.
+
+#### `'wasm-unsafe-eval'` ne suffit pas — mesuré
+
+La directive dédiée à WebAssembly aurait permis d'assouplir la CSP globale sans
+rouvrir `eval()`. Elle ne suffit pas ici, et l'échec est sournois :
+
+| `script-src` | `cv.Mat` apparaît | bibliothèque utilisable |
+|---|---|---|
+| `'self' 'unsafe-inline'` | jamais | non |
+| `+ 'wasm-unsafe-eval'` | oui, en 52 ms | **non** — « Cannot construct Mat due to unbound types: i » |
+| `+ 'unsafe-eval'` | oui, en 52 ms | oui |
+
+Embind fabrique ses fonctions liées à partir de chaînes (`craftInvokerFunction`,
+via `new_(Function, …)` — que le contrôle « zéro `new Function(` » du script de
+préparation ne voit pas, la construction n'étant pas littérale). Sous
+`'wasm-unsafe-eval'`, le module démarre, `cv.Mat` **devient une fonction**, et
+tout appel échoue. Corollaire : `typeof cv.Mat === "function"` n'est pas une
+preuve que la bibliothèque est utilisable.
+
+#### Le correctif
+
+- **Les liens vers la comparaison sont des `<a>`, jamais des `<Link>`** —
+  `plan-comparaison.tsx` (onglet du chantier) et la page de détail d'une NC
+  (« Voir la comparaison »). Un lien ordinaire charge un document neuf, servi
+  avec sa propre politique.
+- **Filet au montage** : la page vérifie qu'elle peut compiler du WebAssembly
+  et, sinon, se recharge **une seule fois** (garde en `sessionStorage`, pour
+  qu'un échec d'une autre nature ne fasse pas boucler). Il a lieu au montage et
+  pas plus tard : recharger après coup coûterait à l'utilisateur son recalage —
+  position, échelle et rotation des calques.
+- **`wasmCompilable()`** dans `src/lib/opencv.ts` : huit octets d'en-tête WASM
+  compilés dans un `try`. **0,5 ms** au lieu de 120 s, et la cause est nommée.
+  Le chargeur refuse tout de suite, et la détection affiche un message qui dit
+  le geste à faire au lieu d'inviter à vérifier l'étage des plans.
+- **`Module.onAbort`** est désormais branché : tout abandon fatal du runtime
+  (mémoire, binaire illisible, politique de sécurité) remonte sa cause au lieu
+  de se manifester par l'expiration du délai.
+- **Cache des fichiers vendorisés** : `/vendor/opencv/*` passe en
+  `max-age=2592000`. Servis en `max-age=0`, les 7,5 Mo (2,4 Mo compressés)
+  repartaient du serveur à **chaque** chargement de la page — et le correctif
+  rend ces chargements plus fréquents. ⚠️ Une mise à jour d'OpenCV impose donc
+  de renommer le dossier.
+
+> Vérifié : en-têtes conformes sur le build de production (cache sur les deux
+> fichiers, `'unsafe-eval'` sur la seule route de comparaison, un seul en-tête
+> CSP), `tsc` et `npm run build` verts. **Reste à éprouver en production** : le
+> chemin complet — chantier → onglet Comparaison → superposition → détection —
+> ne peut l'être qu'une fois le correctif déployé.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2240,6 +2321,8 @@ rend 12 dont 9 dans la garniture.
 60. **`points_controle.base_legale` nomme un texte, pas un article** (« OTConst », « Suva 33024 ») et `critere` est vide sur les 487 lignes. Toute fonctionnalité qui promet une citation d'article précise se heurte à cela.
 61. **`ts_rank_cd` classe sur la densité des termes dans le titre, pas sur la richesse du contenu** : un point intitulé « Garde-corps » sans base légale ni explications sort devant un point qui porte la règle des 2 m. Toute réduction du nombre de résultats doit être précédée d'un filtrage sur le contenu, sinon elle supprime exactement ce qui sert.
 62. **Une photo prise hors ligne enregistre son URL *définitive*, pas son aperçu** : le chemin de stockage est déterministe et `offline/sync.ts` le reconstruit à l'identique. L'aperçu `blob:` vit dans un dictionnaire séparé (`resoudreApercu`) et ne doit jamais atteindre la base — même piège que les URL signées.
+63. **Une CSP par route ne protège que le document qu'elle accompagne** : la page de comparaison est la seule à recevoir `'unsafe-eval'`, indispensable à OpenCV.js, mais un `<Link>` de Next.js y arrive **sans changer de document** et conserve la politique stricte de la page de départ — WebAssembly est alors refusé et la bibliothèque s'interrompt en silence. Les liens qui mènent à la comparaison doivent rester de simples `<a>`, et `wasmCompilable()` (`src/lib/opencv.ts`) dit en 0,5 ms si la page courante peut la faire tourner.
+64. **`'wasm-unsafe-eval'` ne remplace pas `'unsafe-eval'` pour OpenCV.js** : le module démarre et `cv.Mat` devient une fonction, mais Embind ne peut plus lier ses types et le premier appel échoue sur « Cannot construct Mat due to unbound types ». `typeof cv.Mat === "function"` ne prouve donc pas que la bibliothèque est utilisable.
 
 ---
 
