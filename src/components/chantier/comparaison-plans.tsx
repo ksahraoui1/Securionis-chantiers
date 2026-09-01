@@ -37,7 +37,7 @@ import {
   type TypeDifference,
   type ZoneAvancee,
 } from "@/lib/plan-diff-detection";
-import { opencvPret } from "@/lib/opencv";
+import { opencvPret, wasmCompilable } from "@/lib/opencv";
 import { PanneauDifferences } from "@/components/chantier/panneau-differences";
 import { useGeometrieCalques } from "./comparaison/use-geometrie-calques";
 import { usePoseCalques } from "./comparaison/use-pose-calques";
@@ -114,6 +114,17 @@ const SEUIL_BRUIT_DETECTION = 0.0005;
 
 const MESSAGE_DETECTION_IMPOSSIBLE =
   "Détection impossible. Vérifiez que les deux plans sont du même étage et orientés dans le même sens.";
+
+/**
+ * Cas à part : la panne n'est pas dans les plans, elle est dans la page.
+ *
+ * Le message générique invite à vérifier l'étage et l'orientation — un conseil
+ * sans rapport quand c'est la politique de sécurité du document qui interdit
+ * WebAssembly. Ce cas a donc son propre texte, qui dit le geste à faire.
+ */
+const MESSAGE_WASM_REFUSE =
+  "La détection n'est pas disponible sur cette page telle qu'elle a été " +
+  "chargée. Rechargez-la (F5), puis relancez la détection.";
 
 // Formes courtes pour le résumé « 3 ajouts, 6 suppressions… »
 const RESUME_DIFFERENCE: Record<TypeDifference, string> = {
@@ -431,6 +442,9 @@ function libelle(doc: PlanDoc): string {
   return `${doc.nom}${version} — ${date}`;
 }
 
+/** Marque du rechargement déjà tenté pour restaurer la CSP de la page. */
+const CLE_RECHARGEMENT_CSP = "comparaison:rechargement-csp";
+
 export function ComparaisonPlans({
   chantierId,
   chantierNom,
@@ -572,6 +586,35 @@ export function ComparaisonPlans({
     onPret: setPret,
     onErreur: setErreur,
   });
+
+  /**
+   * Filet : cette page doit avoir été servie avec sa propre CSP.
+   *
+   * ⚠️ **La CSP est portée par le document, pas par l'URL.** Seule la route de
+   * comparaison reçoit `'unsafe-eval'`, sans quoi OpenCV.js ne peut pas
+   * compiler son binaire WebAssembly. Y arriver par une navigation
+   * client-side de Next.js conserve la politique stricte de la page de départ,
+   * et la détection échoue alors deux minutes plus tard sur un message de délai
+   * dépassé qui désigne la mauvaise cause.
+   *
+   * Les liens qui mènent ici sont des `<a>` pour cette raison ; ce rechargement
+   * rattrape les chemins d'arrivée qui l'oublieraient. Il a lieu **au montage**,
+   * avant tout réglage : recharger plus tard coûterait à l'utilisateur son
+   * recalage — position, échelle et rotation des calques.
+   */
+  useEffect(() => {
+    if (wasmCompilable()) {
+      sessionStorage.removeItem(CLE_RECHARGEMENT_CSP);
+      return;
+    }
+    // Une seule tentative : si un rechargement complet n'a pas suffi, la cause
+    // est ailleurs et reboucler ne ferait que rendre la page inutilisable.
+    if (sessionStorage.getItem(CLE_RECHARGEMENT_CSP) === location.pathname) {
+      return;
+    }
+    sessionStorage.setItem(CLE_RECHARGEMENT_CSP, location.pathname);
+    location.reload();
+  }, []);
 
   // Préparation des sources puis initialisation du visualiseur
   useEffect(() => {
@@ -1093,6 +1136,13 @@ export function ComparaisonPlans({
         message:
           "La détection compare les deux calques superposés. Repassez en superposition avant de la lancer.",
       });
+      return;
+    }
+
+    // Vérifié avant tout : sans WebAssembly, OpenCV.js ne peut pas s'initialiser
+    // et le pipeline échouerait bien plus loin, sur un message hors sujet.
+    if (!wasmCompilable()) {
+      setDetection({ statut: "erreur", message: MESSAGE_WASM_REFUSE });
       return;
     }
 

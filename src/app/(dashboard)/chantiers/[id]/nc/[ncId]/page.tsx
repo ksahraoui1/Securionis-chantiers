@@ -186,14 +186,18 @@ export default async function NCDetailPage({
               />
             )}
 
-            <Link
+            {/* `<a>` et non `<Link>` : la CSP qui autorise WebAssembly — donc
+                OpenCV.js et la détection des différences — est portée par le
+                document servi pour la route de comparaison. Une navigation
+                client-side conserverait la politique stricte de cette page. */}
+            <a
               href={`/chantiers/${chantierId}/comparaison?pe=${comparaison.document_pe_id}&exe=${comparaison.document_exe_id}`}
               className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 text-white font-medium rounded-lg hover:opacity-90 transition-opacity text-sm"
               style={{ backgroundColor: NAVY }}
             >
               <span translate="no" className="material-symbols-outlined text-lg">compare_arrows</span>
               Voir la comparaison
-            </Link>
+            </a>
           </div>
         </Card>
       )}

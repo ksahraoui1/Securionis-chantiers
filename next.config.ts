@@ -51,6 +51,16 @@ const SCRIPT_SRC_STRICT = "'self' 'unsafe-inline'";
  */
 const SCRIPT_SRC_COMPARAISON = `${SCRIPT_SRC_STRICT} 'unsafe-eval'`;
 
+/**
+ * ⚠️ **Une CSP par route ne vaut que pour un chargement de document.**
+ *
+ * Le navigateur attache la politique au document, pas à l'URL : atteindre la
+ * comparaison par une navigation client-side de Next.js (`<Link>`) conserve la
+ * politique **stricte** de la page de départ, WebAssembly y est refusé, et
+ * OpenCV.js s'interrompt sans que rien ne le dise. Les liens qui mènent ici
+ * sont donc de simples `<a>` (`plan-comparaison.tsx`, page de détail d'une NC),
+ * et la page se recharge d'elle-même si elle constate le contraire.
+ */
 const CHEMIN_COMPARAISON = "/chantiers/:id/comparaison";
 
 // Toutes les routes sauf la comparaison. La négation est portée par le motif
@@ -83,6 +93,17 @@ const nextConfig: NextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
+        ],
+      },
+      {
+        // OpenCV.js pèse 7,5 Mo (2,4 Mo compressés) et son chemin est fixe : à
+        // défaut d'en-tête, Next.js le sert en `max-age=0` et il repart du
+        // serveur à chaque chargement de la page de comparaison.
+        // ⚠️ Une mise à jour de la bibliothèque impose donc de renommer le
+        // dossier, faute de quoi les clients garderont l'ancienne un mois.
+        source: "/vendor/opencv/:fichier*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=2592000" },
         ],
       },
       {
