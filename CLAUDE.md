@@ -2257,6 +2257,45 @@ preuve que la bibliothèque est utilisable.
 > chemin complet — chantier → onglet Comparaison → superposition → détection —
 > ne peut l'être qu'une fois le correctif déployé.
 
+### Le rapport de comparaison échouait sur la limite de corps de nginx (2026-09-01)
+
+« La génération du rapport a échoué. », sans autre détail, et **aucune trace
+dans les journaux de l'application** — parce que la requête ne l'atteignait
+jamais.
+
+`/api/comparaisons/<id>/rapport-auto` reçoit en multipart la carte des écarts et
+les miniatures des deux plans. Aucune directive `client_max_body_size` n'était
+définie dans la configuration nginx du VPS : le **défaut de 1 Mo** s'appliquait,
+et nginx répondait 413 devant l'application. Mesuré dans
+`/var/log/nginx/error.log` : trois tentatives, **1 404 283 octets** chacune.
+
+```
+client intended to send too large body: 1404283 bytes,
+request: "POST /api/comparaisons/<id>/rapport-auto HTTP/1.1"
+```
+
+> ⚠️ **Un refus du proxy est invisible côté application.** Ni journal, ni
+> Sentry, ni compteur : Next.js ne voit pas la requête. Et la réponse de nginx
+> étant du HTML, `reponse.json()` échoue côté client, le corps d'erreur est nul,
+> et le repli affiche un message générique. Devant un échec sans aucune trace
+> applicative, regarder les journaux du proxy **avant** ceux de l'application.
+
+Deux corrections :
+
+- **Infrastructure** : `client_max_body_size 25m;` dans les deux blocs `server`
+  de `/etc/nginx/sites-available/securionis` (sauvegarde `.bak-AAAAMMJJ-HHMMSS`,
+  `nginx -t` puis `systemctl reload nginx`). La valeur laisse une marge de 18×
+  sur l'usage mesuré tout en restant en deçà du plafond applicatif
+  (`TAILLE_MAX_CAPTURE` vaut 20 Mo par image, et `rapport-auto` en envoie trois).
+- **Code** : `src/lib/utils/erreur-envoi.ts`. Les **trois** routes de la
+  comparaison qui reçoivent une image — rapport PDF, envoi par email, rapport
+  automatique — partageaient le même repli aveugle. Elles nomment désormais le
+  413 (« l'image envoyée est trop volumineuse pour le serveur, dézoomez ») et,
+  à défaut, portent le code d'état plutôt qu'un message nu.
+
+Même famille que l'incident des buffers proxy d'août : la panne était dans
+nginx, pas dans l'application, et le symptôme désignait l'application.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2323,6 +2362,7 @@ preuve que la bibliothèque est utilisable.
 62. **Une photo prise hors ligne enregistre son URL *définitive*, pas son aperçu** : le chemin de stockage est déterministe et `offline/sync.ts` le reconstruit à l'identique. L'aperçu `blob:` vit dans un dictionnaire séparé (`resoudreApercu`) et ne doit jamais atteindre la base — même piège que les URL signées.
 63. **Une CSP par route ne protège que le document qu'elle accompagne** : la page de comparaison est la seule à recevoir `'unsafe-eval'`, indispensable à OpenCV.js, mais un `<Link>` de Next.js y arrive **sans changer de document** et conserve la politique stricte de la page de départ — WebAssembly est alors refusé et la bibliothèque s'interrompt en silence. Les liens qui mènent à la comparaison doivent rester de simples `<a>`, et `wasmCompilable()` (`src/lib/opencv.ts`) dit en 0,5 ms si la page courante peut la faire tourner.
 64. **`'wasm-unsafe-eval'` ne remplace pas `'unsafe-eval'` pour OpenCV.js** : le module démarre et `cv.Mat` devient une fonction, mais Embind ne peut plus lier ses types et le premier appel échoue sur « Cannot construct Mat due to unbound types ». `typeof cv.Mat === "function"` ne prouve donc pas que la bibliothèque est utilisable.
+65. **Un refus du proxy ne laisse aucune trace applicative** : nginx répond 413 (corps trop volumineux) ou 502 (en-têtes trop volumineux) sans que Next.js voie la requête — pas de journal, pas de Sentry — et sa réponse HTML fait échouer le `reponse.json()` du client, qui retombe sur un message générique. Devant un échec sans trace applicative, lire `/var/log/nginx/error.log` en premier. Les routes qui reçoivent une image passent par `messageErreurEnvoi()` (`src/lib/utils/erreur-envoi.ts`), qui nomme le 413 et porte le code d'état à défaut.
 
 ---
 

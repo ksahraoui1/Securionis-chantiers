@@ -38,6 +38,7 @@ import {
   type ZoneAvancee,
 } from "@/lib/plan-diff-detection";
 import { opencvPret, wasmCompilable } from "@/lib/opencv";
+import { messageErreurEnvoi } from "@/lib/utils/erreur-envoi";
 import { PanneauDifferences } from "@/components/chantier/panneau-differences";
 import { useGeometrieCalques } from "./comparaison/use-geometrie-calques";
 import { usePoseCalques } from "./comparaison/use-pose-calques";
@@ -1368,8 +1369,9 @@ export function ComparaisonPlans({
     );
 
     if (!reponse.ok) {
-      const corps = await reponse.json().catch(() => null);
-      throw new Error(corps?.error ?? "La génération du rapport a échoué.");
+      throw new Error(
+        await messageErreurEnvoi(reponse, "La génération du rapport a échoué.")
+      );
     }
 
     const extension = format === "docx" ? "docx" : "pdf";
