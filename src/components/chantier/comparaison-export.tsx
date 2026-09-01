@@ -11,6 +11,7 @@ import {
   construireDocumentImpression,
   type AnnotationImpression,
 } from "@/lib/utils/comparaison-impression";
+import { messageErreurEnvoi } from "@/lib/utils/erreur-envoi";
 
 const NAVY = "#002855";
 const ORANGE = "#E67E22";
@@ -143,8 +144,9 @@ export function GroupeExport({
       });
 
       if (!reponse.ok) {
-        const corps = await reponse.json().catch(() => null);
-        throw new Error(corps?.error ?? "La génération du rapport a échoué.");
+        throw new Error(
+          await messageErreurEnvoi(reponse, "La génération du rapport a échoué.")
+        );
       }
 
       telecharger(await reponse.blob(), nomPDF());
@@ -444,8 +446,7 @@ function ModalePartageEmail({
       });
 
       if (!reponse.ok) {
-        const corps = await reponse.json().catch(() => null);
-        throw new Error(corps?.error ?? "L'envoi a échoué.");
+        throw new Error(await messageErreurEnvoi(reponse, "L'envoi a échoué."));
       }
 
       setEnvoye(true);
