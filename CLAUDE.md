@@ -2629,12 +2629,32 @@ Vérifié après coup : clé héritée **401**, clé publiable moderne **200**, 
 
 #### État et reste à faire
 
-| Clé | État |
-|---|---|
-| Supabase secrète | tournée, installée, vérifiée ; l'ancienne révoquée |
-| Supabase héritées | désactivées, refus confirmé |
-| Resend, Anthropic | **à tourner**, même procédure en changeant le nom de la variable |
-| Stripe | retirée du serveur ; **à révoquer** chez Stripe |
+| Clé | État | Preuve |
+|---|---|---|
+| Supabase secrète | tournée ; ancienne **révoquée** | appel `service_role` en 200 |
+| Supabase héritées | **désactivées** | `401 Legacy API keys are disabled` |
+| Resend | tournée, **restreinte à l'envoi** et au domaine `securionis.com` | `401 restricted_api_key` contre `400 API key is invalid` pour une clé fausse |
+| Anthropic | tournée, portée à l'espace Default, sans API d'administration | `GET /v1/models` en 200 |
+| Anciennes Resend et Anthropic | **à révoquer** dans leurs consoles | — |
+| Stripe | retirée du serveur ; **à révoquer** chez Stripe | — |
+
+**Resend : la clé est passée d'un accès complet à un accès d'envoi seul**, et
+restreinte au domaine expéditeur. L'application ne fait que `emails.send` —
+quatre appels, aucun autre usage de l'API — donc rien de plus ne lui est
+nécessaire. Une fuite ne permettrait plus ni de lire les domaines, ni de créer
+d'autres clés, ni d'envoyer depuis un autre domaine du compte.
+
+> ⚠️ Le compte Resend portait **quatre clés en accès complet**, dont une sans
+> aucune activité depuis onze mois. Elles peuvent appartenir à d'autres
+> projets : à trier, mais pas depuis ce dépôt.
+
+**Anthropic : expiration « Jamais », contre le défaut de 30 jours de la
+console.** C'est un arbitrage, pas un oubli. Une clé qui expire est meilleure
+en principe, mais la supervision est aveugle (OBS-01, les deux variables Sentry
+sont vides) : une expiration silencieuse casserait l'analyse de photos et
+l'assistant juridique sans aucune alerte, et se découvrirait par un inspecteur
+bloqué sur un chantier. À repasser sur une clé à durée limitée le jour où
+Sentry est branché.
 
 Au passage, sur le serveur : `.env` et ses sauvegardes étaient en **644**, donc
 lisibles par tout utilisateur local — passés en **600** ; et
