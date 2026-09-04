@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Resend } from "resend";
 import { getResendApiKey, getResendFromEmail } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { escapeHtml, isAllowedSupabaseUrl } from "@/lib/utils/security";
+import { escapeHtml, isAllowedSupabaseUrl, getUserRole } from "@/lib/utils/security";
+import { getLimits } from "@/lib/roles/limites";
 import { signerUrl } from "@/lib/utils/url-signee";
 
 /**
@@ -11,7 +12,22 @@ import { signerUrl } from "@/lib/utils/url-signee";
  * Body: { documentId: string, to: string, subject?: string }
  *
  * Envoie un document de la base documentaire par email (pièce jointe).
+ *
+ * ⚠️ Cette route fait partir un message depuis le **domaine vérifié** de
+ * l'entreprise, vers une adresse fournie par l'appelant, avec un objet qu'il
+ * rédige. Elle était la seule des six routes d'email et de PDF à ne pas
+ * vérifier le rôle (constat APP-01, audit du 4 septembre 2026) : un compte
+ * « invité » créé par l'inscription publique disposait donc d'un support de
+ * hameçonnage passant SPF et DKIM, et chaque signalement abîme la réputation
+ * d'envoi dont dépendent les rapports d'inspection.
+ *
+ * Deux garde-fous depuis : le rôle est vérifié comme ailleurs, et le débit est
+ * compté **aussi par adresse de destination** — sans quoi la limite par compte
+ * ne vaut rien, les comptes étant gratuits et sans limite de nombre.
  */
+
+/** Envois autorisés vers une même adresse, tous comptes confondus. */
+const MAX_PAR_DESTINATION = 5;
 export async function POST(request: Request) {
   const supabase = await createClient();
 
@@ -21,6 +37,15 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  // Vérification du rôle, comme sur les cinq autres routes d'email et de PDF.
+  const role = await getUserRole(supabase, user.id);
+  if (!getLimits(role ?? "invité").canSendEmail) {
+    return NextResponse.json(
+      { error: "L'envoi de documents par email n'est pas autorisé pour votre rôle." },
+      { status: 403 },
+    );
   }
 
   // Rate limit: 20 emails par heure
@@ -37,6 +62,17 @@ export async function POST(request: Request) {
   // Validate email
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
     return NextResponse.json({ error: "Adresse email invalide" }, { status: 400 });
+  }
+
+  // Débit par destination, tous comptes confondus. La clé est normalisée pour
+  // qu'une variation de casse ou d'espaces ne remette pas le compteur à zéro ;
+  // la validation ci-dessus la borne en longueur et en jeu de caractères.
+  const destination = to.trim().toLowerCase();
+  if (!(await checkRateLimit(`doc-email-dest:${destination}`, MAX_PAR_DESTINATION, 60 * 60 * 1000))) {
+    return NextResponse.json(
+      { error: "Trop d'envois vers cette adresse. Réessayez plus tard." },
+      { status: 429 },
+    );
   }
 
   // Protection email header injection
