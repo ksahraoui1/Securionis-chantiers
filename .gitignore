@@ -37,3 +37,8 @@ next-env.d.ts
 .mcp.json
 .claude/
 .claude-flow/
+
+# État de travail du CLI Supabase : versions des services et référence du
+# projet. Sans secret, mais sans intérêt pour le dépôt — et il publiait les
+# numéros de version exacts de Postgres, GoTrue et Storage.
+supabase/.temp/
