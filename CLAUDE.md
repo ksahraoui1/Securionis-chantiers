@@ -2549,9 +2549,72 @@ all immediate` : sans marqueur **refusé en 42501**, avec marqueur accepté.
 > d'envoi d'emails (« email rate limit exceeded »). Dans les deux cas le refus
 > ne vient pas de la garde et ne prouve rien.
 
-**Reste recommandé, hors du code** : désactiver « Allow new users to sign up »
-dans la console Supabase. Le refus arrive plus tôt, avec un message propre, et
-tient même si le déclencheur venait à être retiré.
+**Complété le 4 septembre 2026** : « Allow new users to sign up » est désormais
+**désactivé** dans la console Supabase. L'inscription est donc refusée à deux
+niveaux, et le premier répond proprement :
+
+| Niveau | Réponse |
+|---|---|
+| Supabase Auth | `422 signup_disabled` — « Signups not allowed for this instance » |
+| Base (migration 053) | exception à la validation, aucun compte créé |
+
+Le second reste utile : il tient même si le réglage de console venait à être
+réactivé, et c'est lui qui distingue une création par un administrateur.
+
+### APP-03 — le second facteur d'authentification (2026-09-04)
+
+Aucun des trois comptes n'en portait, et celui de l'administrateur ouvre tous
+les chantiers, toutes les visites, la gestion des utilisateurs et le
+référentiel : son mot de passe était la seule protection. Ce n'était pas un
+réglage oublié — **l'enrôlement TOTP passe nécessairement par l'application**,
+et l'application ne proposait rien. Il a donc fallu le construire.
+
+| Surface | Rôle |
+|---|---|
+| `/compte/securite` | enrôlement par QR, clé en clair pour la saisie manuelle, confirmation par un premier code, retrait |
+| page de connexion | demande du code juste après le mot de passe |
+| `/verification` | rattrapage des sessions restées au niveau simple — ouvertes avant l'enrôlement, ou laissées de côté |
+| bandeau du layout | invite l'administrateur sans facteur |
+
+> **Invitation, jamais blocage.** Verrouiller l'accès tant que le facteur n'est
+> pas posé enfermerait dehors le seul compte capable d'en créer d'autres. Pour
+> la même raison, `/verification` laisse passer plutôt que de bloquer si l'état
+> est incohérent — un niveau attendu supérieur sans aucun facteur vérifié.
+
+> ⚠️ **Un facteur non confirmé n'a aucun effet** : `enroll` crée un facteur
+> « unverified », et seul un premier `verify` réussi l'active. L'enrôlement
+> nettoie donc les facteurs non vérifiés restés en plan, sinon Supabase refuse
+> le suivant.
+
+> ⚠️ **Prévoir la perte du téléphone** : la reprise en main demande de
+> supprimer le facteur en base avec le `service_role`. La page le dit et
+> recommande un gestionnaire de mots de passe synchronisé.
+
+Vérifié dans la console : le second facteur TOTP est **activé au niveau du
+projet**, sans quoi l'enrôlement échouerait. À envisager ensuite, toujours dans
+la console : « Limit duration of AAL1 sessions », qui termine une session non
+vérifiée au bout de quinze minutes — sans effet tant qu'aucun facteur n'est
+enrôlé.
+
+> ⚠️ **Le parcours d'enrôlement n'a pas été joué de bout en bout** : il demande
+> une application d'authentification réelle. À éprouver au premier usage.
+
+### APP-04 — la bibliothèque documentaire par rôle (migration 054)
+
+`base_doc_select` disait `USING (true)` : tout compte connecté lisait les 76
+documents du référentiel. Lecture réservée à `inspecteur` et `administrateur`.
+
+| Rôle | Documents lus |
+|---|---|
+| invité | **0** (76 avant) |
+| inspecteur | 76 |
+| administrateur | 76 |
+
+Les tables dont dépend la checklist restent lisibles par tous — 487 points de
+contrôle, 5 documents de point de contrôle : les restreindre aussi retirerait
+toute documentation à un « invité » pendant une visite de démonstration. La
+dégradation est silencieuse et sans erreur, la jointure imbriquée renvoyant
+simplement moins de lignes.
 
 ### INFRA-02 — rotation des clés exposées par les anciennes images (2026-09-04)
 

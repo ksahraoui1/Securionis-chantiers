@@ -397,14 +397,41 @@ Un compte créé ainsi est utilisable immédiatement, sans étape de confirmatio
 par email. Le mot de passe suit la règle unique du projet : 8 caractères
 minimum, une majuscule, une minuscule et un chiffre.
 
-> La fermeture est portée par la **base de données**, pas par le retrait de la
-> page : `supabase.auth.signUp` reste appelable avec la clé publique. Un
-> déclencheur de contrainte refuse tout compte qui ne porte pas le marqueur
-> posé par la route d'administration.
+> La fermeture tient à **deux niveaux** : le réglage « Allow new users to sign
+> up » de Supabase répond `422 signup_disabled`, et un déclencheur de contrainte
+> en base refuse tout compte qui ne porte pas le marqueur posé par la route
+> d'administration. Le second tient même si le premier était réactivé.
 
 ⚠️ **Conséquence côté console Supabase** : « Add user » et « Invite » y
 échouent, la console ne posant pas ce marqueur. La procédure de secours est
 documentée en tête de la migration 053.
+
+### Le second facteur d'authentification (2026-09-04)
+
+**Fichiers** : `src/app/(dashboard)/compte/securite/page.tsx`, `src/components/compte/{gestion-mfa,formulaire-code-mfa}.tsx`, `src/app/(auth)/verification/`
+
+Une page **Sécurité du compte**, accessible depuis l'icône de bouclier de la
+barre de navigation, permet d'activer un second facteur : on scanne un QR code
+avec une application d'authentification, puis on confirme par un premier code.
+Tant que ce code n'est pas saisi, rien ne change à la connexion.
+
+Une fois le facteur actif, la connexion demande le code juste après le mot de
+passe. Une session ouverte avant l'enrôlement est renvoyée vers un écran de
+vérification à sa prochaine visite.
+
+Un bandeau invite l'administrateur qui n'a pas encore de second facteur à
+l'activer — c'est une invitation, jamais un blocage.
+
+> ⚠️ **En cas de perte du téléphone**, la reprise en main demande une
+> intervention en base de données. Conserver le compte dans un gestionnaire de
+> mots de passe synchronisé, ou noter la clé affichée à l'enrôlement.
+
+### La bibliothèque documentaire suit le rôle
+
+Le référentiel documentaire n'est plus lisible que par les rôles
+**inspecteur** et **administrateur**. Un compte « invité » conserve la
+checklist complète et les documents attachés aux points de contrôle, mais plus
+la bibliothèque générale.
 
 ### L'envoi d'un document par email suit les limites de rôle
 
