@@ -2772,6 +2772,36 @@ provoquant une dérive réversible — droits d'une sauvegarde passés de 600 à
 signalés, sortie en 1, retour à 0 après remise en état. Une exécution réelle par
 systemd est passée.
 
+> ⚠️ **La chaîne d'alerte par email n'est pas éprouvée.** Elle demande un envoi
+> réel, laissé à l'exploitant : `controle-durcissement.sh --test` en tant que
+> root force un envoi même sans dérive. Tant que ce n'est pas fait, la
+> détection est prouvée mais pas la notification.
+
+### OBS-01 — la supervision reste partielle, et c'est délibéré
+
+`SENTRY_DSN` et `NEXT_PUBLIC_SENTRY_DSN` sont **vides** en production : aucune
+erreur applicative, aucun refus d'accès inattendu, aucune tentative
+d'exploitation ne laisse de trace consultée. Le câblage Sentry existe pourtant
+et est correct — `sentry.{client,server,edge}.config.ts` s'initialisent dès
+qu'un DSN est présent, et `instrumentation.ts` capture les erreurs de Next.js.
+Il ne manque que la valeur.
+
+La créer demande un compte Sentry. **Décision du 4 septembre 2026 : reporté**,
+au profit du relevé quotidien des erreurs porté par le contrôle ci-dessus.
+
+| | Sentry | Relevé quotidien |
+|---|---|---|
+| Délai | immédiat | jusqu'à 24 h |
+| Contenu | pile d'appels, contexte, regroupement | lignes de journal filtrées |
+| Portée | client et serveur | journal du conteneur seul |
+| Coût | un compte à créer | rien |
+
+Ce n'est donc plus l'aveuglement complet, mais ce n'est pas Sentry. Le jour où
+un DSN existe : le poser dans le `.env` du serveur **et** le passer en `build
+arg` (`NEXT_PUBLIC_SENTRY_DSN` est inlinée au build, piège n° 70), puis
+reconstruire l'image. C'est aussi ce qui permettra de repasser la clé Anthropic
+sur une durée limitée.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.

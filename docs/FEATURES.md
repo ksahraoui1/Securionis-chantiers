@@ -440,6 +440,24 @@ compte « invité », comme le faisaient déjà les cinq autres routes d'email e
 PDF. Elle limite en outre les envois **vers une même adresse** à cinq par
 heure, tous comptes confondus.
 
+## 20. Contrôle quotidien du serveur (2026-09-04)
+
+**Fichiers** : `scripts/controle-durcissement.{sh,service,timer}`, `scripts/LISEZ-MOI.md`
+
+Une minuterie systemd vérifie chaque matin seize invariants du serveur —
+connexion SSH, pare-feu, `fail2ban`, droits des fichiers de secrets, santé du
+conteneur, absence du fichier d'environnement dans l'image, configuration
+nginx, certificat, réponse de la page de connexion — et relève les erreurs
+applicatives des dernières 24 heures. Un email part uniquement en cas de dérive
+ou d'erreur.
+
+Ce contrôle existe parce qu'une régression est déjà passée inaperçue pendant
+deux mois. L'installation et les pièges sont décrits dans
+[scripts/LISEZ-MOI.md](../scripts/LISEZ-MOI.md).
+
+> La supervision applicative (Sentry) reste à brancher : le code est prêt, seul
+> le DSN manque. Le relevé quotidien en tient lieu en attendant.
+
 ## Déploiement
 
 ### Production
