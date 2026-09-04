@@ -99,6 +99,10 @@ const NAVY = "#002855";
 const LARGEUR_RENDU_PDF = 2400;
 
 const PAS_OPACITE = 5;
+/** Hauteur plancher du visualiseur, en pixels — en dessous, un plan ne se lit plus. */
+const HAUTEUR_VUE_MIN_PX = 380;
+/** Marge laissée sous le visualiseur quand il prend le reste de l'écran. */
+const MARGE_VUE_PX = 12;
 
 const PRESETS: { label: string; pe: number; exe: number }[] = [
   { label: "PE seul", pe: 100, exe: 0 },
@@ -526,6 +530,47 @@ export function ComparaisonPlans({
   // Zone qui porte le visualiseur et la couche d'annotations : c'est elle que
   // la capture PNG recompose.
   const zoneRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Hauteur du visualiseur : ce qu'il reste de l'écran une fois les barres
+   * d'outils comptées, jamais moins de `HAUTEUR_VUE_MIN_PX`.
+   *
+   * `65vh` ne convenait pas à une tablette : trop petit en portrait, et en
+   * paysage les barres d'outils repliées sur trois lignes poussaient le plan
+   * sous le bord de l'écran — on recalait un calque qu'on ne voyait qu'à
+   * moitié. Et le plein écran natif n'existe pas sur iPad Safari.
+   *
+   * Les barres sont mesurées par **différence** entre le cadre et la zone du
+   * visualiseur : la valeur reste stable quand la hauteur de la zone change,
+   * donc l'observateur de taille ne boucle pas sur lui-même.
+   */
+  const [hauteurVue, setHauteurVue] = useState<number | null>(null);
+  useEffect(() => {
+    const cadre = cadreRef.current;
+    const zone = zoneRef.current;
+    if (!cadre || !zone) return;
+
+    const mesurer = () => {
+      if (document.fullscreenElement) return;
+      const barres =
+        cadre.getBoundingClientRect().height - zone.getBoundingClientRect().height;
+      const ecran = window.visualViewport?.height ?? window.innerHeight;
+      setHauteurVue(
+        Math.max(HAUTEUR_VUE_MIN_PX, Math.round(ecran - barres - MARGE_VUE_PX))
+      );
+    };
+
+    mesurer();
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(cadre);
+    window.addEventListener("resize", mesurer);
+    window.visualViewport?.addEventListener("resize", mesurer);
+    return () => {
+      observateur.disconnect();
+      window.removeEventListener("resize", mesurer);
+      window.visualViewport?.removeEventListener("resize", mesurer);
+    };
+  }, [charge]);
   // Images réellement affichées (page de PDF rendue, ou image d'origine) :
   // c'est sur elles que porte la détection de différences, pas sur le canevas
   // du visualiseur, qui n'en montre qu'un cadrage à l'opacité du moment.
@@ -1707,7 +1752,7 @@ export function ComparaisonPlans({
         <div
           ref={cadreRef}
           className={`rounded-lg bg-white border border-gray-400 overflow-hidden flex flex-col ${
-            pleinEcran ? "h-screen rounded-none" : ""
+            pleinEcran ? "h-dvh rounded-none" : ""
           }`}
         >
           {/* Barre d'outils */}
@@ -2023,13 +2068,28 @@ export function ComparaisonPlans({
 
           {/* Visualiseur et panneau des différences, côte à côte */}
           <div className="flex flex-col lg:flex-row flex-1 min-h-0">
-          {/* Conteneur OpenSeadragon */}
-          <div ref={zoneRef} className="relative flex-1 min-w-0">
+          {/* Conteneur OpenSeadragon.
+              `touch-none` + `overscroll-contain` : pendant un recalage au doigt,
+              le navigateur ne doit ni faire défiler la page ni rebondir — le
+              plan bougerait sous le doigt au lieu du calque. OpenSeadragon le
+              pose déjà sur son canevas ; la zone entière le porte pour les
+              couches SVG et les étiquettes qui la recouvrent. */}
+          <div
+            ref={zoneRef}
+            className="relative flex-1 min-w-0 touch-none overscroll-contain"
+          >
             <div
               ref={conteneurRef}
               className={`w-full bg-gray-100 ${
-                pleinEcran ? "h-full" : "h-[65vh] min-h-[380px]"
+                pleinEcran
+                  ? "h-full"
+                  : hauteurVue === null
+                    ? "h-[65vh] min-h-[380px]"
+                    : "min-h-[380px]"
               }`}
+              style={
+                !pleinEcran && hauteurVue !== null ? { height: hauteurVue } : undefined
+              }
             />
             {!pret && !erreur && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

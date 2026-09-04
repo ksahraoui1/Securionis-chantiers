@@ -390,6 +390,9 @@ export function CoucheAnnotations({
       style={{
         pointerEvents: interactif ? "auto" : "none",
         cursor: outil === "pan" ? "default" : "crosshair",
+        // Au doigt, sans cela le navigateur interprète le tracé d'une forme
+        // comme un défilement de la page et annule les événements pointeur.
+        touchAction: "none",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
