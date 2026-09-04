@@ -1,0 +1,11 @@
+[Unit]
+Description=Controle quotidien du durcissement
+
+[Timer]
+OnCalendar=*-*-* 07:15:00
+RandomizedDelaySec=15m
+# Rattrape l'exécution si la machine était éteinte à l'heure prévue.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
