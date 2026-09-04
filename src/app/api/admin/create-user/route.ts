@@ -70,6 +70,15 @@ export async function POST(request: Request) {
       email,
       password,
       email_confirm: true,
+      // Marqueur exigé par `handle_new_user` depuis la migration 053 : c'est
+      // lui qui distingue une création par un administrateur d'une inscription
+      // publique, et qui referme cette dernière **au niveau de la base**.
+      //
+      // ⚠️ `app_metadata` et non `user_metadata` : le premier n'est modifiable
+      // que par le `service_role`, le second l'est par le titulaire du compte.
+      // Fondé sur `user_metadata`, le contrôle serait contournable en une
+      // requête depuis le navigateur.
+      app_metadata: { cree_par: "admin" },
     });
 
   if (createError) {

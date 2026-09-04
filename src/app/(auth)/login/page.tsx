@@ -106,15 +106,10 @@ export default function LoginPage() {
         </button>
       </form>
 
+      {/* L'inscription publique est fermée (APP-02, audit du 4 septembre 2026) :
+          les comptes sont créés par un administrateur depuis /admin/utilisateurs. */}
       <p className="text-center text-sm text-gray-500 mt-6">
-        Pas encore de compte ?{" "}
-        <button
-          type="button"
-          onClick={() => { window.location.href = "/register"; }}
-          className="text-blue-600 hover:underline font-medium"
-        >
-          Créer un compte
-        </button>
+        Pas encore de compte ? Demandez-le à l&apos;administrateur de votre entreprise.
       </p>
     </div>
   );

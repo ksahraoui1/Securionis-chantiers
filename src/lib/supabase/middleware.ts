@@ -34,7 +34,11 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const publicPaths = ["/login", "/register", "/forgot-password", "/reset-password", "/auth"];
+  // `/register` a été retiré : l'inscription publique est fermée (APP-02).
+  // C'est la migration 053 qui la referme réellement — retirer la page ne fait
+  // que supprimer le point d'entrée, `supabase.auth.signUp` restant appelable
+  // directement avec la clé publique (piège n° 51).
+  const publicPaths = ["/login", "/forgot-password", "/reset-password", "/auth"];
   const pathname = request.nextUrl.pathname;
   const isPublic = publicPaths.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
