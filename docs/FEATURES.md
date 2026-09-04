@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-03
+> Dernière mise à jour : 2026-09-04
 
 ## 1. Annotation des photos
 
@@ -366,6 +366,19 @@ Six corrections issues de l'audit technique du 3 septembre 2026, sans fonctionna
 Trois étapes (`deps`, `builder`, `runner`), Node 22, `output: "standalone"`, utilisateur `node`, `HEALTHCHECK` sur `/login`. `.dockerignore` exclut les `.env` : les valeurs publiques (`NEXT_PUBLIC_*`) arrivent en `build args` depuis `docker-compose.yml`, les secrets seulement au conteneur en marche. Image de **342 Mo** contre 2,02 Go, bascule mesurée à 6 s.
 
 > ⚠️ Les images construites avant le 3 septembre 2026 contenaient le `.env`. Elles sont détruites sur le VPS, mais les clés qu'elles portaient (Supabase `service_role`, Resend, Anthropic, Stripe) sont à faire tourner chez leurs fournisseurs.
+
+## 18. Comparaison de plans PE / EXE sur tablette (2026-09-04)
+
+**Fichiers** : `src/components/chantier/comparaison-plans.tsx`, `src/components/chantier/comparaison-annotations.tsx`
+
+La comparaison de plans (page `/chantiers/[id]/comparaison` : superposition PE / EXE, opacités, recalage, échelle, rotation, recoloration, détection des différences, annotations, rapport) est documentée en détail dans `CLAUDE.md`. Cette section ne couvre que son comportement sur tablette, signalé en usage réel : la fenêtre de manipulation ne tenait pas dans l'écran et bougeait pendant le recalage.
+
+- **Hauteur du visualiseur mesurée** : il prend tout ce qui reste de l'écran une fois les barres d'outils comptées, jamais moins de 380 px, et se remesure au redimensionnement, au changement d'orientation et quand les barres se replient. Auparavant `65vh` : trop petit en portrait, débordant en paysage. Le plein écran natif n'existe pas sur iPad Safari, ce mode est donc celui qui compte sur tablette.
+- **La zone reste fixe sous le doigt** : `touch-action: none` et `overscroll-behavior: contain` sur toute la zone du visualiseur (OpenSeadragon ne le posait que sur son canevas, pas sur les couches SVG et étiquettes qui le recouvrent). Un recalage au doigt ne fait plus défiler la page.
+- **Tracer une forme au doigt** fonctionne : la couche d'annotations porte `touch-action: none`, sans quoi le navigateur prenait le tracé pour un défilement et annulait les événements pointeur.
+- Plein écran en `100dvh` plutôt que `100vh` (barre d'adresse mobile non comptée).
+
+> Non éprouvé dans le navigateur d'automatisation, où le visualiseur ne se charge pas : `tsc` et ESLint verts, premier usage réel sur tablette à confirmer.
 
 ## Déploiement
 

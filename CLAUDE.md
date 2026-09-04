@@ -2402,6 +2402,36 @@ suppriment la ligne, vérifient le tableau renvoyé, puis effacent le fichier ;
 un refus s'affiche (« réservée à un administrateur »), un fichier non effacé
 aussi.
 
+### Le visualiseur de comparaison sur tablette (2026-09-04)
+
+Signalé en usage réel : la fenêtre de manipulation des plans ne tenait pas
+dans l'écran d'une tablette et bougeait pendant le recalage des calques.
+
+**Hauteur.** Le visualiseur faisait `65vh` : trop petit en portrait, et en
+paysage les barres d'outils repliées sur trois lignes poussaient le plan sous
+le bord de l'écran — on recalait un calque qu'on ne voyait qu'à moitié. Il
+mesure désormais les barres et prend tout ce qui reste (`HAUTEUR_VUE_MIN_PX`
+= 380 px plancher, `MARGE_VUE_PX` = 12 px), remesuré au redimensionnement, au
+changement d'orientation (`visualViewport`) et quand les barres se replient
+(`ResizeObserver` sur le cadre).
+
+> Les barres sont mesurées par **différence** entre le cadre et la zone du
+> visualiseur : la valeur ne dépend pas de la hauteur de la zone, donc
+> l'observateur ne boucle pas quand cette hauteur change. Le plein écran natif
+> n'existe pas sur iPad Safari (`requestFullscreen` refusé) : ce mode mesuré
+> est le seul qui compte sur tablette.
+
+**Fixité.** OpenSeadragon pose `touch-action: none` sur son canevas, mais pas
+sur les couches SVG et les étiquettes qui le recouvrent : un doigt qui
+commençait son geste dessus faisait défiler la page. La zone entière porte
+`touch-none overscroll-contain`, et la couche d'annotations `touch-action:
+none` — sans quoi tracer une forme au doigt était pris pour un défilement et
+les événements pointeur étaient annulés. Plein écran en `h-dvh`.
+
+> Non éprouvé dans le navigateur d'automatisation (cinquième fois que le
+> visualiseur refuse de s'y charger) : `tsc` et ESLint verts, premier usage
+> réel sur tablette à confirmer.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2474,6 +2504,7 @@ aussi.
 68. **La lecture d'une visite et l'écriture n'ont pas le même périmètre** (migration 052) : lecture pour l'inspecteur de la visite **ou** le rattaché au chantier, écriture pour le rattaché seulement — identique sur `visites`, `reponses` et `ecarts`. Un `update` de `visites` ou de `reponses` par un compte non rattaché touche 0 ligne sans erreur : chaîner `.select()` (piège n° 43).
 69. **Supprimer un fichier de stockage avant sa ligne est une erreur** : la ligne peut être refusée par la RLS sans lever d'erreur, et le fichier est déjà parti. Toujours supprimer la ligne, vérifier le tableau renvoyé, puis le fichier ; un fichier non effacé se signale, il ne bloque pas.
 70. **Les `NEXT_PUBLIC_*` entrent dans l'image Docker par `build args`**, jamais par le `.env` — que `.dockerignore` exclut désormais du contexte. Ajouter une variable publique demande trois lignes : `ARG`/`ENV` dans le `Dockerfile`, `args:` dans `docker-compose.yml`, et la valeur dans le `.env` du VPS. Un secret n'a rien à faire au build : il n'arrive qu'au conteneur en marche, par `env_file`.
+71. **Tout ce qui recouvre le canevas OpenSeadragon doit porter `touch-action: none`** : OpenSeadragon ne le pose que sur son propre élément. Une couche SVG, une étiquette ou une légende posée par-dessus rend le geste au navigateur, qui fait défiler la page au lieu de déplacer le calque ou de tracer la forme — et annule les événements pointeur en cours. La zone du visualiseur porte `touch-none overscroll-contain` ; toute nouvelle couche interactive doit faire de même.
 
 ---
 
