@@ -14,6 +14,7 @@ Application SaaS de gestion des inspections de chantiers (sécurité au travail,
 - ⚖️ **Assistant juridique** — Réponses ancrées sur le corpus des points de contrôle
 - 📊 **Dashboard** — KPIs, graphique NC, chantiers urgents
 - 👥 **Multi-rôles** — Administrateur, Inspecteur, Invité
+- 🔐 **Second facteur** — code à six chiffres par application d'authentification, activable depuis « Sécurité du compte »
 
 ## Stack
 

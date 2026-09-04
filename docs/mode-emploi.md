@@ -48,6 +48,32 @@ minuscule et un chiffre**.
 3. Un lien de réinitialisation vous sera envoyé
 4. Cliquez sur le lien reçu par email et choisissez un nouveau mot de passe
 
+### 2.4 Protéger son compte avec un second facteur
+
+Un second facteur ajoute, après le mot de passe, un **code à six chiffres**
+produit par une application sur votre téléphone. Vivement recommandé pour un
+compte administrateur, qui ouvre l'ensemble des chantiers et la gestion des
+utilisateurs.
+
+1. Cliquez sur l'**icône de bouclier** dans la barre du haut, ou ouvrez le menu
+   puis **Sécurité du compte**
+2. Cliquez sur **Activer le second facteur**
+3. **Scannez le code** affiché avec une application d'authentification
+   (Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden…)
+4. Saisissez le **code à six chiffres** affiché par l'application pour confirmer
+
+Tant que ce premier code n'est pas saisi, rien ne change à votre connexion. Une
+fois confirmé, le code vous est demandé à chaque connexion, juste après le mot
+de passe.
+
+> ⚠️ **Si vous perdez le téléphone**, la reprise en main de votre compte demande
+> une intervention technique sur la base de données. Enregistrez le compte dans
+> un gestionnaire de mots de passe synchronisé, ou notez la clé de secours
+> affichée au moment de l'activation.
+
+Pour retirer le second facteur, revenez sur la même page et cliquez sur
+**Retirer**.
+
 ---
 
 ## 3. Dashboard (Tableau de bord)
