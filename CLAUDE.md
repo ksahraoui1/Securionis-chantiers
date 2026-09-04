@@ -2736,6 +2736,42 @@ lisibles par tout utilisateur local — passés en **600** ; et
 `NEXT_PUBLIC_APP_URL` était déclaré deux fois, la première avec une espace en
 fin de valeur.
 
+### INFRA-03 — la configuration du serveur est surveillée (2026-09-04)
+
+Rien ne surveillait la configuration du serveur, qui dérive seule : les mises à
+jour automatiques et cloud-init peuvent reposer une configuration par défaut à
+tout moment. Ce n'est pas théorique — le durcissement SSH de juillet n'avait
+jamais pris effet et **la régression est passée inaperçue deux mois**.
+
+`scripts/controle-durcissement.sh`, une unité systemd et sa minuterie
+quotidienne. Seize contrôles : connexion SSH (root et mot de passe), pare-feu,
+`fail2ban`, droits des fichiers de secrets, santé du conteneur, **absence du
+fichier d'environnement dans l'image**, configuration nginx et sa limite de
+corps, jours restants du certificat, réponse de la page de connexion. Le script
+relève en outre les erreurs applicatives des dernières 24 heures — palliatif
+d'OBS-01 tant qu'aucun DSN Sentry n'est configuré.
+
+Alerte par email via Resend, uniquement en cas de dérive ou d'erreur. La
+configuration (adresse de destination, domaine) vit dans
+`/etc/securionis-controle.conf`, en droits 600 : **le dépôt est public**, aucun
+identifiant d'infrastructure n'y figure.
+
+> ⚠️ **Deux pièges rencontrés en l'écrivant, et c'est le test qui les a
+> trouvés.** `grep -r` **ne suit pas les liens symboliques**, or
+> `sites-enabled` n'en contient que : le contrôle nginx annonçait une dérive
+> alors que la directive était bien là. Et la présence d'une valeur se teste
+> par sa présence, pas par une égalité avec le mot « definie ». Un contrôle qui
+> crie au loup est pire que pas de contrôle.
+
+> Le service sort en **1** quand il détecte une dérive : `SuccessExitStatus=0 1`
+> dans l'unité, sans quoi systemd marquerait un échec à chaque dérive et le
+> bruit noierait le signal.
+
+**Éprouvé** : les seize contrôles passent, et la **détection** a été vérifiée en
+provoquant une dérive réversible — droits d'une sauvegarde passés de 600 à 644,
+signalés, sortie en 1, retour à 0 après remise en état. Une exécution réelle par
+systemd est passée.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2815,7 +2851,8 @@ fin de valeur.
 76. **Une clé `service_role` invalide est silencieuse** : le limiteur de débit et le journal d'audit autorisent en cas de panne, donc rien ne casse visiblement — l'application tourne simplement sans limite de débit ni traçabilité. Après toute rotation, forcer un appel réservé au `service_role` (`consommer_quota`, migration 049) avec la clé réellement chargée par le conteneur, et exiger un 200.
 77. **Désactiver les clés Supabase héritées ne prend pas effet tout de suite** : mesuré, la clé a continué de répondre 200 une dizaine de secondes avant de passer à `401 Legacy API keys are disabled`. Tester juste après le clic fait conclure à tort que rien ne s'est passé ; réinterroger jusqu'au refus. Le tableau de bord, lui, bascule immédiatement sur « Re-enable », ce qui est le signal fiable que l'action est enregistrée.
 78. **La production utilise les clés Supabase modernes** (`sb_publishable_` 46 caractères, `sb_secret_` 41), pas les JWT hérités de 208 caractères. Elles se renouvellent **une par une, sans toucher au secret JWT**, donc sans invalider de session — contrairement à ce que supposerait une rotation « classique ». Une valeur de clé ne transite jamais par une conversation, un commit ou une capture : saisie masquée, passage par variable d'environnement et non par la ligne de commande.
-79. **Toute modification de `sshd` se valide avant de s'appliquer** : `sshd -t` d'abord, retrait du fichier si la syntaxe est refusée, puis `systemctl reload` — jamais `restart`, qui coupe le service alors que `ssh.socket` est en activation par socket. Et la vérification qui compte est une **nouvelle connexion** ouverte pendant que la précédente est encore là.
+80. **`grep -r` ne suit pas les liens symboliques, `grep -R` si** : `/etc/nginx/sites-enabled/` n'en contient que, donc tout contrôle qui y cherche une directive avec `-r` ne trouve rien et conclut à tort à une dérive. Vaut pour toute inspection de configuration passant par un dossier `enabled`.
+81. **Toute modification de `sshd` se valide avant de s'appliquer** : `sshd -t` d'abord, retrait du fichier si la syntaxe est refusée, puis `systemctl reload` — jamais `restart`, qui coupe le service alors que `ssh.socket` est en activation par socket. Et la vérification qui compte est une **nouvelle connexion** ouverte pendant que la précédente est encore là.
 
 ---
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Controle du durcissement du serveur et des erreurs applicatives
+Documentation=https://github.com/ksahraoui1/Securionis-chantiers
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/controle-durcissement.sh
+# Une dérive fait sortir en 1 : c'est le signal attendu, pas une panne du
+# service. Sans cette ligne, systemd marquerait le service en échec à chaque
+# dérive et le bruit noierait le signal.
+SuccessExitStatus=0 1
