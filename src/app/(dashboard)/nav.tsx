@@ -128,6 +128,18 @@ export function DashboardNav({
                 </span>
               )}
             </div>
+            {/* Sécurité du compte : toujours en icône seule, elle ne doit pas
+                disputer sa place aux liens de navigation. */}
+            <a
+              href="/compte/securite"
+              title="Sécurité du compte"
+              aria-label="Sécurité du compte"
+              className="px-3 py-2 min-h-[44px] min-w-[44px] text-gray-600 hover:bg-gray-100 rounded-lg flex items-center justify-center"
+            >
+              <span translate="no" className="material-symbols-outlined text-xl">
+                shield_person
+              </span>
+            </a>
             <button
               onClick={handleLogout}
               title="Déconnexion"
@@ -176,6 +188,14 @@ export function DashboardNav({
           ))}
           <div className="border-t border-gray-100 pt-2 mt-2">
             <div className="px-3 py-2 text-sm text-gray-500 truncate">{userName}</div>
+            <a
+              href="/compte/securite"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 min-h-[44px]"
+            >
+              <span translate="no" className="material-symbols-outlined text-lg">shield_person</span>
+              Sécurité du compte
+            </a>
             <button
               onClick={handleLogout}
               className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 min-h-[44px] w-full"
