@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-04
+> Dernière mise à jour : 2026-09-04 (audit de sécurité)
 
 ## 1. Annotation des photos
 
@@ -380,6 +380,39 @@ La comparaison de plans (page `/chantiers/[id]/comparaison` : superposition PE /
 
 > Non éprouvé dans le navigateur d'automatisation, où le visualiseur ne se charge pas : `tsc` et ESLint verts, premier usage réel sur tablette à confirmer.
 
+## 19. Accès aux comptes et envoi de documents (2026-09-04)
+
+**Fichiers** : `src/app/api/documents/email/route.ts`, `src/app/api/admin/create-user/route.ts`, `src/app/(auth)/login/page.tsx`, `src/lib/supabase/middleware.ts`, `supabase/migrations/053_inscription_publique_fermee.sql`
+
+Deux constats de l'audit de sécurité, corrigés le jour même. Le détail des
+mécanismes est dans `CLAUDE.md` ; voici ce qui change pour l'utilisateur.
+
+### L'inscription libre est fermée
+
+Il n'y a plus de page d'inscription. **Les comptes sont créés par un
+administrateur** depuis `/admin/utilisateurs`, qui choisit le rôle à la
+création. La page de connexion le dit, et `/register` redirige vers `/login`.
+
+Un compte créé ainsi est utilisable immédiatement, sans étape de confirmation
+par email. Le mot de passe suit la règle unique du projet : 8 caractères
+minimum, une majuscule, une minuscule et un chiffre.
+
+> La fermeture est portée par la **base de données**, pas par le retrait de la
+> page : `supabase.auth.signUp` reste appelable avec la clé publique. Un
+> déclencheur de contrainte refuse tout compte qui ne porte pas le marqueur
+> posé par la route d'administration.
+
+⚠️ **Conséquence côté console Supabase** : « Add user » et « Invite » y
+échouent, la console ne posant pas ce marqueur. La procédure de secours est
+documentée en tête de la migration 053.
+
+### L'envoi d'un document par email suit les limites de rôle
+
+La route d'envoi d'un document de la base documentaire refuse désormais un
+compte « invité », comme le faisaient déjà les cinq autres routes d'email et de
+PDF. Elle limite en outre les envois **vers une même adresse** à cinq par
+heure, tous comptes confondus.
+
 ## Déploiement
 
 ### Production
@@ -388,6 +421,7 @@ La comparaison de plans (page `/chantiers/[id]/comparaison` : superposition PE /
 - **SSL** : Cloudflare Full (Strict) — certificat Let's Encrypt sur l'origine, renouvellement auto via `certbot.timer`
 - **Reverse proxy** : Nginx (80 + 443 → `127.0.0.1:3000`, le port 80 restant ouvert pour les challenges ACME ; `client_max_body_size 25m`, buffers proxy 32k)
 - **Réseau** : UFW en deny incoming ; 80/443 restreints aux plages IP Cloudflare, Docker bindé sur `127.0.0.1:3000`
+- **Accès au serveur** : SSH par **clé uniquement**, `PermitRootLogin prohibit-password`, via `/etc/ssh/sshd_config.d/01-durcissement.conf`. ⚠️ Le numéro **01** est essentiel : `sshd` retient la *première* valeur obtenue, et `50-cloud-init.conf` remet `PasswordAuthentication yes` à chaque passage de cloud-init. Un fichier numéroté au-dessus de 50 est inerte. Vérifier avec `sshd -T`, jamais en relisant un fichier. `fail2ban` actif (jail sshd)
 - **Process** : Docker Compose, image `standalone` en trois étapes sous l'utilisateur `node`, `env_file .env` pour les secrets, `build args` pour les `NEXT_PUBLIC_*`, `restart unless-stopped`, `HEALTHCHECK`
 
 ### Mise à jour
