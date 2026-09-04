@@ -30,6 +30,9 @@ const REGLES: Array<[RegExp, string]> = [
   [/^\/admin\/[^/]+$/, "/admin"],
   [/^\/admin$/, RACINE],
   [/^\/dashboard\/[^/]+$/, RACINE],
+  // Réglages du compte (sécurité, second facteur).
+  [/^\/compte\/[^/]+$/, RACINE],
+  [/^\/compte$/, RACINE],
 ];
 
 /** Libellé de la destination, pour l'infobulle du bouton. */

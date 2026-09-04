@@ -4,12 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { FormulaireCodeMfa } from "@/components/compte/formulaire-code-mfa";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /** Facteur à confirmer quand le mot de passe ne suffit pas (APP-03). */
+  const [facteurAConfirmer, setFacteurAConfirmer] = useState<string | null>(null);
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -29,8 +32,52 @@ export default function LoginPage() {
       return;
     }
 
+    // Le mot de passe donne une session de niveau simple. Si un second facteur
+    // est enregistré, Supabase annonce un niveau attendu supérieur : la session
+    // existe, mais elle reste incomplète tant que le code n'est pas fourni.
+    const { data: niveaux } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (niveaux && niveaux.currentLevel !== niveaux.nextLevel) {
+      const { data: facteurs } = await supabase.auth.mfa.listFactors();
+      const facteur = (facteurs?.all ?? []).find((f) => f.status === "verified");
+      if (facteur) {
+        setFacteurAConfirmer(facteur.id);
+        setPassword("");
+        setLoading(false);
+        return;
+      }
+    }
+
     router.push("/dashboard");
     router.refresh();
+  }
+
+  async function abandonner() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setFacteurAConfirmer(null);
+    setPassword("");
+    setLoading(false);
+  }
+
+  if (facteurAConfirmer) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-5 sm:p-8">
+        <div className="text-center mb-6">
+          <h1 className="text-xl font-bold text-gray-900">
+            Vérification en deux étapes
+          </h1>
+          <p className="text-sm text-gray-500 mt-2 break-words">{email}</p>
+        </div>
+        <FormulaireCodeMfa
+          factorId={facteurAConfirmer}
+          onVerifie={() => {
+            router.push("/dashboard");
+            router.refresh();
+          }}
+          onAnnuler={abandonner}
+        />
+      </div>
+    );
   }
 
   return (
