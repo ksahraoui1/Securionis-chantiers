@@ -116,17 +116,42 @@ export const PointControleDocumentsUploader = forwardRef<
     }
   }
 
+  // La ligne d'abord, le fichier ensuite, résultat vérifié (INT-03) : un refus
+  // RLS ne lève aucune erreur, et effacer le fichier en premier laisserait un
+  // document listé sans fichier.
   async function handleDeleteDoc(docId: string) {
     if (!confirm("Supprimer ce document ?")) return;
+    setError(null);
     const supabase = createClient();
     const doc = docs.find((d) => d.id === docId);
+
+    const { data: supprimes, error: dbError } = await supabase
+      .from("point_controle_documents")
+      .delete()
+      .eq("id", docId)
+      .select("id");
+    if (dbError) {
+      setError(dbError.message);
+      return;
+    }
+    if (!supprimes || supprimes.length === 0) {
+      setError("Suppression refusée : réservée à un administrateur.");
+      return;
+    }
+
     if (doc) {
       const storagePath = extractStoragePath(doc.fichier_url, "rapports");
       if (storagePath) {
-        await supabase.storage.from("rapports").remove([storagePath]);
+        const { error: storageError } = await supabase.storage
+          .from("rapports")
+          .remove([storagePath]);
+        if (storageError) {
+          setError(
+            `Document retiré, mais son fichier n'a pas pu être effacé du stockage (${storageError.message}).`
+          );
+        }
       }
     }
-    await supabase.from("point_controle_documents").delete().eq("id", docId);
     await loadDocs();
   }
 

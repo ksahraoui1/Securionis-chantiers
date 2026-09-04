@@ -5,6 +5,12 @@ import { getSupabaseUrl } from "@/lib/env";
  * Vérifie que l'utilisateur a accès à une visite donnée.
  * Retourne true si l'utilisateur est l'inspecteur de la visite,
  * est assigné au chantier de la visite, ou est administrateur.
+ *
+ * C'est la règle que la base applique depuis la migration 052 : lecture pour
+ * l'inspecteur de la visite **ou** le rattaché au chantier, écriture pour le
+ * rattaché seulement (`visites`, `reponses`, `ecarts` d'un seul tenant).
+ * Avant, `reponses` n'acceptait que l'inspecteur de la visite : un collègue
+ * rattaché passait ce contrôle puis lisait zéro réponse (INT-02).
  */
 export async function canAccessVisite(
   supabase: SupabaseClient,
@@ -33,7 +39,7 @@ export async function canAccessVisite(
     .select("id")
     .eq("chantier_id", visite.chantier_id)
     .eq("inspecteur_id", userId)
-    .single();
+    .maybeSingle();
 
   return !!assignment;
 }

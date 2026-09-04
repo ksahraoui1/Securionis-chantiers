@@ -73,6 +73,10 @@ function politique(scriptSrc: string): string {
 }
 
 const nextConfig: NextConfig = {
+  // Image Docker multi-étapes (SEC-02) : `standalone` produit un `server.js`
+  // autonome avec les seuls modules importés, au lieu d'embarquer le code
+  // source et tout `node_modules` dans l'image livrée.
+  output: "standalone",
   serverExternalPackages: ["@react-pdf/renderer"],
   poweredByHeader: false,
   async headers() {
