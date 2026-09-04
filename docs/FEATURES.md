@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-08-27
+> Dernière mise à jour : 2026-09-03
 
 ## 1. Annotation des photos
 
@@ -257,7 +257,9 @@ Centralisation de tous les documents liés à un chantier.
 - Fonction `stripMarkdown()` nettoie tout formatage markdown des réponses IA
 - Le bouton "Copier dans la remarque" de l'assistant juridique résume le texte en 2-3 phrases via l'IA
 
-## 12. Notifications push PWA (2026-05-11)
+## 12. Notifications push PWA (2026-05-11) — **retirées le 2026-08-29**
+
+> Sous-système retiré avec Stripe (aucun usage : 1 abonnement de test, aucun déclencheur métier). Les routes, le hook, `lib/push.ts`, les handlers du Service Worker et les clés VAPID n'existent plus ; la table `push_subscriptions` est conservée. Le texte ci-dessous décrit l'état d'avant le retrait, à titre d'historique.
 
 **Fichiers** : `src/lib/push.ts`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/test/route.ts`, `src/hooks/use-push-notifications.ts`, `src/components/ui/push-notifications-card.tsx`, `public/sw.js`, `supabase/migrations/034_push_subscriptions.sql`
 
@@ -345,27 +347,56 @@ Le seuil dépend désormais du nombre de liens du rôle : `xl` (1280 px) au-del�
 
 > Les classes responsives sont produites par ternaire ; Tailwind scanne le source en texte brut, donc les littéraux `"xl:flex"` / `"md:flex"` doivent rester écrits en entier.
 
+## 17. Sécurité et intégrité — lot 1 de l'audit (2026-09-03)
+
+**Fichiers** : `supabase/migrations/051_stockage_ecriture_cloisonnee.sql`, `052_acces_visites_reponses.sql`, `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `src/app/api/visites/[id]/route.ts`, `src/app/api/visites/[id]/email/route.ts`, `src/components/chantier/document-manager.tsx`, `src/app/(dashboard)/admin/documents/hooks/use-documents.ts`, `src/components/admin/point-controle-documents-uploader.tsx`
+
+Six corrections issues de l'audit technique du 3 septembre 2026, sans fonctionnalité nouvelle (PR #45, déployée).
+
+### Règles d'accès (migrations 051 et 052, appliquées)
+- **Stockage** : on écrit là où on est rattaché. Un inspecteur dépose et remplace sous `<son chantier>/…` (photos, rapports) et `chantiers/<son chantier>/docs/…` (documents) ; le référentiel `base-documentaire/`, `points-controle/`, `logos/` et la suppression dans `rapports` sont réservés à l'administrateur. Les trois politiques héritées en double — qui laissaient tout compte connecté remplacer un rapport ou supprimer toutes les photos — sont supprimées.
+- **Visites, réponses, écarts** : un seul périmètre. Lecture pour l'inspecteur de la visite **ou** le rattaché au chantier, écriture pour le rattaché seulement. Avant, un second inspecteur rattaché voyait la visite d'un collègue sans aucune de ses réponses.
+
+### Comportements
+- **Suppression d'une visite en cours** : faite par le `service_role` après contrôle d'accès, résultat vérifié ; les écarts liés, les photos sous `<chantier>/<visite>/` et le rapport éventuel sont effacés. Auparavant la suppression ne touchait aucune ligne tout en renvoyant un succès.
+- **Suppression d'un document** (chantier, base documentaire, point de contrôle) : la ligne d'abord, résultat vérifié, le fichier ensuite. Un refus s'affiche (« réservée à un administrateur »), un fichier non effacé aussi.
+- **Envoi du rapport** : le marquage `email_envoye` est vérifié et journalisé s'il échoue.
+
+### Image Docker
+Trois étapes (`deps`, `builder`, `runner`), Node 22, `output: "standalone"`, utilisateur `node`, `HEALTHCHECK` sur `/login`. `.dockerignore` exclut les `.env` : les valeurs publiques (`NEXT_PUBLIC_*`) arrivent en `build args` depuis `docker-compose.yml`, les secrets seulement au conteneur en marche. Image de **342 Mo** contre 2,02 Go, bascule mesurée à 6 s.
+
+> ⚠️ Les images construites avant le 3 septembre 2026 contenaient le `.env`. Elles sont détruites sur le VPS, mais les clés qu'elles portaient (Supabase `service_role`, Resend, Anthropic, Stripe) sont à faire tourner chez leurs fournisseurs.
+
 ## Déploiement
 
 ### Production
 - **URL** : https://chantiers.securionis.com
 - **Infrastructure** : Docker sur VPS Hostinger (31.97.36.92, hostname `srv842436`)
 - **SSL** : Cloudflare Full (Strict) — certificat Let's Encrypt sur l'origine, renouvellement auto via `certbot.timer`
-- **Reverse proxy** : Nginx (80 + 443 → `127.0.0.1:3000`, le port 80 restant ouvert pour les challenges ACME)
+- **Reverse proxy** : Nginx (80 + 443 → `127.0.0.1:3000`, le port 80 restant ouvert pour les challenges ACME ; `client_max_body_size 25m`, buffers proxy 32k)
 - **Réseau** : UFW en deny incoming ; 80/443 restreints aux plages IP Cloudflare, Docker bindé sur `127.0.0.1:3000`
-- **Process** : Docker Compose, `env_file .env`, `restart unless-stopped`
+- **Process** : Docker Compose, image `standalone` en trois étapes sous l'utilisateur `node`, `env_file .env` pour les secrets, `build args` pour les `NEXT_PUBLIC_*`, `restart unless-stopped`, `HEALTHCHECK`
 
 ### Mise à jour
 ```bash
-cd /app/securionis && git pull && docker compose down && docker compose build --no-cache && docker compose up -d
+cd /app/securionis && git pull && docker builder prune -f && docker compose build --no-cache && docker compose up -d && docker image prune -a -f
 ```
-En cas d'erreur Docker « parent snapshot does not exist », intercaler `docker builder prune -f` avant le build.
+- **Ne pas faire `docker compose down` avant le build** : l'ancien conteneur continue de servir pendant la construction, `up -d` ne fait que la bascule (mesurée à 5–6 s, contre ~2 min avec un `down` préalable).
+- `docker builder prune -f` avant le build évite l'erreur « parent snapshot does not exist », rencontrée plusieurs fois sur ce VPS.
+- `docker image prune -a -f` après la bascule retire l'image précédente.
 
-> Les migrations Supabase ne sont **pas** appliquées par le `git pull` : la base est sur Supabase Cloud, il faut les passer séparément.
+> Les migrations Supabase ne sont **pas** appliquées par le `git pull` : la base est sur Supabase Cloud, il faut les passer séparément (SQL Editor ou MCP), puis les inscrire dans `supabase_migrations.schema_migrations`.
 
-### Variables d'environnement (`.env.local`)
+### Variables d'environnement (`.env` sur le VPS, `.env.local` en local)
+Publiques, inlinées au build (à déclarer aussi dans `Dockerfile` et `docker-compose.yml` pour toute nouvelle variable) :
 - `NEXT_PUBLIC_SUPABASE_URL` — URL du projet Supabase
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Clé publique Supabase
+- `NEXT_PUBLIC_APP_URL` — URL publique de l'application
+- `NEXT_PUBLIC_APP_ENV` — `production` en production
+- `NEXT_PUBLIC_SENTRY_DSN` — DSN Sentry côté client (vide = Sentry inactif)
+
+Secrets, fournis au conteneur en marche uniquement :
 - `SUPABASE_SERVICE_ROLE_KEY` — Clé service (serveur uniquement)
-- `RESEND_API_KEY` — Envoi d'emails
+- `RESEND_API_KEY` / `RESEND_FROM_EMAIL` — Envoi d'emails (expéditeur sur le domaine racine vérifié)
 - `ANTHROPIC_API_KEY` — Analyse IA photos + Assistant juridique
+- `SENTRY_DSN` — DSN Sentry côté serveur (vide = Sentry inactif)
