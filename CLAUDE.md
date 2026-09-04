@@ -2629,14 +2629,23 @@ Vérifié après coup : clé héritée **401**, clé publiable moderne **200**, 
 
 #### État et reste à faire
 
+**Clos le 4 septembre 2026**, à l'exception de Stripe, invérifiable d'ici.
+
 | Clé | État | Preuve |
 |---|---|---|
 | Supabase secrète | tournée ; ancienne **révoquée** | appel `service_role` en 200 |
 | Supabase héritées | **désactivées** | `401 Legacy API keys are disabled` |
-| Resend | tournée, **restreinte à l'envoi** et au domaine `securionis.com` | `401 restricted_api_key` contre `400 API key is invalid` pour une clé fausse |
-| Anthropic | tournée, portée à l'espace Default, sans API d'administration | `GET /v1/models` en 200 |
-| Anciennes Resend et Anthropic | **à révoquer** dans leurs consoles | — |
-| Stripe | retirée du serveur ; **à révoquer** chez Stripe | — |
+| Resend | tournée, **restreinte à l'envoi** et au domaine `securionis.com` ; ancienne **révoquée** | `401 restricted_api_key` contre `400 API key is invalid` pour une clé fausse |
+| Anthropic | tournée, portée à l'espace Default, sans API d'administration ; ancienne **révoquée** | `GET /v1/models` en 200 |
+| Stripe | retirée du serveur ; révocation annoncée, **non vérifiable** faute d'accès | — |
+
+> ⚠️ **C'est la révocation qui ferme la brèche, pas le renouvellement.** Tant
+> que l'ancienne clé existe, celle qui était embarquée dans les images reste
+> valide. Deux fois sur trois pendant cette opération, la révocation annoncée
+> n'avait pas eu lieu : la liste de la console faisait toujours apparaître
+> l'ancienne clé. **Vérifier la liste, pas la parole** — et vérifier ensuite que
+> la clé en service fonctionne toujours, la mauvaise pouvant avoir été
+> supprimée.
 
 **Resend : la clé est passée d'un accès complet à un accès d'envoi seul**, et
 restreinte au domaine expéditeur. L'application ne fait que `emails.send` —
@@ -2644,9 +2653,12 @@ quatre appels, aucun autre usage de l'API — donc rien de plus ne lui est
 nécessaire. Une fuite ne permettrait plus ni de lire les domaines, ni de créer
 d'autres clés, ni d'envoyer depuis un autre domaine du compte.
 
-> ⚠️ Le compte Resend portait **quatre clés en accès complet**, dont une sans
-> aucune activité depuis onze mois. Elles peuvent appartenir à d'autres
-> projets : à trier, mais pas depuis ce dépôt.
+> ⚠️ Le compte Resend porte encore **trois clés en accès complet** —
+> `BTP-UP production`, `chantier.securionis.com` et `matrice-eisenhower`, cette
+> dernière sans aucune activité depuis onze mois. Elles peuvent appartenir à
+> d'autres projets : à trier, mais pas depuis ce dépôt. Une clé pleine et
+> dormante depuis presque un an est un identifiant de plus à protéger sans
+> contrepartie.
 
 **Anthropic : expiration « Jamais », contre le défaut de 30 jours de la
 console.** C'est un arbitrage, pas un oubli. Une clé qui expire est meilleure
