@@ -57,18 +57,41 @@ export function useDocuments(filterSource: string) {
     reload();
   }, [reload]);
 
+  /**
+   * Supprime un document : la ligne d'abord, le fichier ensuite, résultat
+   * vérifié (INT-03). Renvoie un message d'erreur, ou `null` si tout est
+   * passé. Un refus RLS ne lève aucune erreur — il ne touche aucune ligne —
+   * et l'ordre inverse effaçait le fichier d'un document qui restait listé.
+   */
   const remove = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<string | null> => {
       const supabase = createClient();
       const doc = documents.find((d) => d.id === id);
+
+      const { data: supprimes, error: dbError } = await supabase
+        .from("base_documentaire")
+        .delete()
+        .eq("id", id)
+        .select("id");
+      if (dbError) return dbError.message;
+      if (!supprimes || supprimes.length === 0) {
+        return "Suppression refusée : réservée à un administrateur.";
+      }
+
+      let avertissement: string | null = null;
       if (doc) {
         const storagePath = extractStoragePath(doc.fichier_url, "rapports");
         if (storagePath) {
-          await supabase.storage.from("rapports").remove([storagePath]);
+          const { error: storageError } = await supabase.storage
+            .from("rapports")
+            .remove([storagePath]);
+          if (storageError) {
+            avertissement = `Document retiré, mais son fichier n'a pas pu être effacé du stockage (${storageError.message}).`;
+          }
         }
       }
-      await supabase.from("base_documentaire").delete().eq("id", id);
       await reload();
+      return avertissement;
     },
     [documents, reload],
   );

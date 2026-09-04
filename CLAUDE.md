@@ -2296,6 +2296,112 @@ Deux corrections :
 Même famille que l'incident des buffers proxy d'août : la panne était dans
 nginx, pas dans l'application, et le symptôme désignait l'application.
 
+### Lot 1 de l'audit du 3 septembre 2026 — fermer les brèches
+
+Six corrections issues de l'audit, sans aucune fonctionnalité nouvelle.
+Migrations **051 et 052 appliquées en production** le 3 septembre 2026, avant
+le déploiement du code — l'ordre est indifférent ici : elles ne font que
+restreindre ce que l'ancien code ne réussissait déjà pas, et élargir une
+lecture que rien ne consommait encore. Inscrites dans
+`supabase_migrations.schema_migrations` sous les versions `20260903100051` et
+`20260903100052` (le SQL de référence est dans les fichiers du dépôt).
+
+#### SEC-01 — l'écriture dans le stockage est cloisonnée (migration 051)
+
+La migration 048 avait cloisonné la **lecture** des buckets. Les politiques
+d'**écriture** dataient de mars et disaient `bucket_id = '…'`, en double
+(« Authenticated users can upload … » à côté de `…_insert`, « … delete own
+photos » à côté de `photos_delete`). Tout compte connecté — donc tout compte
+créé par `/register` — pouvait déposer un fichier sous n'importe quel chantier,
+**remplacer** le PDF d'un rapport d'inspection (UPDATE sans `WITH CHECK`), et
+supprimer toutes les photos de visite.
+
+Règle retenue, calquée sur la lecture : **on écrit là où on est rattaché, le
+référentiel (`base-documentaire/`, `points-controle/`, `logos/`) appartient à
+l'administrateur.** Les UPDATE portent `USING` **et** `WITH CHECK`, sans quoi un
+`upsert` déplacerait un objet d'un chantier vers un autre. `rapports_delete`
+passe à administrateur seul : plus rien dans l'application n'a besoin qu'un
+inspecteur efface un rapport, la suppression de visite passant par le
+`service_role`. 11 politiques → 8.
+
+> ⚠️ **Les politiques DELETE du stockage ne s'éprouvent pas en SQL.** Le
+> trigger `protect_objects_delete` de Supabase refuse toute suppression
+> directe dans `storage.objects` (« Use the Storage API instead »), même pour
+> l'administrateur, même pour `postgres`. Elles ne s'exercent que par l'API
+> Storage. Corollaire : **une purge d'objets orphelins ne peut pas se faire en
+> SQL** — un `delete from storage.objects` est refusé, et l'aurait-il été
+> accepté qu'il aurait laissé le fichier physique dans le S3 sous-jacent.
+
+Vérifié en production, transaction annulée : invité INSERT 42501 sur les deux
+buckets, UPDATE 0 ligne ; inspecteur rattaché accepté sous `<son chantier>/`
+et `chantiers/<son chantier>/docs/`, 42501 ailleurs et sur le référentiel,
+0 ligne sur les rapports d'un autre chantier, 42501 sur un UPDATE qui déplace
+une photo vers un autre chantier ; administrateur accepté partout.
+
+#### SEC-02 — les secrets ne sont plus dans l'image Docker
+
+Sans `.dockerignore`, `COPY . .` embarquait le `.env` de production dans une
+couche de l'image — et c'est ce `.env` copié qui fournissait à `next build`
+ses `NEXT_PUBLIC_*`. Nouveau `Dockerfile` en trois étapes (`deps`, `builder`,
+`runner`), Node 22, `output: "standalone"` dans `next.config.ts`, utilisateur
+`node`, `HEALTHCHECK` sur `/login`. Les valeurs publiques arrivent en `build
+args` depuis `docker-compose.yml`, qui les lit dans le `.env` du VPS ; les
+secrets ne sont fournis qu'au conteneur en marche, par `env_file`.
+
+> ⚠️ **Une image construite avant ce changement contient encore le `.env`.**
+> Reconstruire ne suffit pas : les quatre clés (`SUPABASE_SERVICE_ROLE_KEY`,
+> `RESEND_API_KEY`, `ANTHROPIC_API_KEY`, et `STRIPE_SECRET_KEY` s'il est encore
+> dans le fichier) sont à **faire tourner** chez leurs fournisseurs, puis
+> `docker image prune -a` sur le VPS. Ce sont des gestes de compte, hors du
+> code.
+
+La CI perd ses variables Stripe factices et ne fournit plus que les
+`NEXT_PUBLIC_*` au build — comme l'image, pour que la CI détecte ce que le
+build de production détecterait.
+
+#### INT-02 — les réponses suivent la règle d'accès des visites (migration 052)
+
+`visites` (lecture : inspecteur **ou** rattaché), `reponses` (inspecteur de la
+visite **seulement**) et `ecarts` (rattaché seulement) décrivaient trois
+périmètres différents. Un second inspecteur rattaché voyait la visite d'un
+collègue et **aucune réponse** : page rapport vide, PDF vide, et l'envoi par
+email réussissait sans marquer `email_envoye` (refus RLS silencieux). Invisible
+tant qu'un seul compte crée tout.
+
+Modèle unique, celui de la 047 : **lecture pour l'inspecteur de la visite ou le
+rattaché au chantier, écriture pour le rattaché seulement**, sur `visites`,
+`reponses` et `ecarts` d'un seul tenant. `canAccessVisite()` appliquait déjà
+cette règle ; la base la contredisait. La route email vérifie désormais le
+résultat du marquage. Mesuré en transaction annulée : le rattaché lit **9
+réponses** là où il en lisait **0**, met à jour 7 visites (0 avant), 0 réponse
+et 0 visite d'un autre chantier.
+
+#### INT-01 — la suppression de visite supprime vraiment, et nettoie
+
+`DELETE /api/visites/[id]` supprimait avec le client de l'utilisateur, or
+aucune politique n'autorise un inspecteur à supprimer une visite ou ses
+réponses : **0 ligne touchée, succès renvoyé, entrée `delete_visite` au
+journal** pour une visite toujours là. Et les photos restaient dans le
+stockage : 28 orphelines relevées.
+
+La route vérifie l'autorisation avec le client utilisateur puis supprime par
+le `service_role` : écarts des réponses (clé étrangère non cascadée), visite
+(réponses en cascade), résultat vérifié par `.select("id")`, puis les photos
+listées récursivement sous `<chantier>/<visite>/` et le rapport s'il existe.
+Un échec du stockage ne remet pas en cause la suppression — les données sont
+parties — mais il est journalisé dans `details.avertissements`.
+
+#### INT-03 — la ligne d'abord, le fichier ensuite
+
+`document-manager`, `use-documents` (base documentaire) et
+`point-controle-documents-uploader` effaçaient le fichier **avant** la ligne,
+sans vérifier ni l'un ni l'autre. `documents_delete` étant réservée à
+l'administrateur et un refus RLS ne levant aucune erreur, un inspecteur
+obtenait un document toujours listé dont le fichier n'existait plus. Les trois
+suppriment la ligne, vérifient le tableau renvoyé, puis effacent le fichier ;
+un refus s'affiche (« réservée à un administrateur »), un fichier non effacé
+aussi.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2363,6 +2469,11 @@ nginx, pas dans l'application, et le symptôme désignait l'application.
 63. **Une CSP par route ne protège que le document qu'elle accompagne** : la page de comparaison est la seule à recevoir `'unsafe-eval'`, indispensable à OpenCV.js, mais un `<Link>` de Next.js y arrive **sans changer de document** et conserve la politique stricte de la page de départ — WebAssembly est alors refusé et la bibliothèque s'interrompt en silence. Les liens qui mènent à la comparaison doivent rester de simples `<a>`, et `wasmCompilable()` (`src/lib/opencv.ts`) dit en 0,5 ms si la page courante peut la faire tourner.
 64. **`'wasm-unsafe-eval'` ne remplace pas `'unsafe-eval'` pour OpenCV.js** : le module démarre et `cv.Mat` devient une fonction, mais Embind ne peut plus lier ses types et le premier appel échoue sur « Cannot construct Mat due to unbound types ». `typeof cv.Mat === "function"` ne prouve donc pas que la bibliothèque est utilisable.
 65. **Un refus du proxy ne laisse aucune trace applicative** : nginx répond 413 (corps trop volumineux) ou 502 (en-têtes trop volumineux) sans que Next.js voie la requête — pas de journal, pas de Sentry — et sa réponse HTML fait échouer le `reponse.json()` du client, qui retombe sur un message générique. Devant un échec sans trace applicative, lire `/var/log/nginx/error.log` en premier. Les routes qui reçoivent une image passent par `messageErreurEnvoi()` (`src/lib/utils/erreur-envoi.ts`), qui nomme le 413 et porte le code d'état à défaut.
+66. **Les politiques d'écriture du stockage suivent la lecture** (migration 051) : un inspecteur écrit sous `<son chantier>/…` et `chantiers/<son chantier>/…`, l'administrateur seul écrit dans `base-documentaire/`, `points-controle/` et `logos/`, et seul l'administrateur supprime dans `rapports`. Tout nouveau chemin de stockage doit entrer dans l'une de ces formes, sinon l'envoi est refusé en 400 par l'API Storage — sans message utile côté application.
+67. **`storage.objects` refuse tout DELETE direct** : le trigger `protect_objects_delete` de Supabase lève 42501 « Use the Storage API instead », quel que soit le rôle. Les politiques DELETE ne se testent que par l'API, et une purge d'orphelins passe par `storage.from(bucket).remove()` avec la clé `service_role` — jamais par SQL.
+68. **La lecture d'une visite et l'écriture n'ont pas le même périmètre** (migration 052) : lecture pour l'inspecteur de la visite **ou** le rattaché au chantier, écriture pour le rattaché seulement — identique sur `visites`, `reponses` et `ecarts`. Un `update` de `visites` ou de `reponses` par un compte non rattaché touche 0 ligne sans erreur : chaîner `.select()` (piège n° 43).
+69. **Supprimer un fichier de stockage avant sa ligne est une erreur** : la ligne peut être refusée par la RLS sans lever d'erreur, et le fichier est déjà parti. Toujours supprimer la ligne, vérifier le tableau renvoyé, puis le fichier ; un fichier non effacé se signale, il ne bloque pas.
+70. **Les `NEXT_PUBLIC_*` entrent dans l'image Docker par `build args`**, jamais par le `.env` — que `.dockerignore` exclut désormais du contexte. Ajouter une variable publique demande trois lignes : `ARG`/`ENV` dans le `Dockerfile`, `args:` dans `docker-compose.yml`, et la valeur dans le `.env` du VPS. Un secret n'a rien à faire au build : il n'arrive qu'au conteneur en marche, par `env_file`.
 
 ---
 

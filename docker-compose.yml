@@ -1,10 +1,20 @@
-services:                                                                                                             
-    app:                                                    
-      build: .
-      ports:
-        # Bind local uniquement — Nginx proxifie vers localhost:3000.
-        # Empêche l'accès direct au port depuis Internet (contournement Cloudflare).
-        - "127.0.0.1:3000:3000"
-      env_file:                                                                                                         
-        - .env
-      restart: unless-stopped 
+services:
+  app:
+    build:
+      context: .
+      # Valeurs publiques inlinées au build par Next.js. Compose les lit dans
+      # le `.env` du dossier courant (le même que `env_file`). Les secrets, eux,
+      # n'entrent jamais dans le build : voir Dockerfile et .dockerignore.
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://chantiers.securionis.com}
+        NEXT_PUBLIC_APP_ENV: ${NEXT_PUBLIC_APP_ENV:-production}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+    ports:
+      # Bind local uniquement — Nginx proxifie vers localhost:3000.
+      # Empêche l'accès direct au port depuis Internet (contournement Cloudflare).
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped

@@ -1,0 +1,37 @@
+# Contexte de build Docker — tout ce qui n'est pas nécessaire à `next build`.
+#
+# ⚠️ Les fichiers d'environnement en premier : sans ce fichier, `COPY . .`
+# embarquait le `.env` de production — clés Supabase service_role, Resend,
+# Anthropic — dans une couche de l'image (SEC-02, audit du 3 septembre 2026).
+# Les valeurs publiques (`NEXT_PUBLIC_*`) passent par des `build args`, les
+# secrets par `env_file` au démarrage du conteneur, jamais au build.
+.env
+.env.*
+!.env.example
+
+# dépendances et sorties de build (reconstruites dans l'image)
+node_modules
+.next
+out
+build
+coverage
+tsconfig.tsbuildinfo
+
+# outillage local
+.git
+.github
+.claude
+.claude-flow
+.claude-flow.*
+.mcp.json
+.vscode
+.idea
+.DS_Store
+*.pem
+npm-debug.log*
+
+# base et documentation : la base est sur Supabase, le manuel est généré à
+# l'exécution par /api/docs/manual
+supabase
+docs
+*.md

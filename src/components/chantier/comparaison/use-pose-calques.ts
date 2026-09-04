@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type OpenSeadragonNS from "openseadragon";
 
 type Viewer = OpenSeadragonNS.Viewer;
@@ -103,8 +103,13 @@ export function usePoseCalques({
     [viewerRef, itemPERef, itemEXERef, appliquerCalquesRef, onPret, onErreur]
   );
 
+  // Écrite dans un effet, jamais pendant le rendu (même défaut que celui
+  // corrigé dans `use-geometrie-calques` lors de DET-05) : un rendu non
+  // validé par React laisserait la ref en avance sur l'état affiché.
   const poserCalquesRef = useRef(poserCalques);
-  poserCalquesRef.current = poserCalques;
+  useEffect(() => {
+    poserCalquesRef.current = poserCalques;
+  }, [poserCalques]);
 
   /** Même chose, mais rendue quand les deux plans sont entièrement chargés. */
   const poserCalquesCharges = useCallback(

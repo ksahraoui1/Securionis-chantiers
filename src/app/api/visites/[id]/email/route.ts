@@ -167,11 +167,20 @@ export async function POST(
       entreprise
     );
 
-    // Update visite
-    await supabase
+    // Marquer la visite comme envoyée. Résultat vérifié : un refus RLS ne lève
+    // aucune erreur et ne touche aucune ligne (piège n° 43) — l'email est
+    // parti, la visite doit le dire.
+    const { data: marquees, error: marquageError } = await supabase
       .from("visites")
       .update({ email_envoye: true, updated_at: new Date().toISOString() })
-      .eq("id", visiteId);
+      .eq("id", visiteId)
+      .select("id");
+    if (marquageError || !marquees || marquees.length === 0) {
+      console.error(
+        `[visite ${visiteId}] Email envoyé mais email_envoye non marqué :`,
+        marquageError?.message ?? "aucune ligne touchée (refus RLS ?)",
+      );
+    }
 
     // Audit log
     await journaliser({

@@ -19,6 +19,7 @@ export default function AdminDocumentsPage() {
   const [editDoc, setEditDoc] = useState<Doc | null>(null);
   const [emailDoc, setEmailDoc] = useState<Doc | null>(null);
   const [linkDocId, setLinkDocId] = useState<string | null>(null);
+  const [erreurSuppression, setErreurSuppression] = useState<string | null>(null);
 
   const { documents, loading, linkedCount, reload, remove } =
     useDocuments(filterSource);
@@ -91,6 +92,23 @@ export default function AdminDocumentsPage() {
         />
       )}
 
+      {erreurSuppression && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
+          <span translate="no" className="material-symbols-outlined text-sm">error</span>
+          <span className="flex-1">{erreurSuppression}</span>
+          <button
+            type="button"
+            onClick={() => setErreurSuppression(null)}
+            className="text-xs underline"
+          >
+            Fermer
+          </button>
+        </div>
+      )}
+
       <DocumentList
         documents={filtered}
         loading={loading}
@@ -98,7 +116,7 @@ export default function AdminDocumentsPage() {
         onEdit={setEditDoc}
         onEmail={setEmailDoc}
         onLink={setLinkDocId}
-        onDelete={remove}
+        onDelete={async (id) => setErreurSuppression(await remove(id))}
       />
 
       <EditDocumentModal

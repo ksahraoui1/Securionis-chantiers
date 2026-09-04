@@ -31,12 +31,5 @@ jobs:
           env:
             NEXT_PUBLIC_SUPABASE_URL: https://ci.dummy.supabase.co
             NEXT_PUBLIC_SUPABASE_ANON_KEY: ci_dummy_anon_key
-            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_dummy
             NEXT_PUBLIC_APP_URL: https://ci.dummy
-            SUPABASE_SERVICE_ROLE_KEY: ci_dummy_service_role
-            RESEND_API_KEY: re_ci_dummy
-            RESEND_FROM_EMAIL: ci@dummy.local
-            ANTHROPIC_API_KEY: sk-ant-ci-dummy
-            STRIPE_SECRET_KEY: sk_test_ci_dummy
-            STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
           run: npm run build

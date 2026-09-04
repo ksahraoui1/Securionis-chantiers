@@ -217,18 +217,51 @@ export function DocumentManager({ chantierId, initialDocuments }: DocumentManage
     }
   }
 
+  /**
+   * La ligne d'abord, le fichier ensuite (INT-03, audit du 3 septembre 2026).
+   *
+   * L'ordre inverse effaçait le fichier **avant** de savoir si la ligne
+   * pouvait l'être — or `documents_delete` est réservée à l'administrateur, et
+   * un refus RLS ne lève aucune erreur (piège n° 43) : un inspecteur
+   * obtenait un document toujours listé dont le fichier n'existait plus.
+   */
   async function handleDelete(docId: string) {
     if (!confirm("Supprimer ce document ?")) return;
 
+    setError(null);
     const supabase = createClient();
     const doc = documents.find((d) => d.id === docId);
+
+    const { data: supprimes, error: dbError } = await supabase
+      .from("documents")
+      .delete()
+      .eq("id", docId)
+      .select("id");
+
+    if (dbError) {
+      setError(dbError.message);
+      return;
+    }
+    if (!supprimes || supprimes.length === 0) {
+      setError(
+        "Suppression refusée : seul un administrateur peut supprimer un document du chantier."
+      );
+      return;
+    }
+
     if (doc) {
       const storagePath = extractStoragePath(doc.fichier_url, "rapports");
       if (storagePath) {
-        await supabase.storage.from("rapports").remove([storagePath]);
+        const { error: storageError } = await supabase.storage
+          .from("rapports")
+          .remove([storagePath]);
+        if (storageError) {
+          setError(
+            `Le document est retiré de la liste, mais son fichier n'a pas pu être effacé du stockage (${storageError.message}).`
+          );
+        }
       }
     }
-    await supabase.from("documents").delete().eq("id", docId);
     await loadDocuments();
   }
 
