@@ -2432,6 +2432,66 @@ les événements pointeur étaient annulés. Plein écran en `h-dvh`.
 > visualiseur refuse de s'y charger) : `tsc` et ESLint verts, premier usage
 > réel sur tablette à confirmer.
 
+### INFRA-01 — le durcissement SSH de juillet n'avait jamais pris effet (2026-09-04)
+
+Trouvé en audit de sécurité, **corrigé et vérifié le jour même**.
+
+La configuration effective du serveur annonçait `permitrootlogin yes` et
+`passwordauthentication yes` : le compte `root` était joignable **par mot de
+passe, depuis n'importe quelle adresse**, sur une machine qui porte le fichier
+d'environnement de production en clair — donc la clé `service_role`, qui
+contourne toute la RLS, plus les clés Resend et Anthropic. Trente échecs
+d'authentification relevés sur sept jours, depuis au moins cinq adresses : les
+balayages tournaient déjà.
+
+#### ⚠️ Un fichier de durcissement numéroté 99 ne sert à rien
+
+C'est tout le mécanisme, et il contredit l'intuition : **sshd retient la
+première valeur obtenue, pas la dernière**. Les fichiers de
+`/etc/ssh/sshd_config.d/` sont lus dans l'ordre lexical, et le premier qui
+fixe une directive la fige.
+
+Preuve mesurée sur ce serveur, avant correctif :
+
+| Fichier | Dit | Effet |
+|---|---|---|
+| `50-cloud-init.conf` | `PasswordAuthentication yes` | **gagne** |
+| `60-cloudimg-settings.conf` | `PasswordAuthentication no` | ignoré |
+
+`sshd -T` répondait bien `yes`. Le `99-hardening.conf` de juillet arrivait donc
+**après** le fichier de cloud-init, que cloud-init réécrit à `yes` à chaque
+passage : il n'a jamais rien changé, et la vérification de juillet — faite en
+relisant le fichier plutôt qu'en interrogeant le démon — a conclu à tort.
+
+> **Seul `sshd -T` fait foi.** Relire un fichier de configuration ne dit rien
+> de la configuration effective.
+
+#### Le correctif
+
+`/etc/ssh/sshd_config.d/01-durcissement.conf` — `PermitRootLogin
+prohibit-password`, `PasswordAuthentication no`, `KbdInteractiveAuthentication
+no`. Le **01** est l'essentiel : il passe devant `50-cloud-init.conf`, qui peut
+continuer d'écrire `yes` sans conséquence.
+
+Procédure suivie, à reprendre pour toute modification de sshd : sauvegarde
+horodatée de `/etc/ssh`, écriture du fichier, **`sshd -t` avant tout
+rechargement** avec retrait automatique du fichier en cas de refus, puis
+`systemctl reload` (jamais `restart`, qui coupe le service sous socket
+activation).
+
+**Vérifié après application**, et c'est la seule vérification qui compte :
+
+| Contrôle | Résultat |
+|---|---|
+| `sshd -T` | `prohibit-password` / `no` / `no` |
+| nouvelle connexion par clé | **acceptée** |
+| connexion forcée par mot de passe | **refusée** — `Permission denied (publickey)` |
+| ordre des fichiers | `01-durcissement` lu en premier |
+
+> Le port 22 reste ouvert à toute adresse dans UFW, volontairement : le
+> restreindre demanderait une adresse fixe côté administrateur. `fail2ban`
+> couvre le bruit de fond, et l'authentification est désormais par clé seule.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2505,6 +2565,8 @@ les événements pointeur étaient annulés. Plein écran en `h-dvh`.
 69. **Supprimer un fichier de stockage avant sa ligne est une erreur** : la ligne peut être refusée par la RLS sans lever d'erreur, et le fichier est déjà parti. Toujours supprimer la ligne, vérifier le tableau renvoyé, puis le fichier ; un fichier non effacé se signale, il ne bloque pas.
 70. **Les `NEXT_PUBLIC_*` entrent dans l'image Docker par `build args`**, jamais par le `.env` — que `.dockerignore` exclut désormais du contexte. Ajouter une variable publique demande trois lignes : `ARG`/`ENV` dans le `Dockerfile`, `args:` dans `docker-compose.yml`, et la valeur dans le `.env` du VPS. Un secret n'a rien à faire au build : il n'arrive qu'au conteneur en marche, par `env_file`.
 71. **Tout ce qui recouvre le canevas OpenSeadragon doit porter `touch-action: none`** : OpenSeadragon ne le pose que sur son propre élément. Une couche SVG, une étiquette ou une légende posée par-dessus rend le geste au navigateur, qui fait défiler la page au lieu de déplacer le calque ou de tracer la forme — et annule les événements pointeur en cours. La zone du visualiseur porte `touch-none overscroll-contain` ; toute nouvelle couche interactive doit faire de même.
+72. **`sshd` retient la PREMIÈRE valeur obtenue, pas la dernière** : les fichiers de `/etc/ssh/sshd_config.d/` sont lus dans l'ordre lexical et le premier qui fixe une directive la fige. Un durcissement numéroté `99-` arrive après `50-cloud-init.conf` — que cloud-init réécrit à `PasswordAuthentication yes` à chaque passage — et **n'a donc aucun effet**. Mesuré sur ce serveur : le fichier 50 disant `yes` battait le fichier 60 disant `no`. Le durcissement vit dans `01-durcissement.conf`. Corollaire : **relire un fichier ne prouve rien, seul `sshd -T` donne la configuration effective** — c'est ce qui avait fait croire pendant deux mois que le mot de passe était désactivé.
+73. **Toute modification de `sshd` se valide avant de s'appliquer** : `sshd -t` d'abord, retrait du fichier si la syntaxe est refusée, puis `systemctl reload` — jamais `restart`, qui coupe le service alors que `ssh.socket` est en activation par socket. Et la vérification qui compte est une **nouvelle connexion** ouverte pendant que la précédente est encore là.
 
 ---
 
