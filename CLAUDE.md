@@ -2553,6 +2553,94 @@ all immediate` : sans marqueur **refusé en 42501**, avec marqueur accepté.
 dans la console Supabase. Le refus arrive plus tôt, avec un message propre, et
 tient même si le déclencheur venait à être retiré.
 
+### INFRA-02 — rotation des clés exposées par les anciennes images (2026-09-04)
+
+Les images Docker construites avant le 3 septembre embarquaient le `.env` de
+production. Elles ont été détruites, mais les clés qu'elles portaient restaient
+en service : c'est leur **renouvellement** qui ferme la brèche, pas la
+destruction des images.
+
+#### Ce que l'enquête a établi avant d'agir
+
+- **Aucun secret n'est jamais passé par le dépôt public.** Le seul fichier
+  d'environnement de l'historique est `.env.example`, et ses valeurs sont des
+  gabarits depuis le premier commit — vérifié par longueur et par recherche de
+  motifs de clés sur tout l'historique.
+- **`supabase/.temp/` était suivi** : pas de secret non plus (l'URL du pooler
+  ne porte pas de mot de passe, vérifié en analysant la chaîne sans l'afficher),
+  mais il publiait les versions exactes de Postgres, GoTrue, PostgREST et
+  Storage. Retiré du suivi.
+- **La production utilise déjà les clés Supabase modernes** : 46 et 41
+  caractères (`sb_publishable_`, `sb_secret_`), là où une clé JWT héritée en
+  fait 208. Conséquence heureuse : la rotation se fait **clé par clé**, sans
+  toucher au secret JWT, donc **sans invalider une seule session**.
+
+#### ⚠️ Une clé de service fausse ne se voit pas
+
+C'est ce qui rend la vérification indispensable, et non facultative : le
+limiteur de débit **et** le journal d'audit **autorisent en cas de panne**
+(`checkRateLimit` renvoie `true`, `journaliser` ne lève jamais). Une clé
+invalide ne produit donc ni erreur visible, ni page cassée — seulement des
+lignes dans les journaux du conteneur, et une application silencieusement sans
+limite de débit ni traçabilité.
+
+Le test positif consiste à forcer un appel que **seul** le `service_role` peut
+faire, avec la clé réellement chargée par le conteneur :
+
+```bash
+docker compose exec -T app node -e '
+const k = process.env.SUPABASE_SERVICE_ROLE_KEY;
+fetch(process.env.NEXT_PUBLIC_SUPABASE_URL + "/rest/v1/rpc/consommer_quota", {
+  method: "POST",
+  headers: { apikey: k, Authorization: "Bearer " + k, "Content-Type": "application/json" },
+  body: JSON.stringify({ p_cle: "verif-" + Date.now(), p_max: 3, p_fenetre_s: 60 }) })
+ .then(r => console.log(r.status));'
+```
+
+`consommer_quota` n'est exécutable que par le `service_role` (migration 049) :
+un 200 prouve à la fois que la clé est acceptée et qu'elle a les bons droits.
+
+> Ne jamais faire transiter la valeur d'une clé par une conversation, un
+> message de commit ou une capture. L'installation se fait par saisie masquée,
+> la valeur passant par une variable d'environnement et non par la ligne de
+> commande, qui serait visible dans la liste des processus :
+>
+> ```bash
+> read -rs -p "Cle : " K && echo && K="$K" python3 -c 'import os,re,pathlib; p=pathlib.Path(".env"); p.write_text(re.sub(r"^SUPABASE_SERVICE_ROLE_KEY=.*$", "SUPABASE_SERVICE_ROLE_KEY="+os.environ["K"], p.read_text(), flags=re.M))' && unset K && docker compose up -d --force-recreate
+> ```
+>
+> Aucune reconstruction d'image : ce secret est lu à l'exécution, pas au build.
+
+#### Les clés héritées, trouvées en chemin
+
+La clé `service_role` **héritée** était encore active. Elle n'était pas dans les
+images — l'application n'utilise que les clés modernes — mais c'est un
+identifiant permanent (expiration 2089) qui contourne toute la RLS. Désactivée
+le 2026-09-04 à 14:08 UTC.
+
+> ⚠️ **La désactivation ne prend pas effet immédiatement** : mesuré, la clé
+> héritée a continué de répondre **200 pendant une dizaine de secondes** après
+> le basculement, avant de passer à `401 Legacy API keys are disabled`. Vérifier
+> juste après le clic conduit à conclure à tort que rien ne s'est passé — il
+> faut réinterroger jusqu'au refus.
+
+Vérifié après coup : clé héritée **401**, clé publiable moderne **200**, appel
+`service_role` du serveur **200**, conteneur sain, site en 200.
+
+#### État et reste à faire
+
+| Clé | État |
+|---|---|
+| Supabase secrète | tournée, installée, vérifiée ; l'ancienne révoquée |
+| Supabase héritées | désactivées, refus confirmé |
+| Resend, Anthropic | **à tourner**, même procédure en changeant le nom de la variable |
+| Stripe | retirée du serveur ; **à révoquer** chez Stripe |
+
+Au passage, sur le serveur : `.env` et ses sauvegardes étaient en **644**, donc
+lisibles par tout utilisateur local — passés en **600** ; et
+`NEXT_PUBLIC_APP_URL` était déclaré deux fois, la première avec une espace en
+fin de valeur.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2629,7 +2717,10 @@ tient même si le déclencheur venait à être retiré.
 72. **`sshd` retient la PREMIÈRE valeur obtenue, pas la dernière** : les fichiers de `/etc/ssh/sshd_config.d/` sont lus dans l'ordre lexical et le premier qui fixe une directive la fige. Un durcissement numéroté `99-` arrive après `50-cloud-init.conf` — que cloud-init réécrit à `PasswordAuthentication yes` à chaque passage — et **n'a donc aucun effet**. Mesuré sur ce serveur : le fichier 50 disant `yes` battait le fichier 60 disant `no`. Le durcissement vit dans `01-durcissement.conf`. Corollaire : **relire un fichier ne prouve rien, seul `sshd -T` donne la configuration effective** — c'est ce qui avait fait croire pendant deux mois que le mot de passe était désactivé.
 73. **GoTrue insère la ligne d'`auth.users` puis applique `app_metadata` par une mise à jour** : un déclencheur `AFTER INSERT` ne voit que `{"provider":"email","providers":["email"]}`, jamais les métadonnées passées à `auth.admin.createUser()`. Toute règle fondée sur `app_metadata` doit donc être portée par un **déclencheur de contrainte `DEFERRABLE INITIALLY DEFERRED`**, qui s'exécute à la validation et **relit la ligne** au lieu de se fier à `NEW` (migration 053). En `AFTER INSERT`, la garde bloque aussi la création par un administrateur — ce qui ne se voit qu'en la testant.
 74. **Un refus d'inscription ne prouve pas que la garde fonctionne** : GoTrue rejette `@example.com` avant d'atteindre la base (« Email address is invalid ») et applique sa propre limite d'envoi d'emails (« email rate limit exceeded »). Tester avec une adresse réellement distribuable, espacer les essais, et **vérifier qu'aucun compte n'est resté en base** plutôt que de se fier au message d'erreur.
-75. **Toute modification de `sshd` se valide avant de s'appliquer** : `sshd -t` d'abord, retrait du fichier si la syntaxe est refusée, puis `systemctl reload` — jamais `restart`, qui coupe le service alors que `ssh.socket` est en activation par socket. Et la vérification qui compte est une **nouvelle connexion** ouverte pendant que la précédente est encore là.
+76. **Une clé `service_role` invalide est silencieuse** : le limiteur de débit et le journal d'audit autorisent en cas de panne, donc rien ne casse visiblement — l'application tourne simplement sans limite de débit ni traçabilité. Après toute rotation, forcer un appel réservé au `service_role` (`consommer_quota`, migration 049) avec la clé réellement chargée par le conteneur, et exiger un 200.
+77. **Désactiver les clés Supabase héritées ne prend pas effet tout de suite** : mesuré, la clé a continué de répondre 200 une dizaine de secondes avant de passer à `401 Legacy API keys are disabled`. Tester juste après le clic fait conclure à tort que rien ne s'est passé ; réinterroger jusqu'au refus. Le tableau de bord, lui, bascule immédiatement sur « Re-enable », ce qui est le signal fiable que l'action est enregistrée.
+78. **La production utilise les clés Supabase modernes** (`sb_publishable_` 46 caractères, `sb_secret_` 41), pas les JWT hérités de 208 caractères. Elles se renouvellent **une par une, sans toucher au secret JWT**, donc sans invalider de session — contrairement à ce que supposerait une rotation « classique ». Une valeur de clé ne transite jamais par une conversation, un commit ou une capture : saisie masquée, passage par variable d'environnement et non par la ligne de commande.
+79. **Toute modification de `sshd` se valide avant de s'appliquer** : `sshd -t` d'abord, retrait du fichier si la syntaxe est refusée, puis `systemctl reload` — jamais `restart`, qui coupe le service alors que `ssh.socket` est en activation par socket. Et la vérification qui compte est une **nouvelle connexion** ouverte pendant que la précédente est encore là.
 
 ---
 
