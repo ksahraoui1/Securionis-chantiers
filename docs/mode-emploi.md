@@ -29,12 +29,17 @@ Securionis Chantiers est une application web destinée aux inspecteurs SST pour 
 2. Saisissez votre **email** et **mot de passe**
 3. Cliquez sur **Se connecter**
 
-### 2.2 Créer un compte
+### 2.2 Obtenir un compte
 
-1. Sur la page de connexion, cliquez sur **Créer un compte**
-2. Remplissez : nom complet, email, mot de passe (min. 6 caractères), confirmation
-3. Cliquez sur **Créer mon compte**
-4. Si la confirmation par email est activée, vérifiez votre boîte mail
+L'inscription libre est fermée depuis le 4 septembre 2026 : les comptes sont
+créés par l'administrateur de votre entreprise.
+
+1. Indiquez-lui votre **nom complet** et votre **email professionnel**
+2. Il crée le compte depuis **Administration → Utilisateurs** et choisit votre rôle
+3. Vous recevez vos identifiants et vous connectez directement, sans étape de confirmation
+
+Le mot de passe doit contenir au minimum **8 caractères, une majuscule, une
+minuscule et un chiffre**.
 
 ### 2.3 Mot de passe oublié
 
