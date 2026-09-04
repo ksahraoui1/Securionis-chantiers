@@ -2492,6 +2492,67 @@ activation).
 > restreindre demanderait une adresse fixe côté administrateur. `fail2ban`
 > couvre le bruit de fond, et l'authentification est désormais par clé seule.
 
+### APP-01 et APP-02 — envoi de documents et inscription publique (2026-09-04)
+
+Deux constats de l'audit de sécurité, corrigés et déployés le jour même.
+Migration **053 appliquée** après le déploiement du code.
+
+#### APP-01 — la seule route d'email qui ne vérifiait pas le rôle
+
+`/api/documents/email` vérifiait l'authentification et limitait le débit, mais
+c'était **la seule des six routes d'email et de PDF à ne pas appeler
+`getLimits()`**. Un compte « invité » — donc n'importe qui, l'inscription étant
+publique — faisait partir un message depuis le **domaine vérifié**, vers
+l'adresse de son choix, avec un objet qu'il rédige et une pièce jointe. Le
+message passait SPF et DKIM : support de hameçonnage crédible, et chaque
+signalement abîme la réputation d'envoi dont dépendent les rapports.
+
+Deux garde-fous : le rôle est vérifié comme ailleurs, et le débit est compté
+**aussi par adresse de destination** (5/h, tous comptes confondus). La limite
+par compte ne valait rien — les comptes sont gratuits et sans limite de nombre.
+
+#### APP-02 — l'inscription publique donnait un jeton à un inconnu
+
+Retirés : la page, le lien depuis la connexion, `/register` des chemins publics
+du middleware. Mais **cela ne ferme rien** : `supabase.auth.signUp` reste
+appelable avec la clé publique (piège n° 51). La fermeture est portée par la
+base.
+
+> ⚠️ **GoTrue insère la ligne d'abord, puis applique `app_metadata` par une
+> mise à jour.** Ma première version posait la garde en `AFTER INSERT` sur
+> `handle_new_user` : elle **bloquait aussi la création par un
+> administrateur**, et c'est le test qui l'a montré, pas le raisonnement.
+> Mesuré sur un compte créé par l'API d'administration :
+>
+> | | contenu |
+> |---|---|
+> | vu par un `AFTER INSERT` | `{"provider":"email","providers":["email"]}` |
+> | état final de la ligne | `{"cree_par":"admin","provider":"email",…}` |
+>
+> D'où un **déclencheur de contrainte `DEFERRABLE INITIALLY DEFERRED`**, qui
+> s'exécute à la validation de la transaction et **relit la ligne** au lieu de
+> se fier à `NEW`. Corollaire général : toute règle fondée sur `app_metadata`
+> doit être différée.
+
+`app_metadata` et non `user_metadata` : le premier n'est modifiable que par le
+`service_role`, le second par le titulaire du compte.
+
+**Vérifié en production.** De bout en bout : inscription publique refusée sans
+laisser de compte, création par un administrateur acceptée avec profil au rôle
+« invité », 3 comptes avant comme après. Puis en SQL, de façon déterministe et
+sans dépendre d'un quota, dans une transaction annulée avec `set constraints
+all immediate` : sans marqueur **refusé en 42501**, avec marqueur accepté.
+
+> Deux faux négatifs rencontrés en chemin, à connaître pour tout test
+> d'inscription : GoTrue rejette `@example.com` **avant** d'atteindre la base
+> (« Email address is invalid »), et les essais répétés butent sur sa limite
+> d'envoi d'emails (« email rate limit exceeded »). Dans les deux cas le refus
+> ne vient pas de la garde et ne prouve rien.
+
+**Reste recommandé, hors du code** : désactiver « Allow new users to sign up »
+dans la console Supabase. Le refus arrive plus tôt, avec un message propre, et
+tient même si le déclencheur venait à être retiré.
+
 ## Pièges connus et gotchas
 
 1. **`resource` vs `resource_type`**, **`details` vs `metadata`** dans `audit_logs` : les colonnes s'appellent `resource` (depuis migration 022) et `details`. Tout autre nom fait échouer l'insert — et comme le résultat n'est presque jamais vérifié, la trace disparaît en silence.
@@ -2566,7 +2627,9 @@ activation).
 70. **Les `NEXT_PUBLIC_*` entrent dans l'image Docker par `build args`**, jamais par le `.env` — que `.dockerignore` exclut désormais du contexte. Ajouter une variable publique demande trois lignes : `ARG`/`ENV` dans le `Dockerfile`, `args:` dans `docker-compose.yml`, et la valeur dans le `.env` du VPS. Un secret n'a rien à faire au build : il n'arrive qu'au conteneur en marche, par `env_file`.
 71. **Tout ce qui recouvre le canevas OpenSeadragon doit porter `touch-action: none`** : OpenSeadragon ne le pose que sur son propre élément. Une couche SVG, une étiquette ou une légende posée par-dessus rend le geste au navigateur, qui fait défiler la page au lieu de déplacer le calque ou de tracer la forme — et annule les événements pointeur en cours. La zone du visualiseur porte `touch-none overscroll-contain` ; toute nouvelle couche interactive doit faire de même.
 72. **`sshd` retient la PREMIÈRE valeur obtenue, pas la dernière** : les fichiers de `/etc/ssh/sshd_config.d/` sont lus dans l'ordre lexical et le premier qui fixe une directive la fige. Un durcissement numéroté `99-` arrive après `50-cloud-init.conf` — que cloud-init réécrit à `PasswordAuthentication yes` à chaque passage — et **n'a donc aucun effet**. Mesuré sur ce serveur : le fichier 50 disant `yes` battait le fichier 60 disant `no`. Le durcissement vit dans `01-durcissement.conf`. Corollaire : **relire un fichier ne prouve rien, seul `sshd -T` donne la configuration effective** — c'est ce qui avait fait croire pendant deux mois que le mot de passe était désactivé.
-73. **Toute modification de `sshd` se valide avant de s'appliquer** : `sshd -t` d'abord, retrait du fichier si la syntaxe est refusée, puis `systemctl reload` — jamais `restart`, qui coupe le service alors que `ssh.socket` est en activation par socket. Et la vérification qui compte est une **nouvelle connexion** ouverte pendant que la précédente est encore là.
+73. **GoTrue insère la ligne d'`auth.users` puis applique `app_metadata` par une mise à jour** : un déclencheur `AFTER INSERT` ne voit que `{"provider":"email","providers":["email"]}`, jamais les métadonnées passées à `auth.admin.createUser()`. Toute règle fondée sur `app_metadata` doit donc être portée par un **déclencheur de contrainte `DEFERRABLE INITIALLY DEFERRED`**, qui s'exécute à la validation et **relit la ligne** au lieu de se fier à `NEW` (migration 053). En `AFTER INSERT`, la garde bloque aussi la création par un administrateur — ce qui ne se voit qu'en la testant.
+74. **Un refus d'inscription ne prouve pas que la garde fonctionne** : GoTrue rejette `@example.com` avant d'atteindre la base (« Email address is invalid ») et applique sa propre limite d'envoi d'emails (« email rate limit exceeded »). Tester avec une adresse réellement distribuable, espacer les essais, et **vérifier qu'aucun compte n'est resté en base** plutôt que de se fier au message d'erreur.
+75. **Toute modification de `sshd` se valide avant de s'appliquer** : `sshd -t` d'abord, retrait du fichier si la syntaxe est refusée, puis `systemctl reload` — jamais `restart`, qui coupe le service alors que `ssh.socket` est en activation par socket. Et la vérification qui compte est une **nouvelle connexion** ouverte pendant que la précédente est encore là.
 
 ---
 
