@@ -442,6 +442,13 @@ Publiques, inlinées au build (à déclarer aussi dans `Dockerfile` et `docker-c
 - `NEXT_PUBLIC_APP_ENV` — `production` en production
 - `NEXT_PUBLIC_SENTRY_DSN` — DSN Sentry côté client (vide = Sentry inactif)
 
+> **Clés Supabase** : le projet utilise les clés **modernes**
+> (`sb_publishable_…` côté client, `sb_secret_…` côté serveur). Les clés JWT
+> héritées `anon` et `service_role` sont **désactivées** depuis le 4 septembre
+> 2026 et refusées en 401. Une clé secrète se renouvelle seule, sans toucher au
+> secret JWT et donc sans déconnecter personne : créer la nouvelle, l'installer,
+> vérifier, puis révoquer l'ancienne.
+
 Secrets, fournis au conteneur en marche uniquement :
 - `SUPABASE_SERVICE_ROLE_KEY` — Clé service (serveur uniquement)
 - `RESEND_API_KEY` / `RESEND_FROM_EMAIL` — Envoi d'emails (expéditeur sur le domaine racine vérifié)
