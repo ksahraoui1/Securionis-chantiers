@@ -109,6 +109,17 @@ export default async function RapportPage({
     }
   }
 
+  const { data: versions, error: versionsError } = await supabase.from("rapport_versions")
+    .select("id, storage_path, sha256, auteur_nom, motif, historique, created_at")
+    .eq("visite_id", visiteId).order("created_at", { ascending: false }).limit(50);
+  const historiqueVersions = await Promise.all((versions ?? []).map(async (version) => {
+    try {
+      const chemin = verifierRapportVisite(version.storage_path, visite);
+      const { data } = await supabase.storage.from("rapports").createSignedUrl(chemin, 3600);
+      return { ...version, url: data?.signedUrl ?? null };
+    } catch { return { ...version, url: null }; }
+  }));
+
   const ncCount =
     reponses?.filter((r) => r.valeur === "non_conforme").length ?? 0;
   const conformeCount =
@@ -234,10 +245,28 @@ export default async function RapportPage({
         visiteId={visiteId}
         hasRapportUrl={!!visite.rapport_url}
         rapportUrl={signedRapportUrl}
+        rapportReference={visite.rapport_url}
         emailEnvoye={visite.email_envoye}
         destinataires={destinataires ?? []}
       />
 
+      <section className="mt-8 rounded-lg border border-gray-300 bg-white p-4">
+        <h2 className="text-lg font-semibold">Historique des rapports</h2>
+        {versionsError && <p className="mt-2 text-sm text-red-700">Historique momentanément indisponible.</p>}
+        {!versionsError && historiqueVersions.length === 0 && <p className="mt-2 text-sm text-gray-600">Aucune version enregistrée.</p>}
+        <ul className="divide-y divide-gray-200">
+          {historiqueVersions.map((version) => (
+            <li key={version.id} className="py-3 text-sm">
+              <p className="font-medium">{version.historique ? "Rapport antérieur au suivi des versions" : new Date(version.created_at).toLocaleString("fr-CH")}</p>
+              {!version.historique && <p>{version.auteur_nom ?? "Utilisateur supprimé"} — {version.motif}</p>}
+              {version.historique && <p className="text-gray-500">Empreinte et auteur de génération non enregistrés à l’origine.</p>}
+              {version.url ? <a className="mt-1 inline-block text-blue-700 underline" href={version.url} target="_blank" rel="noopener noreferrer">Consulter cette version</a> : <p className="text-amber-700">Fichier momentanément inaccessible.</p>}
+              {version.sha256 && <details className="mt-1 text-gray-500"><summary>Empreinte du fichier (SHA-256)</summary><code className="break-all">{version.sha256}</code></details>}
+            </li>
+          ))}
+        </ul>
+        {historiqueVersions.length === 50 && <p className="text-sm text-gray-500">Les 50 versions les plus récentes sont affichées.</p>}
+      </section>
       <EmailHistory entries={emailHistory} />
     </div>
   );

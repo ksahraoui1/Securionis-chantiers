@@ -47,10 +47,12 @@ export async function POST(
     // Si destinataireIds absent : envoi à tous les destinataires du chantier (rétro-compat).
     let selectedIds: string[] | null = null;
     let extraEmails: string[] = [];
+    let referenceAttendue: string | null = null;
     try {
       const text = await request.text();
       if (text) {
         const parsed = JSON.parse(text);
+        referenceAttendue = typeof parsed?.rapportReference === "string" ? parsed.rapportReference : null;
         if (Array.isArray(parsed?.destinataireIds)) {
           selectedIds = parsed.destinataireIds.filter(
             (id: unknown): id is string => typeof id === "string",
@@ -87,6 +89,10 @@ export async function POST(
         { error: "Le PDF doit etre genere avant l'envoi par email" },
         { status: 400 }
       );
+    }
+
+    if (referenceAttendue !== visite.rapport_url) {
+      return NextResponse.json({ error: "La version du rapport a changé. Rechargez la page avant l’envoi." }, { status: 409 });
     }
 
     // Load chantier for address
@@ -172,6 +178,7 @@ export async function POST(
       .from("visites")
       .update({ email_envoye: true, updated_at: new Date().toISOString() })
       .eq("id", visiteId)
+      .eq("rapport_url", referenceAttendue)
       .select("id");
     if (marquageError || !marquees || marquees.length === 0) {
       console.error(
@@ -186,7 +193,7 @@ export async function POST(
       action: "send_rapport_email",
       resource: "visite",
       resourceId: visiteId,
-      details: { sent_to: sentTo, count: sentTo.length },
+      details: { sent_to: sentTo, count: sentTo.length, rapport_reference: referenceAttendue },
     });
 
     return NextResponse.json({

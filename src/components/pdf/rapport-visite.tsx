@@ -259,7 +259,7 @@ interface RapportVisiteProps {
   entrepriseAdresse?: string | null;
   entrepriseTelephone?: string | null;
   entrepriseEmail?: string | null;
-  signatureDataUri?: string | null;
+  versionId?: string;
 }
 
 export function RapportVisite({
@@ -274,7 +274,7 @@ export function RapportVisite({
   entrepriseAdresse,
   entrepriseTelephone,
   entrepriseEmail,
-  signatureDataUri,
+  versionId,
 }: RapportVisiteProps) {
   const dateFormatted = new Date(visite.date_visite).toLocaleDateString(
     "fr-CH",
@@ -437,14 +437,8 @@ export function RapportVisite({
           </>
         )}
 
-        {/* Signature */}
-        {signatureDataUri && (
-          <View style={{ marginTop: 24, alignItems: "flex-end" }}>
-            <Image
-              src={signatureDataUri}
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </View>
+        {versionId && (
+          <Text style={{ marginTop: 18, fontSize: 8, color: "#6b7280" }}>Référence de version : {versionId}</Text>
         )}
 
         {/* Copie(s) */}

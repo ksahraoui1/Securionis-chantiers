@@ -158,3 +158,85 @@ test('Synchronisation : erreur, absence RLS et conflit conservent la file', asyn
     assert.equal(situation === 'conflict' ? result.conflicts : result.errors > 0, situation === 'conflict' ? 1 : true);
   }
 });
+
+test('Versions : chemins stricts et publication sans écrasement, hash des octets, conflit explicite', async () => {
+  const { cheminVersionRapport } = load('src/lib/utils/storage-reference.ts');
+  const { enregistrerVersionRapport } = load('src/lib/supabase/rapport-version.ts');
+  const versionId = 'cccccccc-3333-4333-8333-333333333333';
+  const chemin = cheminVersionRapport(visit.chantier_id, visit.id, versionId);
+  assert.equal(verifierRapportVisite(chemin, visit), chemin);
+  for (const bad of [chemin.replace(visit.id, visit.chantier_id), chemin + '/extra', chemin.replace(versionId, '../escape')]) assert.throws(() => verifierRapportVisite(bad, visit));
+  assert.throws(() => cheminVersionRapport(visit.chantier_id, visit.id, '../escape'));
+  const calls = [];
+  let rpcError = null;
+  const service = { storage: { from: () => ({ upload: async (...args) => { calls.push(args); return { error: null }; }, remove: () => { throw Error('Ne jamais effacer après un commit incertain'); } }) }, rpc: async (name, args) => {
+    assert.equal(name, 'publier_version_rapport');
+    assert.equal(args.p_sha256, require('node:crypto').createHash('sha256').update('PDF fixture').digest('hex'));
+    assert.equal(args.p_reference_attendue, 'ancienne-reference');
+    return { data: rpcError ? null : versionId, error: rpcError };
+  } };
+  const donnees = { versionId, visiteId: visit.id, chantierId: visit.chantier_id, auteurId: user.id, referenceAttendue: 'ancienne-reference', motif: 'Nouvelle version', source: {}, pdf: Buffer.from('PDF fixture') };
+  assert.equal((await enregistrerVersionRapport(service, donnees)).chemin, chemin);
+  assert.equal(calls[0][2].upsert, false);
+  rpcError = { code: '40001' };
+  await assert.rejects(() => enregistrerVersionRapport(service, donnees), error => error.status === 409);
+  rpcError = { code: 'NETWORK' };
+  await assert.rejects(() => enregistrerVersionRapport(service, donnees), error => error.status === 500);
+});
+
+test('Génération : motif obligatoire, droits actuels et données complètes avant publication', async () => {
+  const { NextRequest } = require('next/server');
+  let assigned = true, published = 0, answers = [], rendered = 0;
+  const client = { auth: { getUser: async () => ({ data: { user }, error: null }) }, rpc: async () => ({ data: true, error: null }),
+    storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://signed.test/file' }, error: null }) }) },
+    from(table) {
+      const data = { visites: { ...visit, inspecteur_id: user.id, statut: 'terminee', rapport_url: 'ancien' }, chantiers: { id: visit.chantier_id }, profiles: { nom: 'Test', email: 'test@example.test', entreprise_id: null }, reponses: answers, ecarts: [], destinataires: [] }[table];
+      const result = { data, error: data === null ? Error('lecture refusée') : null };
+      const query = { select: () => query, eq: () => query, order: () => query, single: async () => result, then: (ok, fail) => Promise.resolve(result).then(ok, fail) };
+      return query;
+    },
+  };
+  const route = load('src/app/api/visites/[id]/pdf/route.ts', {
+    '@/lib/supabase/server': { createClient: async () => client, createServiceClient: async () => ({}) },
+    '@/lib/utils/security': { canAccessVisite: async () => true, canAccessChantier: async () => assigned, getUserRole: async () => 'inspecteur' },
+    '@/lib/roles/limites': { getLimits: () => ({ canGeneratePdf: true }) },
+    '@/lib/rate-limit': { checkRateLimit: async () => true },
+    '@react-pdf/renderer': { renderToBuffer: async () => { rendered++; return Buffer.from('PDF'); } },
+    '@/components/pdf/rapport-visite': { RapportVisite: props => { assert.ok(props.versionId); assert.equal(props.signatureDataUri, undefined); return props; } },
+    '@/lib/supabase/rapport-version': { ...load('src/lib/supabase/rapport-version.ts'), enregistrerVersionRapport: async (_, input) => { published++; assert.equal(input.motif, 'Réédition documentée'); return { chemin: 'version', sha256: 'hash' }; } },
+  });
+  const invoke = body => route.POST(new NextRequest('https://app.test/api/visites/id/pdf', { method: 'POST', body: JSON.stringify(body) }), { params: Promise.resolve({ id: visit.id }) });
+  assert.equal((await invoke({})).status, 400);
+  assigned = false;
+  assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'ancien' })).status, 403);
+  assigned = true;
+  assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'autre-version' })).status, 409);
+  answers = null;
+  assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'ancien' })).status, 500);
+  assert.equal(published, 0); assert.equal(rendered, 0);
+  answers = [];
+  assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'ancien' })).status, 200);
+  assert.equal(published, 1); assert.equal(rendered, 1);
+});
+
+test('Email : une version différente de celle choisie est refusée avant tout téléchargement ou envoi', async () => {
+  const { NextRequest } = require('next/server');
+  let sent = 0;
+  const client = { ...session(true), from(table) {
+    assert.equal(table, 'visites');
+    const query = { select: () => query, eq: () => query, single: async () => ({ data: { ...visit, rapport_url: 'nouvelle-version' }, error: null }) };
+    return query;
+  }, storage: { from: () => { throw Error('Téléchargement non autorisé'); } } };
+  const route = load('src/app/api/visites/[id]/email/route.ts', {
+    '@/lib/supabase/server': { createClient: async () => client },
+    '@/lib/utils/security': { canAccessVisite: async () => true, getUserRole: async () => 'inspecteur' },
+    '@/lib/roles/limites': { getLimits: () => ({ canSendEmail: true }) },
+    '@/lib/rate-limit': { checkRateLimit: async () => true },
+    '@/lib/email/send-rapport': { sendRapport: async () => { sent++; } },
+  });
+  for (const body of [{ rapportReference: 'ancienne-version' }, {}]) {
+    const response = await route.POST(new NextRequest('https://app.test/api/visites/id/email', { method: 'POST', body: JSON.stringify(body) }), { params: Promise.resolve({ id: visit.id }) });
+    assert.equal(response.status, 409);
+  }
+  assert.equal(sent, 0);
+});

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -9,6 +10,7 @@ interface RapportActionsProps {
   visiteId: string;
   hasRapportUrl: boolean;
   rapportUrl: string | null;
+  rapportReference: string | null;
   emailEnvoye: boolean;
   destinataires: Tables<"destinataires">[];
 }
@@ -17,9 +19,14 @@ export function RapportActions({
   visiteId,
   hasRapportUrl,
   rapportUrl,
+  rapportReference,
   emailEnvoye,
   destinataires,
 }: RapportActionsProps) {
+  const router = useRouter();
+  const [reference, setReference] = useState(rapportReference);
+  const [motif, setMotif] = useState("");
+  const [showVersionModal, setShowVersionModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [pdfGenerated, setPdfGenerated] = useState(hasRapportUrl);
@@ -49,6 +56,8 @@ export function RapportActions({
     try {
       const res = await fetch(`/api/visites/${visiteId}/pdf`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motif, rapportReference: reference }),
       });
 
       if (!res.ok) {
@@ -59,6 +68,11 @@ export function RapportActions({
       const data = await res.json();
       setPdfGenerated(true);
       setPdfUrl(data.url);
+      setReference(data.reference);
+      setEmailSent(false);
+      setShowVersionModal(false);
+      setMotif("");
+      router.refresh();
       setSuccessMessage(`PDF généré : ${data.filename}`);
     } catch (err) {
       setError(
@@ -146,6 +160,7 @@ export function RapportActions({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          rapportReference: reference,
           destinataireIds: Array.from(selectedIds),
           extraEmails: adHocEmails,
         }),
@@ -189,10 +204,18 @@ export function RapportActions({
         size="lg"
         className="w-full"
         loading={generatingPdf}
-        onClick={handleGeneratePdf}
+        onClick={() => pdfGenerated ? setShowVersionModal(true) : handleGeneratePdf()}
       >
-        {pdfGenerated ? "Régénérer le PDF" : "Générer le PDF"}
+        {pdfGenerated ? "Créer une nouvelle version" : "Générer le PDF"}
       </Button>
+
+      <Modal isOpen={showVersionModal} onClose={() => { if (!generatingPdf) setShowVersionModal(false); }} title="Nouvelle version du rapport">
+        <p className="mb-3 text-sm text-gray-600">La version précédente sera conservée dans l’historique. Précisez la raison de cette nouvelle génération.</p>
+        <label htmlFor="motif-version" className="block text-sm font-medium">Motif</label>
+        <textarea id="motif-version" value={motif} onChange={(e) => setMotif(e.target.value)} maxLength={1000} className="mt-2 mb-4 w-full rounded border p-3" rows={3} />
+        {error && <p role="alert" className="mb-3 text-sm text-red-700">{error}</p>}
+        <Button onClick={handleGeneratePdf} loading={generatingPdf} disabled={motif.trim().length < 5}>Créer et conserver cette version</Button>
+      </Modal>
 
       {pdfGenerated && pdfUrl && (
         <>

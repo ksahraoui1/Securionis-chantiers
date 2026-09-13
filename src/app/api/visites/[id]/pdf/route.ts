@@ -1,11 +1,11 @@
 import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { canAccessVisite, getUserRole } from "@/lib/utils/security";
+import { canAccessVisite, canAccessChantier, getUserRole } from "@/lib/utils/security";
 import { getLimits } from "@/lib/roles/limites";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { creerChargeurImagesPdf, ImagePdfInvalide } from "@/lib/supabase/pdf-images";
-import { cheminRapportVisite } from "@/lib/utils/storage-reference";
+import { enregistrerVersionRapport, nouvelleVersionRapport, PublicationRapportError } from "@/lib/supabase/rapport-version";
 
 export async function POST(
   request: NextRequest,
@@ -61,6 +61,24 @@ export async function POST(
       );
     }
 
+    if (!(await canAccessChantier(supabase, user.id, visite.chantier_id))) {
+      return NextResponse.json({ error: "Une affectation actuelle au chantier est requise." }, { status: 403 });
+    }
+    let body: { motif?: unknown; rapportReference?: unknown } = {};
+    const texte = await request.text();
+    if (texte.length > 4096) return NextResponse.json({ error: "Requête trop volumineuse." }, { status: 413 });
+    try { if (texte) body = JSON.parse(texte); } catch {
+      return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
+    }
+    const motif = body && typeof body.motif === "string" ? body.motif.trim() : "";
+    if (((visite.rapport_url || motif) && motif.length < 5) || motif.length > 1000) {
+      return NextResponse.json({ error: "Indiquez le motif de cette nouvelle version (5 à 1 000 caractères)." }, { status: 400 });
+    }
+    if ((body?.rapportReference ?? null) !== visite.rapport_url) {
+      return NextResponse.json({ error: "La version du rapport a changé. Rechargez la page." }, { status: 409 });
+    }
+    const versionId = nouvelleVersionRapport();
+
     // Charger toutes les données en parallèle
     const [
       { data: chantier },
@@ -68,28 +86,26 @@ export async function POST(
       { data: reponses },
       { data: ecarts },
       { data: destinataires },
-      { data: entreprise },
-      signatureDataUri,
     ] = await Promise.all([
       supabase.from("chantiers").select("*").eq("id", visite.chantier_id).single(),
-      supabase.from("profiles").select("nom, email").eq("id", visite.inspecteur_id).single(),
+      supabase.from("profiles").select("nom, email, entreprise_id").eq("id", visite.inspecteur_id).single(),
       supabase.from("reponses").select("*, points_controle:point_controle_id(intitule, critere, objet)").eq("visite_id", visiteId),
       supabase.from("ecarts").select("*").eq("chantier_id", visite.chantier_id).order("created_at", { ascending: false }),
       supabase.from("destinataires").select("*").eq("chantier_id", visite.chantier_id),
-      supabase.from("entreprises").select("nom, logo_url, adresse, npa, ville, telephone, email").limit(1).maybeSingle(),
-      (async () => {
-        try {
-          const fs = await import("fs/promises");
-          const path = await import("path");
-          const sigPath = path.join(process.cwd(), "public", "signature-inspecteur.png");
-          const sigBuffer = await fs.readFile(sigPath);
-          return `data:image/png;base64,${sigBuffer.toString("base64")}`;
-        } catch {
-          return null;
-        }
-      })(),
     ]);
 
+    if (!chantier || !inspecteur || reponses === null || ecarts === null || destinataires === null) {
+      throw new Error("Données du rapport indisponibles");
+    }
+    let entreprise = null;
+    if (inspecteur.entreprise_id) {
+      const resultatEntreprise = await supabase.from("entreprises")
+        .select("nom, logo_url, adresse, npa, ville, telephone, email")
+        .eq("id", inspecteur.entreprise_id).single();
+      if (resultatEntreprise.error) throw new Error("Entreprise du rapport indisponible");
+      entreprise = resultatEntreprise.data;
+    }
+    const source = { chantier, visite, inspecteur, reponses, ecarts, destinataires, entreprise, versionId };
     const chargerImage = creerChargeurImagesPdf(supabase);
     const logoSigne = await chargerImage(entreprise?.logo_url, "rapports");
     const reponsesSource = reponses ?? [];
@@ -130,33 +146,17 @@ export async function POST(
           : null,
         entrepriseTelephone: entreprise?.telephone ?? null,
         entrepriseEmail: entreprise?.email ?? null,
-        signatureDataUri,
+        versionId,
       })
     );
 
-    // Upload to Supabase Storage
     const serviceClient = await createServiceClient();
-    const dateStr = visite.date_visite.replace(/-/g, "");
-    const filename = `rapport_${dateStr}_${visiteId.slice(0, 8)}.pdf`;
-    const storagePath = cheminRapportVisite(visite.chantier_id, visiteId);
-
-    const { error: uploadError } = await serviceClient.storage
-      .from("rapports")
-      .upload(storagePath, pdfBuffer, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      throw new Error(`Upload error: ${uploadError.message}`);
-    }
-
-    // Stocker le chemin (pas la public URL) — bucket privé
-    const { data: visitesMaj, error: erreurMaj } = await serviceClient
-      .from("visites")
-      .update({ rapport_url: storagePath, updated_at: new Date().toISOString() })
-      .eq("id", visiteId).select("id");
-    if (erreurMaj || visitesMaj?.length !== 1) throw new Error("Référence du rapport non enregistrée");
+    const filename = `rapport_${visite.date_visite}_${versionId}.pdf`;
+    const { chemin: storagePath, sha256 } = await enregistrerVersionRapport(serviceClient, {
+      versionId, visiteId, chantierId: visite.chantier_id, auteurId: user.id,
+      referenceAttendue: visite.rapport_url, motif: motif || "Première génération du rapport",
+      source, pdf: pdfBuffer,
+    });
 
     // Générer une signed URL valide 1 heure pour usage immédiat
     const { data: signedData, error: signatureError } = await supabase.storage
@@ -164,8 +164,9 @@ export async function POST(
       .createSignedUrl(storagePath, 3600);
 
     if (signatureError || !signedData?.signedUrl) throw new Error("Rapport généré mais accès indisponible");
-    return NextResponse.json({ url: signedData.signedUrl, filename });
+    return NextResponse.json({ url: signedData.signedUrl, filename, versionId, sha256, reference: storagePath });
   } catch (err) {
+    if (err instanceof PublicationRapportError) return NextResponse.json({ error: err.message }, { status: err.status });
     if (err instanceof ImagePdfInvalide) return NextResponse.json({ error: err.message }, { status: 422 });
     console.error("PDF generation error:", err);
     return NextResponse.json(

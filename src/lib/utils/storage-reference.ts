@@ -32,6 +32,14 @@ export function cheminRapportVisite(chantierId: string, visiteId: string): strin
   return `${chantierId}/visites/${visiteId}/rapport.pdf`;
 }
 
+export function cheminVersionRapport(chantierId: string, visiteId: string, versionId: string): string {
+  const base = cheminRapportVisite(chantierId, visiteId).replace(/rapport\.pdf$/, "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(versionId)) {
+    throw new Error("Identifiant de version invalide");
+  }
+  return `${base}versions/${versionId}.pdf`;
+}
+
 /** Les anciens rapports restent lisibles, uniquement dans leur visite attendue. */
 export function verifierRapportVisite(
   reference: string,
@@ -41,7 +49,10 @@ export function verifierRapportVisite(
   const piece = referenceStockage(reference);
   const chemin = piece?.bucket === "rapports" ? piece.chemin : reference;
   const ancien = `${visite.chantier_id}/rapport_${visite.date_visite.replace(/-/g, "")}_${visite.id.slice(0, 8)}.pdf`;
-  if (!cheminStockageValide(chemin) || (chemin !== nouveau && chemin !== ancien)) {
+  const prefixeVersion = nouveau.replace(/rapport\.pdf$/, "versions/");
+  const version = chemin.startsWith(prefixeVersion) ? chemin.slice(prefixeVersion.length) : "";
+  const estVersion = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$/i.test(version);
+  if (!cheminStockageValide(chemin) || (chemin !== nouveau && chemin !== ancien && !estVersion)) {
     throw new Error("Le fichier ne correspond pas à cette visite. Régénérez le rapport.");
   }
   return chemin;

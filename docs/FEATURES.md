@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-13 (premier lot de corrections de sécurité)
+> Dernière mise à jour : 2026-09-13 (deuxième lot de corrections de sécurité)
 
 ## Sécurité des sessions et des rapports
 
@@ -21,6 +21,28 @@ Le lot du 13 septembre 2026 couvre le MFA (S01), les références de rapports (S
 Validation du 13 septembre : 9 tests Node réussis, contrôle TypeScript et build local Webpack réussis ; scénario SQL PostgreSQL 17 réussi. Sur Supabase, les 94 références historiques correspondent au format attendu. Les migrations 055 et 056 sont appliquées et enregistrées sous `20260913160055` et `20260913160056` : 24 politiques MFA restrictives et le trigger de protection sont actifs. La simulation transactionnelle sur les données réelles confirme zéro chantier, visite ou objet visible pour le compte MFA en `aal1`, et les accès conservés en `aal2`. Aucun enregistrement métier n’a été supprimé pendant ces vérifications.
 
 Les rapports restent régénérables sous le même chemin : ce lot n’instaure pas l’immutabilité documentaire de S06. Il ne clôture pas l’isolation multi-entreprise, la protection du cache entre comptes, les réglages GitHub ou l’ensemble des autres constats du rapport d’audit.
+
+## Bibliothèque privée et versions des rapports — lot 2
+
+- La migration 057 applique une restriction de lecture sur le préfixe `base-documentaire` du bucket `rapports`, y compris en présence d’anciennes règles permissives. Les invités ne voient plus les fichiers de la bibliothèque ; inspecteurs et administrateurs les conservent. Les pièces de checklist sous `points-controle` restent accessibles selon le parcours de démonstration existant.
+- Les clients Supabase, y compris un administrateur connecté, ne peuvent plus insérer, remplacer, déplacer ou supprimer un PDF de visite. Les dossiers de documents, logos, bibliothèque et comparaisons conservent leurs politiques métier. Le compte serveur reste un privilège d’exploitation à protéger.
+- Chaque génération de PDF de visite utilise un UUID neuf sous `<chantier>/visites/<visite>/versions/<version>.pdf`, avec `upsert: false`. Une nouvelle génération exige un motif de 5 à 1 000 caractères. Le fichier porte sa référence de version. La signature graphique commune est retirée des nouveaux PDF et du répertoire public ; les copies déjà distribuées et l’historique Git ne peuvent pas être rappelés par ce changement.
+- La migration 058 crée `rapport_versions`. Une procédure réservée au serveur recontrôle l’affectation actuelle et le rôle, verrouille la visite, compare la référence attendue, puis inscrit l’archive et la nouvelle référence dans une transaction. Chaque nouvelle archive contient les données utilisées par le générateur, le SHA-256 exact du PDF, l’auteur, la date serveur et le motif. Une publication concurrente renvoie 409 ; une réponse incertaine conserve le fichier pour éviter d’effacer une publication réussie.
+- L’historique est en ajout seul : UPDATE/DELETE des lignes sont interdits et les clients n’ont pas INSERT. Sa lecture suit celle de la visite et le MFA. Les 50 dernières versions sont consultables depuis la page du rapport, avec leur empreinte. Les références historiques valides sont reprises sans inventer leur auteur, leur date de génération ou une empreinte non calculée.
+- L’email contient la version sélectionnée à l’écran. Si la référence courante a changé avant la demande, l’envoi est refusé avec 409. Le journal conserve la référence envoyée. Publier une nouvelle version remet son état « email envoyé » à faux ; un envoi d’une ancienne version déjà engagé ne peut pas marquer la nouvelle comme envoyée.
+- Le PDF prend l’entreprise de l’inspecteur de la visite, au lieu de la première entreprise retournée. Une lecture métier indisponible bloque la génération pour éviter un rapport silencieusement incomplet.
+
+### Vérification et limites
+
+Les tests Node couvrent les chemins, l’absence d’écrasement, le calcul de l’empreinte, le conflit de publication, le motif, l’affectation actuelle, les lectures en erreur et le refus d’envoyer une autre version. `tests/security-db-versions.sql` reprend le lot précédent puis applique les vraies politiques Storage et les migrations 057/058 sur PostgreSQL jetable : invité/inspecteur/admin, déplacements, historique, réapplication et publication. GitHub Actions exécute désormais cette suite SQL avec PostgreSQL 17. Aucun email réel n’est envoyé par ces tests.
+
+Ce lot traite l’accès Storage de S05 et une partie de S06. Il ne clôture pas S06 : les constats d’une visite terminée ne sont pas encore figés par une clôture atomique, les images sources peuvent évoluer et le parcours d’avenant validé reste à construire. L’empreinte d’un PDF permet de vérifier ses octets ; elle ne constitue pas une signature électronique du validateur. Le modèle multi-entreprise S09 et l’isolation locale S08 restent à traiter. Les contrôles SQL ne remplacent pas une recette HTTP Storage avec des comptes de test distincts.
+
+Validation du lot 2 le 13 septembre : 12 tests Node et la suite SQL PostgreSQL 17 réussis, TypeScript et lint sans erreur. La simulation sur Supabase confirme 0 fichier de bibliothèque pour l’invité, 5 pièces de checklist conservées, 76 fichiers pour l’inspecteur et 94 rapports historiques repris. Les migrations sont enregistrées sous `20260913170057` et `20260913170058`.
+
+### Déploiement du lot 2
+
+Appliquer 057 et 058 avant la bascule du code, enregistrer les migrations, puis construire l’image, exécuter les tests et déployer le commit publié. Recharger les anciens onglets pour les nouvelles demandes de motif et de version email (service worker v9). Conserver l’image précédente, mais après publication d’un chemin `/versions/`, un retour à un code qui ne reconnaît pas ce format exige un correctif compatible : ne pas supprimer les archives ni rouvrir les politiques pour revenir en arrière. Les fichiers téléversés sans publication confirmée doivent être rapprochés de `rapport_versions` avant tout nettoyage.
 
 ## 1. Annotation des photos
 

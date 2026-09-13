@@ -10,6 +10,18 @@ jobs:
     typecheck-and-build:
       name: Type-check & build
       runs-on: ubuntu-latest
+      services:
+        postgres:
+          image: postgres:17-alpine
+          env:
+            POSTGRES_PASSWORD: security-test-only
+          ports:
+            - 5432:5432
+          options: >-
+            --health-cmd pg_isready
+            --health-interval 5s
+            --health-timeout 5s
+            --health-retries 10
 
       steps:
         - name: Checkout
@@ -26,6 +38,11 @@ jobs:
 
         - name: Security regression tests
           run: npm run test:security
+
+        - name: Database security regression tests
+          env:
+            PGPASSWORD: security-test-only
+          run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-versions.sql
 
         - name: Type-check
           run: npx tsc --noEmit

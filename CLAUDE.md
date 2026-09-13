@@ -14,6 +14,8 @@ Les images des PDF sont téléchargées par `creerChargeurImagesPdf` avec le cli
 
 La spécification détaillée, les limites restantes et l’ordre de déploiement sont dans `docs/FEATURES.md`. Tests : `npm run test:security` ; `tests/security-db.sql` uniquement sur PostgreSQL jetable. Conserver une image de retour arrière au déploiement ; ne plus utiliser la purge automatique des images décrite dans des procédures historiques.
 
+Le deuxième lot ajoute les migrations 057/058 et `enregistrerVersionRapport` : un PDF de visite est publié sous un chemin de version neuf, jamais écrasé. L’historique `rapport_versions` est en ajout seul. Toute réédition demande un motif et tout envoi porte la référence choisie. Ne pas réintroduire de signature graphique globale ni écrire directement `rapport_url` pour la génération ; utiliser la publication transactionnelle. Les tests SQL complets sont dans `tests/security-db-versions.sql` (base jetable uniquement).
+
 ## Vue d'ensemble du projet
 
 **Securionis Chantiers** est une application SaaS de gestion des inspections de chantiers (sécurité au travail, basée sur les référentiels SUVA). Elle permet à des inspecteurs de :
