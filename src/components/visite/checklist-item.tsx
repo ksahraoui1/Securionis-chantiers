@@ -120,7 +120,8 @@ export function ChecklistItem({
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-400 p-4 space-y-4">
+    <fieldset disabled={!photoUpload.ready} className="min-w-0 bg-white rounded-lg border border-gray-400 p-4 space-y-4">
+      {!photoUpload.ready && <p role="status" className="text-sm text-gray-500">Reprise des photos locales…</p>}
       <div>
         <p className="font-medium text-gray-900">{pointControle.intitule}</p>
         {pointControle.critere && (
@@ -249,6 +250,6 @@ export function ChecklistItem({
         }}
         onInsertRemarque={handleAiRemarque}
       />
-    </div>
+    </fieldset>
   );
 }

@@ -13,6 +13,7 @@ type Preview = { apercu: string; idLocal: string };
 export function usePhotoUpload({ chantierId, visiteId, reponseId, pointId }: UsePhotoUploadOptions) {
   const scope = useOfflineScope();
   const [photos, setPhotos] = useState<string[]>([]);
+  const [ready, setReady] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previews, setPreviews] = useState<Record<string, Preview>>({});
@@ -91,8 +92,10 @@ export function usePhotoUpload({ chantierId, visiteId, reponseId, pointId }: Use
     finally { setUploading(false); }
   }, [scope, queuePhoto]);
   const initPhotos = useCallback(async (existing: string[]) => {
+    setPhotos(existing);
     try {
       const pending = await getPendingPhotos(scope, visiteId);
+      if (!alive.current) return;
       const restored = [...existing];
       for (const photo of pending) {
         const path = `${photo.chantier_id}/${photo.visite_id}/${photo.reponse_key}/${photo.filename}`;
@@ -103,8 +106,8 @@ export function usePhotoUpload({ chantierId, visiteId, reponseId, pointId }: Use
         if (!restored.includes(url)) restored.push(url);
       }
       assertOfflineScope(scope);
-      if (alive.current) { setPhotos(restored); setNbEnAttente(pending.filter(p => Object.values(previewRef.current).some(v => v.idLocal === p.id)).length); }
-    } catch { if (!scope.signal.aborted) setError("Impossible de reprendre les photos locales."); }
+      if (alive.current) { setReady(true); setPhotos(restored); setNbEnAttente(pending.filter(p => Object.values(previewRef.current).some(v => v.idLocal === p.id)).length); }
+    } catch { if (!scope.signal.aborted) setError("Impossible de reprendre les photos locales. Rechargez la page avant de modifier ce point."); }
   }, [scope, visiteId, reponseId, pointId, addPreview]);
-  return { photos, resoudreApercu, nbEnAttente, uploading, error, uploadPhoto, removePhoto, replacePhoto, initPhotos, canAddMore: photos.length < MAX_PHOTOS, photoCount: photos.length };
+  return { ready, photos, resoudreApercu, nbEnAttente, uploading, error, uploadPhoto, removePhoto, replacePhoto, initPhotos, canAddMore: photos.length < MAX_PHOTOS, photoCount: photos.length };
 }
