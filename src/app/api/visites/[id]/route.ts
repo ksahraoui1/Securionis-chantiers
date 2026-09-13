@@ -1,29 +1,13 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { canAccessVisite, extractRapportStoragePath } from "@/lib/utils/security";
+import { cheminRapportVisite } from "@/lib/utils/storage-reference";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { journaliser } from "@/lib/audit";
 
-/**
- * Suppression d'une visite en cours.
- *
- * L'autorisation est vérifiée avec le client de l'utilisateur
- * (`canAccessVisite`), puis la suppression elle-même est faite par le
- * `service_role` :
- *
- *   • aucune politique RLS n'autorise un inspecteur à supprimer une visite ou
- *     ses réponses — avec le client utilisateur, le `DELETE` ne touchait
- *     **aucune ligne** et PostgREST répondait succès quand même (piège
- *     n° 43) ; la route renvoyait `success: true` et écrivait une entrée
- *     `delete_visite` au journal pour une visite toujours là ;
- *   • les photos de la visite restaient dans le stockage : 28 orphelines
- *     relevées à l'audit du 3 septembre 2026.
- *
- * Ordre : les écarts, puis la visite (les réponses suivent en cascade), puis
- * les fichiers. Une ligne d'abord, le fichier ensuite — l'inverse laisserait
- * une visite dont les photos ont disparu si la suppression en base échoue.
+/** L'autorisation, le statut et les lignes sont traités atomiquement en base.
+ * Les fichiers dérivés de l'identité supprimée sont nettoyés après commit.
  */
-
 const BUCKET_PHOTOS = "visite-photos";
 
 type ClientService = Awaited<ReturnType<typeof createServiceClient>>;
@@ -63,74 +47,24 @@ export async function DELETE(
   try {
     const supabase = await createClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-    }
+    const { user, response: authResponse } = await requireApiUser(supabase);
+    if (authResponse) return authResponse;
 
     // Rate limit: 30 suppressions par heure
     if (!(await checkRateLimit(`visite-delete:${user.id}`, 30, 60 * 60 * 1000))) {
       return NextResponse.json({ error: "Trop de requêtes. Réessayez plus tard." }, { status: 429 });
     }
 
-    // Vérifier l'autorisation
-    if (!(await canAccessVisite(supabase, user.id, visiteId))) {
-      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+    const { data: visite, error: suppressionError } = await supabase.rpc(
+      "supprimer_visite_brouillon", { p_visite_id: visiteId },
+    );
+    if (suppressionError) {
+      if (suppressionError.code === "42501") return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+      if (suppressionError.code === "22023") return NextResponse.json({ error: "Impossible de supprimer une visite terminée" }, { status: 400 });
+      throw new Error("Suppression de visite impossible");
     }
-
-    // Charger la visite pour vérifier le statut (RLS appliquée)
-    const { data: visite } = await supabase
-      .from("visites")
-      .select("id, statut, chantier_id, rapport_url")
-      .eq("id", visiteId)
-      .single();
-
-    if (!visite) {
-      return NextResponse.json({ error: "Visite introuvable" }, { status: 404 });
-    }
-
-    // Interdire la suppression d'une visite terminée
-    if (visite.statut === "terminee") {
-      return NextResponse.json(
-        { error: "Impossible de supprimer une visite terminée" },
-        { status: 400 }
-      );
-    }
-
+    if (!visite || visite.id !== visiteId) throw new Error("Suppression non confirmée");
     const serviceClient = await createServiceClient();
-
-    // 1. Les écarts rattachés aux réponses de la visite. La clé étrangère
-    //    `ecarts.reponse_id` n'est pas en cascade : sans cela, la suppression
-    //    des réponses échouerait dès qu'un écart existe.
-    const { data: reponses, error: reponsesError } = await serviceClient
-      .from("reponses")
-      .select("id")
-      .eq("visite_id", visiteId);
-    if (reponsesError) throw new Error(reponsesError.message);
-
-    const reponseIds = (reponses ?? []).map((r) => r.id);
-    if (reponseIds.length > 0) {
-      const { error: ecartsError } = await serviceClient
-        .from("ecarts")
-        .delete()
-        .in("reponse_id", reponseIds);
-      if (ecartsError) throw new Error(ecartsError.message);
-    }
-
-    // 2. La visite — les réponses suivent (`on delete cascade`). Le résultat
-    //    est vérifié : zéro ligne signifierait que rien n'a été supprimé.
-    const { data: supprimees, error: deleteError } = await serviceClient
-      .from("visites")
-      .delete()
-      .eq("id", visiteId)
-      .select("id");
-    if (deleteError) throw new Error(deleteError.message);
-    if (!supprimees || supprimees.length === 0) {
-      throw new Error("La visite n'a pas été supprimée (aucune ligne touchée)");
-    }
 
     // 3. Le stockage : photos sous `<chantier>/<visite>/…`, et le rapport si un
     //    brouillon en avait déjà produit un. Un échec ici ne remet pas en cause
@@ -157,7 +91,10 @@ export async function DELETE(
 
     if (visite.rapport_url) {
       try {
-        const chemin = extractRapportStoragePath(visite.rapport_url);
+        const chemin = cheminRapportVisite(visite.chantier_id, visiteId);
+        // Les anciens noms tronquent l'UUID. Ne jamais effacer une ancienne
+        // référence modifiable : conserver l'orphelin pour une revue séparée.
+        if (visite.rapport_url !== chemin) throw new Error("Ancien rapport conservé pour nettoyage contrôlé");
         const { error: removeError } = await serviceClient.storage
           .from("rapports")
           .remove([chemin]);
@@ -178,7 +115,7 @@ export async function DELETE(
       details: {
         chantier_id: visite.chantier_id,
         statut: visite.statut,
-        reponses: reponseIds.length,
+        reponses: visite.reponses,
         photos_supprimees: photosSupprimees,
         ...(avertissements.length > 0 ? { avertissements } : {}),
       },

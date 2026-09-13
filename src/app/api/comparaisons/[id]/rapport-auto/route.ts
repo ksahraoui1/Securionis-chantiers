@@ -1,8 +1,9 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 import { canAccessChantier, getUserRole } from "@/lib/utils/security";
-import { escapeHtml, isAllowedSupabaseUrl } from "@/lib/utils/security";
+import { escapeHtml } from "@/lib/utils/security";
 import { getLimits } from "@/lib/roles/limites";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getResendApiKey, getResendFromEmail } from "@/lib/env";
@@ -19,11 +20,10 @@ import {
 import type {
   ComparaisonHistorique,
   EcartRapport,
-  ImagePdf,
 } from "@/components/pdf/rapport-comparaison-auto";
 import type { TypeDifference } from "@/lib/plan-diff-detection";
 import { journaliser } from "@/lib/audit";
-import { signerUrl } from "@/lib/utils/url-signee";
+import { creerChargeurImagesPdf, ImagePdfInvalide } from "@/lib/supabase/pdf-images";
 
 // Le rapport embarque trois images et jusqu'à 300 lignes : la génération PDF
 // peut dépasser la minute par défaut sur un petit conteneur.
@@ -98,24 +98,6 @@ function lireEcarts(brut: FormDataEntryValue | null): EcartRecu[] | null {
   });
 }
 
-/**
- * Télécharge une image du stockage, sous la whitelist SSRF de l'application.
- * L'URL est signée en amont par l'appelant : les buckets sont privés (SEC-03).
- */
-async function chargerImageDistante(url: string | null): Promise<ImagePdf | null> {
-  if (!url || !isAllowedSupabaseUrl(url)) return null;
-  try {
-    const reponse = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!reponse.ok) return null;
-    const octets = Buffer.from(await reponse.arrayBuffer());
-    // Signature PNG : react-pdf et docx n'acceptent ici que ce format.
-    const png = [0x89, 0x50, 0x4e, 0x47].every((o, i) => octets[i] === o);
-    return png ? { data: octets, format: "png" } : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -124,13 +106,8 @@ export async function POST(
 
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-    }
+    const { user, response: authResponse } = await requireApiUser(supabase);
+    if (authResponse) return authResponse;
 
     // Rate limit : 5 rapports complets par heure — chacun écrit un document.
     if (!(await checkRateLimit(`comparaison-rapport:${user.id}`, 5, 60 * 60 * 1000))) {
@@ -243,7 +220,9 @@ export async function POST(
       annotations: comptes.get(s.id) ?? 0,
     }));
 
-    const logo = await chargerImageDistante(await signerUrl(supabase, entreprise?.logo_url ?? null));
+    const chargerImage = creerChargeurImagesPdf(supabase);
+    const logoUri = await chargerImage(entreprise?.logo_url, "rapports");
+    const logo = logoUri ? { data: Buffer.from(logoUri.split(",")[1], "base64"), format: logoUri.startsWith("data:image/png") ? "png" as const : "jpg" as const } : null;
 
     // --- Composition des écarts
     const evalues: EcartEvalue[] = ecartsRecus.map((e) => ({
@@ -465,6 +444,7 @@ export async function POST(
       },
     });
   } catch (err) {
+    if (err instanceof ImagePdfInvalide) return NextResponse.json({ error: err.message }, { status: 422 });
     console.error("Rapport de comparaison :", err);
     return NextResponse.json(
       {

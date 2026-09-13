@@ -1,3 +1,4 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, TableOfContents, StyleLevel } from "docx";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -74,10 +75,8 @@ function empty(): Paragraph {
 
 export async function GET() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const { user, response: authResponse } = await requireApiUser(supabase);
+  if (authResponse) return authResponse;
 
   // Rate limit: génération de document coûteuse — 10 par heure
   if (!(await checkRateLimit(`docs-manual:${user.id}`, 10, 60 * 60 * 1000))) {

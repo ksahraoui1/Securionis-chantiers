@@ -49,7 +49,7 @@ export interface ComparaisonHistorique {
 
 export interface ImagePdf {
   data: Buffer;
-  format: "png";
+  format: "png" | "jpg";
 }
 
 export interface RapportComparaisonAutoProps {

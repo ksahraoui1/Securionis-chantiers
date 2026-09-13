@@ -1,3 +1,4 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -16,13 +17,8 @@ export async function GET(request: NextRequest) {
   try {
     // Authentification
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-    }
+    const { user, response: authResponse } = await requireApiUser(supabase);
+    if (authResponse) return authResponse;
 
   // Export lourd (ZIP de toutes les photos) : 5 par heure
   if (!(await checkRateLimit(`photos-export:${user.id}`, 5, 60 * 60 * 1000))) {

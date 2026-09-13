@@ -1,3 +1,4 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canAccessVisite } from "@/lib/utils/security";
@@ -13,13 +14,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 export async function GET(request: Request) {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const { user, response: authResponse } = await requireApiUser(supabase);
+  if (authResponse) return authResponse;
 
   // Rate limit: 20 comparaisons par heure
   if (!(await checkRateLimit(`visite-compare:${user.id}`, 20, 60 * 60 * 1000))) {

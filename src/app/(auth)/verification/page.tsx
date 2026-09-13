@@ -21,19 +21,16 @@ export default async function PageVerification() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: niveaux } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-
-  // Rien à vérifier : soit aucun facteur, soit déjà au niveau requis.
-  if (!niveaux || niveaux.currentLevel === niveaux.nextLevel) {
-    redirect("/dashboard");
+  const { data: mfaValide, error } = await supabase.rpc("session_mfa_valide");
+  if (error || typeof mfaValide !== "boolean") {
+    throw new Error("Vérification de sécurité indisponible. Réessayez plus tard.");
   }
-
-  const { data: facteurs } = await supabase.auth.mfa.listFactors();
-  const facteur = (facteurs?.all ?? []).find((f) => f.status === "verified");
-
-  // Aucun facteur vérifié malgré un niveau attendu supérieur : incohérence,
-  // on laisse passer plutôt que d'enfermer l'utilisateur dehors.
-  if (!facteur) redirect("/dashboard");
+  if (mfaValide) redirect("/dashboard");
+  const { data: facteurs, error: erreurFacteurs } = await supabase.auth.mfa.listFactors();
+  const facteur = facteurs?.all.find((f) => f.status === "verified");
+  if (erreurFacteurs || !facteur) {
+    throw new Error("Impossible de charger le second facteur. Réessayez la connexion.");
+  }
 
   return <EcranVerification factorId={facteur.id} email={user.email ?? ""} />;
 }

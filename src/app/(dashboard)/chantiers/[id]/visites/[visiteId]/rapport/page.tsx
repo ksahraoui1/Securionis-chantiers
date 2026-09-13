@@ -2,7 +2,8 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { RapportActions } from "./rapport-actions";
 import { EmailHistory } from "./email-history";
-import { extractRapportStoragePath } from "@/lib/utils/security";
+import { verifierRapportVisite } from "@/lib/utils/storage-reference";
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 
 export default async function RapportPage({
   params,
@@ -12,12 +13,11 @@ export default async function RapportPage({
   const { id: chantierId, visiteId } = await params;
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
+  const { user, response: authResponse } = await requireApiUser(supabase);
+  if (authResponse) {
+    if (authResponse.status === 401) redirect("/login");
+    if (authResponse.status === 403) redirect("/verification");
+    throw new Error("Vérification de sécurité indisponible.");
   }
 
   // Load visite with chantier info
@@ -99,9 +99,8 @@ export default async function RapportPage({
   let signedRapportUrl: string | null = null;
   if (visite.rapport_url) {
     try {
-      const serviceClient = await createServiceClient();
-      const storagePath = extractRapportStoragePath(visite.rapport_url);
-      const { data: signedData } = await serviceClient.storage
+      const storagePath = verifierRapportVisite(visite.rapport_url, visite);
+      const { data: signedData } = await supabase.storage
         .from("rapports")
         .createSignedUrl(storagePath, 3600); // valide 1 heure
       signedRapportUrl = signedData?.signedUrl ?? null;

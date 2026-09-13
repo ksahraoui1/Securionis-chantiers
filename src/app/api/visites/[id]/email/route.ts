@@ -1,7 +1,9 @@
+import { verifierRapportVisite } from "@/lib/utils/storage-reference";
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { sendRapport } from "@/lib/email/send-rapport";
-import { canAccessVisite, getUserRole, extractRapportStoragePath } from "@/lib/utils/security";
+import { canAccessVisite, getUserRole } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getLimits } from "@/lib/roles/limites";
 import { journaliser } from "@/lib/audit";
@@ -16,13 +18,8 @@ export async function POST(
     const supabase = await createClient();
 
     // Verify auth
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
-    }
+    const { user, response: authResponse } = await requireApiUser(supabase);
+    if (authResponse) return authResponse;
 
     // Rate limit: 10 emails par heure
     if (!(await checkRateLimit(`visite-email:${user.id}`, 10, 60 * 60 * 1000))) {
@@ -143,9 +140,10 @@ export async function POST(
     }
 
     // Télécharger les octets du PDF depuis le storage (bucket privé)
-    const serviceClient = await createServiceClient();
-    const storagePath = extractRapportStoragePath(visite.rapport_url);
-    const { data: pdfBlob, error: downloadError } = await serviceClient.storage
+    let storagePath: string;
+    try { storagePath = verifierRapportVisite(visite.rapport_url, visite); }
+    catch { return NextResponse.json({ error: "Le fichier ne correspond pas à cette visite. Régénérez le PDF." }, { status: 409 }); }
+    const { data: pdfBlob, error: downloadError } = await supabase.storage
       .from("rapports")
       .download(storagePath);
 

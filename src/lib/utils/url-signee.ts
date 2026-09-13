@@ -1,3 +1,4 @@
+import { referenceStockage } from "@/lib/utils/storage-reference";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -21,28 +22,17 @@ export const DUREE_SIGNATURE_S = 60 * 60 * 4;
  *
  * Accepte les deux formes rencontrées en base — `/object/public/<bucket>/…`
  * (héritée de l'époque des buckets publics) et `/object/sign/<bucket>/…`.
- * Retourne `null` pour tout ce qui n'est pas une URL de stockage, ce qui laisse
- * passer sans transformation les valeurs déjà signées ou étrangères.
+ * Retourne `null` pour tout ce qui n'est pas une URL de stockage, les valeurs étrangères étant refusées.
  */
 export function decomposerUrlStockage(
   url: string,
 ): { bucket: string; chemin: string } | null {
-  const marqueur = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)$/);
-  if (!marqueur) return null;
-
-  const bucket = marqueur[1];
-  // La forme signée porte déjà un `?token=…` : on le retire du chemin.
-  const chemin = decodeURIComponent(marqueur[2].split("?")[0]);
-
-  // Garde anti path-traversal, comme `extractStoragePath`.
-  if (chemin.includes("..") || chemin.startsWith("/")) return null;
-
-  return { bucket, chemin };
+  return referenceStockage(url);
 }
 
 /**
- * Signe une URL de stockage. Renvoie l'URL d'origine si elle n'en est pas une,
- * et `null` si la signature échoue — au caller de décider quoi afficher.
+ * Signe une URL du stockage du projet. Renvoie `null` si elle est étrangère
+ * ou si la signature échoue — au caller de décider quoi afficher.
  */
 export async function signerUrl(
   supabase: SupabaseClient,
@@ -52,7 +42,7 @@ export async function signerUrl(
   if (!url) return null;
 
   const piece = decomposerUrlStockage(url);
-  if (!piece) return url;
+  if (!piece) return null;
 
   const { data, error } = await supabase.storage
     .from(piece.bucket)
@@ -78,7 +68,7 @@ export async function signerUrls(
   urls: (string | null | undefined)[],
   dureeS: number = DUREE_SIGNATURE_S,
 ): Promise<(string | null)[]> {
-  const resultat: (string | null)[] = urls.map((u) => u ?? null);
+  const resultat: (string | null)[] = urls.map(() => null);
 
   // bucket → [{ index, chemin }]
   const parBucket = new Map<string, { index: number; chemin: string }[]>();
@@ -86,7 +76,7 @@ export async function signerUrls(
   urls.forEach((url, index) => {
     if (!url) return;
     const piece = decomposerUrlStockage(url);
-    if (!piece) return; // valeur étrangère : laissée telle quelle
+    if (!piece) return; // valeur étrangère : refusée
     const liste = parBucket.get(piece.bucket) ?? [];
     liste.push({ index, chemin: piece.chemin });
     parBucket.set(piece.bucket, liste);
@@ -131,7 +121,7 @@ export function canoniserUrlStockage(url: string): string {
   const piece = decomposerUrlStockage(url);
   if (!piece) return url;
   const base = url.slice(0, url.indexOf("/storage/v1/object/"));
-  return `${base}/storage/v1/object/public/${piece.bucket}/${piece.chemin}`;
+  return `${base}/storage/v1/object/public/${piece.bucket}/${piece.chemin.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 /** Variante tableau, pour `reponses.photos`. */

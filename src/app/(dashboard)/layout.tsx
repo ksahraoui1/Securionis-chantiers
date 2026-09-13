@@ -20,15 +20,12 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Second facteur (APP-03). Une session obtenue par mot de passe reste au
-  // niveau simple ; si un facteur est enregistré, Supabase annonce un niveau
-  // attendu supérieur et la session n'est pas complète tant que le code n'a pas
-  // été fourni. Le cas courant est traité sur la page de connexion ; ceci
-  // rattrape les sessions ouvertes avant l'enrôlement ou laissées de côté.
-  const { data: niveaux } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (niveaux && niveaux.currentLevel !== niveaux.nextLevel) {
-    redirect("/verification");
+  // Même règle que les API et la RLS ; une erreur ne donne aucun accès.
+  const { data: mfaValide, error: erreurMfa } = await supabase.rpc("session_mfa_valide");
+  if (erreurMfa || typeof mfaValide !== "boolean") {
+    throw new Error("Vérification de sécurité indisponible. Réessayez plus tard.");
   }
+  if (!mfaValide) redirect("/verification");
 
   const { data: profile } = await supabase
     .from("profiles")

@@ -1,9 +1,10 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { getUserRole, isAllowedSupabaseUrl } from "@/lib/utils/security";
+import { getUserRole } from "@/lib/utils/security";
 import JSZip from "jszip";
-import { signerUrl } from "@/lib/utils/url-signee";
+import { verifierRapportVisite } from "@/lib/utils/storage-reference";
 
 export const maxDuration = 300; // 5 minutes
 
@@ -16,13 +17,8 @@ export async function GET(request: NextRequest) {
   try {
     // Authentification
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-    }
+    const { user, response: authResponse } = await requireApiUser(supabase);
+    if (authResponse) return authResponse;
 
   // Export lourd (ZIP de tous les rapports) : 5 par heure
   if (!(await checkRateLimit(`rapports-export:${user.id}`, 5, 60 * 60 * 1000))) {
@@ -80,36 +76,18 @@ export async function GET(request: NextRequest) {
 
     // Télécharger et ajouter chaque rapport au ZIP
     let addedCount = 0;
+    const echecs: string[] = [];
     for (const visite of visites) {
       if (!visite.rapport_url) continue;
 
-      // Anti-SSRF : `rapport_url` provient de la base et reste modifiable par
-      // un inspecteur via l'API REST ; on n'accepte que l'hôte Supabase du projet.
-      if (!isAllowedSupabaseUrl(visite.rapport_url)) {
-        console.warn("URL de rapport refusée (hors Supabase)");
-        continue;
-      }
-
       try {
-        // Le bucket est privé (SEC-03) : signer avant de télécharger.
-        const urlSignee = await signerUrl(supabase, visite.rapport_url);
-        if (!urlSignee) {
-          console.warn("Signature impossible pour un rapport");
-          continue;
-        }
-        const response = await fetch(urlSignee, {
-          signal: AbortSignal.timeout(30000),
-        });
-        if (!response.ok) {
-          console.warn(`Impossible de télécharger: ${visite.rapport_url}`);
-          continue;
-        }
-
-        const buffer = await response.arrayBuffer();
-
-        // Extraire le nom du fichier
-        const urlObj = new URL(visite.rapport_url);
-        const filename = urlObj.pathname.split("/").pop() || "rapport.pdf";
+        const storagePath = verifierRapportVisite(visite.rapport_url, visite);
+        const parametres = { signal: AbortSignal.timeout(30_000), redirect: "error" as const };
+        const { data: rapport, error: erreurRapport } = await supabase.storage
+          .from("rapports").download(storagePath, {}, parametres);
+        if (erreurRapport || !rapport) throw new Error("Rapport inaccessible");
+        const buffer = await rapport.arrayBuffer();
+        const filename = `rapport_${visite.id}.pdf`;
 
         // Chemin dans le ZIP: chantier/date/rapport.pdf
         const chantier = visite.chantiers as any;
@@ -124,7 +102,8 @@ export async function GET(request: NextRequest) {
         zip.file(zipPath, buffer);
         addedCount++;
       } catch (err) {
-        console.warn(`Erreur téléchargement rapport ${visite.rapport_url}:`, err);
+        echecs.push(`Visite ${visite.id} : rapport inaccessible ou référence invalide`);
+        console.warn(`Rapport non exporté pour la visite ${visite.id}:`, err);
       }
     }
 
@@ -138,6 +117,8 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    zip.file("MANIFESTE.txt", `${addedCount} rapport(s) inclus sur ${visites.length}.\n${echecs.join("\n")}`);
 
     // Générer le ZIP et retourner
     const zipBuffer = await zip.generateAsync({ type: "arraybuffer" });

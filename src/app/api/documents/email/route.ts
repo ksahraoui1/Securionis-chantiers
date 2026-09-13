@@ -1,3 +1,4 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { Resend } from "resend";
@@ -31,13 +32,8 @@ const MAX_PAR_DESTINATION = 5;
 export async function POST(request: Request) {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const { user, response: authResponse } = await requireApiUser(supabase);
+  if (authResponse) return authResponse;
 
   // Vérification du rôle, comme sur les cinq autres routes d'email et de PDF.
   const role = await getUserRole(supabase, user.id);

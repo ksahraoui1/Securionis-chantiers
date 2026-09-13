@@ -1,6 +1,26 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-04 (audit de sécurité)
+> Dernière mise à jour : 2026-09-13 (premier lot de corrections de sécurité)
+
+## Sécurité des sessions et des rapports
+
+Le lot du 13 septembre 2026 couvre le MFA (S01), les références de rapports (S02), les images PDF (S03), la suppression d’une visite (S04), la conservation de la file hors ligne (partie de S07) et la compatibilité de l’export ZIP (A02).
+
+- **Session complète** : toute API appelle `requireApiUser` avant les droits métier ou les services privilégiés. Un compte avec facteur vérifié doit présenter `aal2`. Un compte sans facteur conserve le parcours existant d’enrôlement. Les erreurs Auth donnent 401, le second facteur manquant 403 avec `MFA_REQUIRED`, et une vérification indisponible 503. Les pages serveur utilisent la même décision.
+- **Base et stockage** : `session_mfa_valide()` relit les facteurs vérifiés du compte courant. La migration 055 ajoute une politique restrictive à chaque table RLS du schéma public et à `storage.objects`. Une nouvelle table doit recevoir cette même politique. Les règles métier restent nécessaires ; le contrôle MFA n’accorde pas de nouveau droit.
+- **Références de rapports** : la migration 056 interdit aux clients de définir ou de modifier `visites.rapport_url`, ainsi que de déplacer une visite vers un autre chantier. Le serveur génère les nouveaux fichiers sous `<chantier>/visites/<UUID complet>/rapport.pdf`. Les anciens chemins sont lus seulement s’ils correspondent au chantier, à la date et à l’identifiant attendu. Une référence incohérente demande une nouvelle génération.
+- **Lecture et envoi** : la page de rapport, l’envoi email et l’export utilisent les droits Storage de l’utilisateur. Le stockage privé n’est plus signé ou téléchargé avec `service_role` depuis une référence libre. Le ZIP accepte anciens et nouveaux chemins et contient un manifeste des éléments inclus et refusés.
+- **Images PDF** : photos et logos proviennent uniquement des buckets du projet configuré en HTTPS. Le SDK télécharge avec les droits de l’utilisateur et sans redirection ; le moteur PDF reçoit des données PNG/JPEG en mémoire. Les limites sont 10 Mo par image, 40 Mo au total et 200 images, avec délai de 15 secondes par téléchargement. Une image interdite ou inaccessible interrompt la génération, sans produire silencieusement un rapport incomplet.
+- **Suppression** : `supprimer_visite_brouillon` vérifie MFA, rôle ou rattachement actuel, puis verrouille et supprime les lignes dans une transaction. Être l’auteur historique ne suffit pas après retrait du chantier. Une visite terminée est refusée. Le serveur nettoie ensuite les photos et le seul chemin de rapport dérivé de l’UUID complet ; un ancien fichier ambigu est conservé et journalisé pour revue séparée.
+- **Hors ligne** : une lecture en erreur, une visite invisible ou un conflit plus récent côté serveur conserve les éléments en attente. Aucune absence de résultat RLS ne prouve une suppression. Le service worker passe à v8 pour renouveler les assets. Une interface de résolution des conflits et l’isolation du cache par compte restent à réaliser.
+
+### Vérifications du lot
+
+`npm run test:security` teste les gardes des 18 routes, les références de fichiers, les refus réseau, les limites de flux, le SDK Storage réel avec transport simulé, le rendu PDF sans requête réseau et la conservation des données hors ligne. `tests/security-db.sql` s’exécute uniquement dans une base PostgreSQL vide et jetable : fixture de rôles et tables, application réelle et réapplication des migrations 055/056, droits MFA, références protégées et suppression transactionnelle. Il ne simule pas le protocole GoTrue ni le service HTTP Storage.
+
+Validation du 13 septembre : 9 tests Node réussis, contrôle TypeScript et build local Webpack réussis ; scénario SQL PostgreSQL 17 réussi. Sur Supabase, les 94 références historiques correspondent au format attendu. Les migrations 055 et 056 sont appliquées et enregistrées sous `20260913160055` et `20260913160056` : 24 politiques MFA restrictives et le trigger de protection sont actifs. La simulation transactionnelle sur les données réelles confirme zéro chantier, visite ou objet visible pour le compte MFA en `aal1`, et les accès conservés en `aal2`. Aucun enregistrement métier n’a été supprimé pendant ces vérifications.
+
+Les rapports restent régénérables sous le même chemin : ce lot n’instaure pas l’immutabilité documentaire de S06. Il ne clôture pas l’isolation multi-entreprise, la protection du cache entre comptes, les réglages GitHub ou l’ensemble des autres constats du rapport d’audit.
 
 ## 1. Annotation des photos
 
@@ -471,11 +491,16 @@ deux mois. L'installation et les pièges sont décrits dans
 
 ### Mise à jour
 ```bash
-cd /app/securionis && git pull && docker builder prune -f && docker compose build --no-cache && docker compose up -d && docker image prune -a -f
+cd /app/securionis
+git pull --ff-only
+docker image tag securionis-app:latest securionis-app:rollback
+docker compose build
+docker compose up -d --wait
 ```
 - **Ne pas faire `docker compose down` avant le build** : l'ancien conteneur continue de servir pendant la construction, `up -d` ne fait que la bascule (mesurée à 5–6 s, contre ~2 min avec un `down` préalable).
-- `docker builder prune -f` avant le build évite l'erreur « parent snapshot does not exist », rencontrée plusieurs fois sur ce VPS.
-- `docker image prune -a -f` après la bascule retire l'image précédente.
+- Conserver l’image `securionis-app:rollback` et le SHA précédent jusqu’à validation. Ne pas purger automatiquement les images après la bascule. Nettoyer le cache de construction seulement en cas d’erreur de cache identifiée.
+- Après chaque lot : mettre à jour `docs/FEATURES.md` et `CLAUDE.md`, exécuter les vérifications, commit et push GitHub, appliquer les migrations requises, déployer le VPS puis vérifier le service. Cette séquence est demandée explicitement par le propriétaire.
+- Pour le lot du 13 septembre : tester puis appliquer 055 et 056 avant le nouveau conteneur, enregistrer leur version dans le suivi Supabase et vérifier les contextes `aal1`/`aal2`. Recharger les onglets après mise à jour pour bénéficier de la nouvelle synchronisation. Conserver les politiques de sécurité lors d’un éventuel retour de conteneur ; ne jamais les ouvrir pour rétablir l’interface.
 
 > Les migrations Supabase ne sont **pas** appliquées par le `git pull` : la base est sur Supabase Cloud, il faut les passer séparément (SQL Editor ou MCP), puis les inscrire dans `supabase_migrations.schema_migrations`.
 

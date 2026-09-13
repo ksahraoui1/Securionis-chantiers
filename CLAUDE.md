@@ -4,6 +4,16 @@ Guide de développement pour Claude et les assistants IA travaillant sur ce proj
 
 ---
 
+## Livraison des corrections
+
+Instruction explicite du propriétaire le 13 septembre 2026 : après chaque lot terminé, mettre à jour les spécifications, créer le commit, le pousser sur GitHub et mettre à jour le VPS, puis vérifier le résultat en production. Les secrets et les sauvegardes d’environnement restent hors du dépôt.
+
+Le lot de sécurité du 13 septembre introduit `requireApiUser` sur les 18 routes, `session_mfa_valide` et la politique restrictive de la migration 055. Tout nouvel accès API ou toute nouvelle table RLS doit suivre ces gardes. La migration 056 protège les références de rapports et fournit la suppression transactionnelle `supprimer_visite_brouillon` : ne pas réutiliser une permission de lecture pour supprimer.
+
+Les images des PDF sont téléchargées par `creerChargeurImagesPdf` avec le client utilisateur et transmises comme octets. Ne pas transmettre d’URL issue de la base à react-pdf. Les rapports utilisent `cheminRapportVisite` et `verifierRapportVisite`, avec l’UUID complet ; les anciennes références restent strictement vérifiées. Les erreurs de lecture et les conflits hors ligne conservent la file locale.
+
+La spécification détaillée, les limites restantes et l’ordre de déploiement sont dans `docs/FEATURES.md`. Tests : `npm run test:security` ; `tests/security-db.sql` uniquement sur PostgreSQL jetable. Conserver une image de retour arrière au déploiement ; ne plus utiliser la purge automatique des images décrite dans des procédures historiques.
+
 ## Vue d'ensemble du projet
 
 **Securionis Chantiers** est une application SaaS de gestion des inspections de chantiers (sécurité au travail, basée sur les référentiels SUVA). Elle permet à des inspecteurs de :

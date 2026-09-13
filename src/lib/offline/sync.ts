@@ -26,32 +26,32 @@ export async function syncPendingData(): Promise<SyncResult> {
   let syncedPhotos = 0;
   let conflicts = 0;
   let errors = 0;
-  let discarded = 0;
+  const discarded = 0;
 
   // 1. Sync pending photos first (responses may reference uploaded URLs)
   const pendingResponses = await getUnsyncedResponses();
   const visiteIds = [...new Set(pendingResponses.map((r) => r.visite_id))];
 
-  // Déterminer quelles visites existent encore côté serveur.
-  // Une modif en attente dont la visite a été supprimée ne pourra jamais
-  // être synchronisée (violation de clé étrangère) — il faut l'écarter
-  // pour ne pas bloquer indéfiniment le compteur « X modification en attente ».
+  // Une absence de lecture peut signifier MFA incomplet, droits révoqués ou
+  // panne réseau. Elle ne constitue jamais une preuve de suppression.
   const existingVisiteIds = new Set<string>();
   if (visiteIds.length > 0) {
-    const { data: existingVisites } = await supabase
+    const { data: existingVisites, error: lectureError } = await supabase
       .from("visites")
       .select("id")
       .in("id", visiteIds);
-    for (const v of existingVisites ?? []) existingVisiteIds.add(v.id as string);
+    if (lectureError || !existingVisites) {
+      return { syncedResponses, syncedPhotos, conflicts, errors: pendingResponses.length, discarded };
+    }
+    for (const v of existingVisites) existingVisiteIds.add(v.id as string);
   }
 
   for (const visiteId of visiteIds) {
     const photos = await getPendingPhotos(visiteId);
     for (const photo of photos) {
-      // Visite supprimée → photo orpheline : écarter sans erreur
+      // Conserver les octets tant que la visibilité n'est pas rétablie.
       if (!existingVisiteIds.has(visiteId)) {
-        await deletePendingPhoto(photo.id);
-        discarded++;
+        errors++;
         continue;
       }
       try {
@@ -87,21 +87,23 @@ export async function syncPendingData(): Promise<SyncResult> {
   // (évite un SELECT par réponse — problème N+1).
   const serverUpdatedAt = new Map<string, string>();
   if (visiteIds.length > 0) {
-    const { data: serverRecords } = await supabase
+    const { data: serverRecords, error: lectureReponsesError } = await supabase
       .from("reponses")
       .select("visite_id, point_controle_id, updated_at")
       .in("visite_id", visiteIds);
 
-    for (const rec of serverRecords ?? []) {
+    if (lectureReponsesError || !serverRecords) {
+      return { syncedResponses, syncedPhotos, conflicts, errors: errors + pendingResponses.length, discarded };
+    }
+    for (const rec of serverRecords) {
       serverUpdatedAt.set(`${rec.visite_id}:${rec.point_controle_id}`, rec.updated_at);
     }
   }
 
   for (const response of pendingResponses) {
-    // Visite supprimée → réponse orpheline : écarter (impossible à synchroniser)
+    // La réponse reste en attente, même si la visite n'est plus visible.
     if (!existingVisiteIds.has(response.visite_id)) {
-      await markResponseSynced(response.key);
-      discarded++;
+      errors++;
       continue;
     }
     try {
@@ -115,9 +117,8 @@ export async function syncPendingData(): Promise<SyncResult> {
         const localTime = new Date(response.updated_at).getTime();
 
         if (serverTime > localTime) {
-          // Conflit : le serveur est plus récent — ne pas écraser
-          // Marquer comme synchronisé pour nettoyer le pending (la version serveur prime)
-          await markResponseSynced(response.key);
+          // Conserver les deux versions jusqu'à une résolution explicite.
+          // Une date client ne justifie pas la destruction du travail local.
           conflicts++;
           continue;
         }

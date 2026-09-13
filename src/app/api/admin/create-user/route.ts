@@ -1,3 +1,4 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -9,12 +10,8 @@ const VALID_ROLES = ["invité", "inspecteur", "administrateur"];
 export async function POST(request: Request) {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const { user, response: authResponse } = await requireApiUser(supabase);
+  if (authResponse) return authResponse;
 
   const { data: profile } = await supabase
     .from("profiles")

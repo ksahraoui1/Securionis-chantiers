@@ -1,9 +1,11 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { canAccessVisite, getUserRole } from "@/lib/utils/security";
 import { getLimits } from "@/lib/roles/limites";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { signerUrl, signerUrls } from "@/lib/utils/url-signee";
+import { creerChargeurImagesPdf, ImagePdfInvalide } from "@/lib/supabase/pdf-images";
+import { cheminRapportVisite } from "@/lib/utils/storage-reference";
 
 export async function POST(
   request: NextRequest,
@@ -15,13 +17,8 @@ export async function POST(
     const supabase = await createClient();
 
     // Verify auth
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
-    }
+    const { user, response: authResponse } = await requireApiUser(supabase);
+    if (authResponse) return authResponse;
 
     // Rate limit: 5 générations de PDF par heure
     if (!(await checkRateLimit(`pdf-gen:${user.id}`, 5, 60 * 60 * 1000))) {
@@ -93,14 +90,13 @@ export async function POST(
       })(),
     ]);
 
-    // Les buckets sont privés (SEC-03) : react-pdf va chercher les images par
-    // HTTP, il faut donc lui passer des URL signées — le logo et chaque photo
-    // de réponse. Les photos sont signées en un seul appel par bucket.
-    const logoSigne = await signerUrl(supabase, entreprise?.logo_url ?? null);
-
+    const chargerImage = creerChargeurImagesPdf(supabase);
+    const logoSigne = await chargerImage(entreprise?.logo_url, "rapports");
     const reponsesSource = reponses ?? [];
-    const photosAPlat = reponsesSource.flatMap((r) => r.photos ?? []);
-    const photosSignees = await signerUrls(supabase, photosAPlat);
+    const photosAPlat: string[] = reponsesSource.flatMap((r) => r.photos ?? []);
+    const photosSignees: (string | null)[] = [];
+    // Séquentiel pour borner la mémoire et le cumul des octets.
+    for (const photo of photosAPlat) photosSignees.push(await chargerImage(photo, "visite-photos"));
     let curseurPhoto = 0;
     const reponsesSignees = reponsesSource.map((r) => {
       const nb = (r.photos ?? []).length;
@@ -142,7 +138,7 @@ export async function POST(
     const serviceClient = await createServiceClient();
     const dateStr = visite.date_visite.replace(/-/g, "");
     const filename = `rapport_${dateStr}_${visiteId.slice(0, 8)}.pdf`;
-    const storagePath = `${visite.chantier_id}/${filename}`;
+    const storagePath = cheminRapportVisite(visite.chantier_id, visiteId);
 
     const { error: uploadError } = await serviceClient.storage
       .from("rapports")
@@ -156,18 +152,21 @@ export async function POST(
     }
 
     // Stocker le chemin (pas la public URL) — bucket privé
-    await serviceClient
+    const { data: visitesMaj, error: erreurMaj } = await serviceClient
       .from("visites")
       .update({ rapport_url: storagePath, updated_at: new Date().toISOString() })
-      .eq("id", visiteId);
+      .eq("id", visiteId).select("id");
+    if (erreurMaj || visitesMaj?.length !== 1) throw new Error("Référence du rapport non enregistrée");
 
     // Générer une signed URL valide 1 heure pour usage immédiat
-    const { data: signedData } = await serviceClient.storage
+    const { data: signedData, error: signatureError } = await supabase.storage
       .from("rapports")
       .createSignedUrl(storagePath, 3600);
 
-    return NextResponse.json({ url: signedData?.signedUrl ?? null, filename });
+    if (signatureError || !signedData?.signedUrl) throw new Error("Rapport généré mais accès indisponible");
+    return NextResponse.json({ url: signedData.signedUrl, filename });
   } catch (err) {
+    if (err instanceof ImagePdfInvalide) return NextResponse.json({ error: err.message }, { status: 422 });
     console.error("PDF generation error:", err);
     return NextResponse.json(
       { error: "Erreur lors de la génération du PDF" },

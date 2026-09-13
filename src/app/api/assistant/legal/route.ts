@@ -1,3 +1,4 @@
+import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
@@ -15,13 +16,8 @@ import { chercherCorpus, formaterCorpus, sourcesCitees } from "@/lib/assistant/r
 export async function POST(request: Request) {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const { user, response: authResponse } = await requireApiUser(supabase);
+  if (authResponse) return authResponse;
 
   // Rate limit: 30 requêtes par heure par utilisateur
   if (!(await checkRateLimit(`legal-assist:${user.id}`, 30, 60 * 60 * 1000))) {

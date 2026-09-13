@@ -1,3 +1,4 @@
+import { cheminStockageValide, referenceStockage } from "@/lib/utils/storage-reference";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseUrl } from "@/lib/env";
 
@@ -103,8 +104,8 @@ export function isAllowedSupabaseUrl(url: string): boolean {
     const supabaseUrl = getSupabaseUrl();
     if (!supabaseUrl) return false;
 
-    const allowedHostname = new URL(supabaseUrl).hostname;
-    return parsed.hostname === allowedHostname;
+    return parsed.protocol === "https:" && parsed.origin === new URL(supabaseUrl).origin
+      && !parsed.username && !parsed.password;
   } catch {
     return false;
   }
@@ -117,19 +118,9 @@ export function isAllowedSupabaseUrl(url: string): boolean {
  * Nouveau: CHANTIER/FILE
  */
 export function extractRapportStoragePath(rapportUrl: string): string {
-  if (!rapportUrl.startsWith("http")) {
-    return rapportUrl;
-  }
-  const publicMarker = "/object/public/rapports/";
-  const publicIdx = rapportUrl.indexOf(publicMarker);
-  if (publicIdx !== -1) {
-    return rapportUrl.slice(publicIdx + publicMarker.length);
-  }
-  const signedMarker = "/object/sign/rapports/";
-  const signedIdx = rapportUrl.indexOf(signedMarker);
-  if (signedIdx !== -1) {
-    return rapportUrl.slice(signedIdx + signedMarker.length).split("?")[0];
-  }
+  const reference = referenceStockage(rapportUrl);
+  if (reference?.bucket === "rapports") return reference.chemin;
+  if (cheminStockageValide(rapportUrl) && !rapportUrl.includes(":")) return rapportUrl;
   throw new Error("Format URL rapport non reconnu");
 }
 
