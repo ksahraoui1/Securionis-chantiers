@@ -2,6 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useOfflineScope } from "@/components/ui/offline-provider";
+import { offlinePreferenceKey, assertOfflineScope } from "@/lib/offline/scope";
+import { getUnsyncedResponses } from "@/lib/offline/db";
 import { ChecklistItem } from "./checklist-item";
 import { ThemeAdder } from "./theme-adder";
 import { QuickAddPoint } from "./quick-add-point";
@@ -39,6 +42,9 @@ export function ChecklistForm({
   onValidate,
   validating,
 }: ChecklistFormProps) {
+  const scope = useOfflineScope();
+  const [restoredResponses, setRestoredResponses] = useState(existingReponses);
+  const [restoreError, setRestoreError] = useState(false);
   const [allPoints, setAllPoints] = useState<PointWithDocs[]>([]);
   const [points, setPoints] = useState<PointWithDocs[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +55,12 @@ export function ChecklistForm({
 
   // Load points based on current themeIds
   const loadPoints = useCallback(async (currentThemeIds: string[]) => {
+    try {
+    const pending = (await getUnsyncedResponses(scope)).filter(r => r.visite_id === visiteId);
+    const restored = { ...existingReponses };
+    for (const r of pending) restored[r.point_controle_id] = { id: existingReponses[r.point_controle_id]?.id ?? r.point_controle_id, valeur: r.valeur, remarque: r.remarque, photos: r.photos };
+    assertOfflineScope(scope);
+    setRestoredResponses(restored);
     const supabase = createClient();
 
     let query = supabase
@@ -99,13 +111,13 @@ export function ChecklistForm({
       setAllPoints(loaded);
 
       // Si des réponses existent déjà, on saute la sélection (visite reprise)
-      const hasExistingReponses = Object.keys(existingReponses).length > 0;
+      const hasExistingReponses = Object.keys(restored).length > 0;
       if (hasExistingReponses) {
         setPoints(loaded);
         setSelectionDone(true);
       } else {
         // Vérifier si une sélection précédente existe en localStorage
-        const storedSelection = localStorage.getItem(`visite-selected-points-${visiteId}`);
+        const storedSelection = localStorage.getItem(offlinePreferenceKey(scope, `visite-selected-points-${visiteId}`));
         if (storedSelection) {
           try {
             const savedIds = new Set<string>(JSON.parse(storedSelection));
@@ -119,18 +131,21 @@ export function ChecklistForm({
       }
     }
     setLoading(false);
-  }, [categorieIds, existingReponses]);
+    } catch { if (!scope.signal.aborted) { setRestoreError(true); setLoading(false); } }
+  }, [scope, visiteId, categorieIds, existingReponses]);
 
   // Initial load
   useEffect(() => {
-    const storedThemes = localStorage.getItem(`visite-themes-${visiteId}`);
-    const initialThemeIds: string[] = storedThemes ? JSON.parse(storedThemes) : [];
+    let initialThemeIds: string[] = [];
+    try {
+      const stored = localStorage.getItem(offlinePreferenceKey(scope, `visite-themes-${visiteId}`));
+      const parsed: unknown = stored ? JSON.parse(stored) : [];
+      if (Array.isArray(parsed)) initialThemeIds = parsed.filter((id): id is string => typeof id === "string");
+    } catch { /* La restauration IndexedDB reste obligatoire ci-dessous. */ }
     setThemeIds(initialThemeIds);
 
-    if (initialThemeIds.length > 0 || categorieIds.length > 0) {
-      loadPoints(initialThemeIds);
-    }
-  }, [categorieIds, visiteId, loadPoints]);
+    loadPoints(initialThemeIds);
+  }, [scope, categorieIds, visiteId, loadPoints]);
 
   // Handle adding new themes — append new points without losing existing ones
   async function handleThemesAdded(newThemeIds: string[]) {
@@ -142,7 +157,7 @@ export function ChecklistForm({
 
     const merged = [...new Set([...themeIds, ...onlyNew])];
     setThemeIds(merged);
-    localStorage.setItem(`visite-themes-${visiteId}`, JSON.stringify(merged));
+    localStorage.setItem(offlinePreferenceKey(scope, `visite-themes-${visiteId}`), JSON.stringify(merged));
     setShowThemeAdder(false);
 
     // Load only the new points
@@ -164,7 +179,7 @@ export function ChecklistForm({
         const updated = [...prev, ...toAdd];
         // Mettre à jour la sélection sauvegardée
         localStorage.setItem(
-          `visite-selected-points-${visiteId}`,
+          offlinePreferenceKey(scope, `visite-selected-points-${visiteId}`),
           JSON.stringify(updated.map((p) => p.id))
         );
         return updated;
@@ -178,7 +193,7 @@ export function ChecklistForm({
     setPoints(allPoints.filter((p) => selectedSet.has(p.id)));
     setSelectionDone(true);
     // Sauvegarder la sélection pour reprise
-    localStorage.setItem(`visite-selected-points-${visiteId}`, JSON.stringify(selectedIds));
+    localStorage.setItem(offlinePreferenceKey(scope, `visite-selected-points-${visiteId}`), JSON.stringify(selectedIds));
   }
 
   const handleChange = useCallback(
@@ -198,6 +213,8 @@ export function ChecklistForm({
     },
     [save, visiteId]
   );
+
+  if (restoreError) return <p role="alert" className="text-red-700">Impossible de reprendre les données locales. Rechargez la page avant de modifier cette visite.</p>;
 
   if (loading) {
     return (
@@ -239,7 +256,7 @@ export function ChecklistForm({
         </div>
       ) : (
         points.map((point) => {
-          const existing = existingReponses[point.id];
+          const existing = restoredResponses[point.id];
           return (
             <ChecklistItem
               key={point.id}

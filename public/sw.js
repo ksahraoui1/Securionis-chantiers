@@ -1,140 +1,42 @@
-// Service Worker — Securionis Chantiers
-// Stratégie : Network-first pour les pages, Cache-first pour les assets statiques.
-
-const CACHE_VERSION = "v9";
+// Service Worker — cache limité aux ressources publiques de cette origine.
+const CACHE_VERSION = "v10";
 const STATIC_CACHE = `securionis-static-${CACHE_VERSION}`;
-const PAGES_CACHE = `securionis-pages-${CACHE_VERSION}`;
-
-// Assets statiques à pré-cacher
+const PUBLIC_ASSETS = new Set(["/manifest.json", "/icon.svg", "/fonts/material-symbols-outlined.woff2"]);
 const PRECACHE_URLS = ["/manifest.json", "/icon.svg"];
 
-// Patterns d'assets statiques (cache-first)
-const STATIC_PATTERNS = [
-  /\/_next\/static\//,
-  /\.(svg|png|jpg|jpeg|webp|ico|woff2?)$/,
-];
-
-// Pages à cacher après visite (network-first)
-const CACHEABLE_PAGES = [
-  /^\/dashboard/,
-  /^\/chantiers/,
-  /^\/login/,
-];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
-  );
+self.addEventListener("install", event => {
+  event.waitUntil(caches.open(STATIC_CACHE).then(cache => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting()));
 });
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter(
-              (key) => key !== STATIC_CACHE && key !== PAGES_CACHE
-            )
-            .map((key) => caches.delete(key))
-        )
-      )
-      .then(() => self.clients.claim())
-  );
+self.addEventListener("activate", event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys
+    .filter(key => key.startsWith("securionis-") && key !== STATIC_CACHE)
+    .map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
-
-self.addEventListener("fetch", (event) => {
+self.addEventListener("fetch", event => {
   const { request } = event;
   const url = new URL(request.url);
-
-  // Ignorer les requêtes non-GET, non-http(s), et les API Supabase
-  if (request.method !== "GET") return;
-  if (!url.protocol.startsWith("http")) return;
-  if (url.hostname.includes("supabase")) return;
-  if (url.pathname.startsWith("/api/")) return;
-
-  // Assets statiques : cache-first
-  if (STATIC_PATTERNS.some((p) => p.test(url.pathname))) {
-    event.respondWith(cacheFirst(request, STATIC_CACHE));
-    return;
-  }
-
-  // Exclure les pages auth du cache (sécurité)
-  const AUTH_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/auth"];
-  if (AUTH_PATHS.some((p) => url.pathname.startsWith(p))) {
-    return; // Toujours fetch, jamais cache
-  }
-
-  // Pages : network-first (cache si offline)
-  if (
-    request.headers.get("accept")?.includes("text/html") &&
-    CACHEABLE_PAGES.some((p) => p.test(url.pathname))
-  ) {
-    event.respondWith(networkFirst(request, PAGES_CACHE));
-    return;
-  }
-
-  // Next.js data/RSC requests : network-first
-  if (
-    url.pathname.includes("_next/data") ||
-    request.headers.get("rsc") === "1"
-  ) {
-    event.respondWith(networkFirst(request, PAGES_CACHE));
-    return;
+  if (request.method !== "GET" || url.origin !== self.location.origin) return;
+  if (request.headers.get("authorization") || request.headers.get("rsc") === "1") return;
+  if (url.pathname.startsWith("/_next/static/") || PUBLIC_ASSETS.has(url.pathname)) {
+    event.respondWith(publicAsset(request));
+  } else if (request.mode === "navigate") {
+    // Aucun HTML authentifié, RSC, média privé ou réponse API dans CacheStorage.
+    event.respondWith(fetch(request).catch(() => new Response(
+      '<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hors ligne — Securionis</title><body style="font-family:system-ui;padding:2rem"><h1>Connexion nécessaire pour ouvrir cette page</h1><p>Vos modifications enregistrées restent sur cet appareil, liées à votre compte. Une visite déjà ouverte peut être renseignée hors ligne. Reconnectez-vous au réseau pour ouvrir une autre page.</p><button onclick="location.reload()">Réessayer</button></body></html>',
+      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
+    )));
   }
 });
-
-async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request);
+async function publicAsset(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
   if (cached) return cached;
-
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+    if (response.ok && !response.redirected && response.type !== "opaque"
+      && !/private|no-store/i.test(response.headers.get("cache-control") ?? "")) {
+      await cache.put(request, response.clone());
     }
     return response;
-  } catch {
-    return new Response("Offline", { status: 503 });
-  }
-}
-
-async function networkFirst(request, cacheName) {
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-
-    // Page offline de fallback
-    return new Response(
-      `<!DOCTYPE html>
-      <html lang="fr">
-      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>Hors-ligne — Securionis</title>
-      <style>
-        body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb;color:#374151}
-        .c{text-align:center;padding:2rem}
-        h1{font-size:1.5rem;margin-bottom:0.5rem}
-        p{color:#6b7280}
-        button{margin-top:1rem;padding:0.75rem 1.5rem;background:#1e40af;color:#fff;border:none;border-radius:0.5rem;font-size:1rem;cursor:pointer}
-      </style></head>
-      <body><div class="c">
-        <h1>Hors-ligne</h1>
-        <p>Cette page n'est pas disponible hors-ligne.<br>Vérifiez votre connexion.</p>
-        <button onclick="location.reload()">Réessayer</button>
-      </div></body></html>`,
-      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
-    );
-  }
+  } catch { return new Response("Ressource indisponible hors ligne", { status: 503 }); }
 }

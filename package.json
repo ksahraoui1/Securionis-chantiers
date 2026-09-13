@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test:security": "node --test tests/security.test.cjs"
+    "test:security": "node --test tests/*.test.cjs"
   },
   "keywords": [],
   "author": "",
@@ -40,7 +40,9 @@
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "fake-indexeddb": "6.2.5"
+  },
   "overrides": {
     "minimatch@3": {
       "brace-expansion": "^1.1.18"

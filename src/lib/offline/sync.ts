@@ -1,152 +1,83 @@
 "use client";
-
-// Synchronisation des données offline → Supabase
-// Appelé quand le réseau revient ou manuellement.
-
-import { createClient } from "@/lib/supabase/client";
+import { createOfflineClient } from "@/lib/offline/client";
+import { assertOfflineScope, type OfflineScope } from "@/lib/offline/scope";
 import { canoniserUrlsStockage } from "@/lib/utils/url-signee";
-import {
-  getUnsyncedResponses,
-  markResponseSynced,
-  getPendingPhotos,
-  deletePendingPhoto,
-} from "./db";
+import { cheminStockageValide, referenceStockage } from "@/lib/utils/storage-reference";
+import { getUnsyncedResponses, markResponseSynced, getAllPendingPhotos, deletePendingPhoto, type PendingPhoto } from "@/lib/offline/db";
 
-export type SyncResult = {
-  syncedResponses: number;
-  syncedPhotos: number;
-  conflicts: number;
-  errors: number;
-  discarded: number;
-};
-
-export async function syncPendingData(): Promise<SyncResult> {
-  const supabase = createClient();
-  let syncedResponses = 0;
-  let syncedPhotos = 0;
-  let conflicts = 0;
-  let errors = 0;
-  const discarded = 0;
-
-  // 1. Sync pending photos first (responses may reference uploaded URLs)
-  const pendingResponses = await getUnsyncedResponses();
-  const visiteIds = [...new Set(pendingResponses.map((r) => r.visite_id))];
-
-  // Une absence de lecture peut signifier MFA incomplet, droits révoqués ou
-  // panne réseau. Elle ne constitue jamais une preuve de suppression.
-  const existingVisiteIds = new Set<string>();
-  if (visiteIds.length > 0) {
-    const { data: existingVisites, error: lectureError } = await supabase
-      .from("visites")
-      .select("id")
-      .in("id", visiteIds);
-    if (lectureError || !existingVisites) {
-      return { syncedResponses, syncedPhotos, conflicts, errors: pendingResponses.length, discarded };
-    }
-    for (const v of existingVisites) existingVisiteIds.add(v.id as string);
-  }
-
-  for (const visiteId of visiteIds) {
-    const photos = await getPendingPhotos(visiteId);
-    for (const photo of photos) {
-      // Conserver les octets tant que la visibilité n'est pas rétablie.
-      if (!existingVisiteIds.has(visiteId)) {
-        errors++;
-        continue;
-      }
-      try {
-        const path = `${photo.chantier_id}/${photo.visite_id}/${photo.reponse_key}/${photo.filename}`;
-        const { error } = await supabase.storage
-          .from("visite-photos")
-          .upload(path, photo.blob, {
-            contentType: "image/jpeg",
-            upsert: false,
-          });
-
-        if (error) {
-          if (error.message.includes("already exists")) {
-            // Photo déjà présente sur le serveur — supprimer du pending sans erreur
-            await deletePendingPhoto(photo.id);
-            syncedPhotos++;
-          } else {
-            errors++;
-          }
-          continue;
-        }
-
-        await deletePendingPhoto(photo.id);
-        syncedPhotos++;
-      } catch {
-        errors++;
-      }
-    }
-  }
-
-  // 2. Sync pending responses avec détection de conflits
-  // Pré-charger en une seule requête les timestamps serveur des réponses concernées
-  // (évite un SELECT par réponse — problème N+1).
-  const serverUpdatedAt = new Map<string, string>();
-  if (visiteIds.length > 0) {
-    const { data: serverRecords, error: lectureReponsesError } = await supabase
-      .from("reponses")
-      .select("visite_id, point_controle_id, updated_at")
-      .in("visite_id", visiteIds);
-
-    if (lectureReponsesError || !serverRecords) {
-      return { syncedResponses, syncedPhotos, conflicts, errors: errors + pendingResponses.length, discarded };
-    }
-    for (const rec of serverRecords) {
-      serverUpdatedAt.set(`${rec.visite_id}:${rec.point_controle_id}`, rec.updated_at);
-    }
-  }
-
-  for (const response of pendingResponses) {
-    // La réponse reste en attente, même si la visite n'est plus visible.
-    if (!existingVisiteIds.has(response.visite_id)) {
-      errors++;
-      continue;
-    }
+export type SyncResult = { syncedResponses: number; syncedPhotos: number; conflicts: number; errors: number; discarded: number };
+const running = new WeakMap<OfflineScope, Promise<SyncResult>>();
+/** Sérialiser les appels de l'onglet sans perdre une saisie arrivée pendant un envoi. */
+export function syncPendingData(scope: OfflineScope): Promise<SyncResult> {
+  assertOfflineScope(scope);
+  const operation = (running.get(scope) ?? Promise.resolve()).catch(() => {}).then(() => synchronize(scope));
+  running.set(scope, operation);
+  return operation;
+}
+function photoPath(photo: PendingPhoto): string {
+  const path = `${photo.chantier_id}/${photo.visite_id}/${photo.reponse_key}/${photo.filename}`;
+  if (!cheminStockageValide(path)) throw new Error("Chemin de photo locale invalide");
+  return path;
+}
+async function synchronize(scope: OfflineScope): Promise<SyncResult> {
+  assertOfflineScope(scope);
+  const result: SyncResult = { syncedResponses: 0, syncedPhotos: 0, conflicts: 0, errors: 0, discarded: 0 };
+  const [responses, photos] = await Promise.all([getUnsyncedResponses(scope), getAllPendingPhotos(scope)]);
+  if (!responses.length && !photos.length) return result;
+  const supabase = await createOfflineClient(scope);
+  const visiteIds = [...new Set([...responses.map(r => r.visite_id), ...photos.map(p => p.visite_id)])];
+  const [visites, records] = await Promise.all([
+    supabase.from("visites").select("id, statut").in("id", visiteIds),
+    supabase.from("reponses").select("id, visite_id, point_controle_id, updated_at, photos").in("visite_id", visiteIds),
+  ]);
+  if (visites.error || !visites.data || records.error || !records.data) return { ...result, errors: responses.length + photos.length };
+  const writable = new Set(visites.data.filter(v => v.statut !== "terminee").map(v => v.id));
+  const server = new Map(records.data.map(r => [`${r.visite_id}:${r.point_controle_id}`, r]));
+  const processedPhotos = new Set<string>();
+  const upload = async (photo: PendingPhoto): Promise<void> => {
+    assertOfflineScope(scope);
+    const path = photoPath(photo);
+    const { error } = await supabase.storage.from("visite-photos").upload(path, photo.blob, { contentType: "image/jpeg", upsert: false });
+    if (!error) return;
+    // Après une réponse réseau perdue, le fichier peut déjà exister. Son nom
+    // seul n'est pas une preuve : comparer les octets avant de retirer la copie locale.
+    if (String(error.statusCode) !== "409" && !error.message.includes("already exists")) throw error;
+    const { data, error: downloadError } = await supabase.storage.from("visite-photos").download(path);
+    if (downloadError || !data || data.size !== photo.blob.size) throw new Error("Photo distante différente");
+    const [remote, local] = await Promise.all([data.arrayBuffer(), photo.blob.arrayBuffer()]);
+    const a = new Uint8Array(remote), b = new Uint8Array(local);
+    if (!a.every((byte, index) => byte === b[index])) throw new Error("Photo distante différente");
+  };
+  for (const response of responses) {
+    assertOfflineScope(scope);
+    const related = photos.filter(photo => photo.visite_id === response.visite_id && response.photos.some(url => referenceStockage(url)?.chemin === photoPath(photo)));
+    related.forEach(photo => processedPhotos.add(photo.id));
+    if (!writable.has(response.visite_id)) { result.errors++; continue; }
+    const remote = server.get(response.key);
+    if (remote && Date.parse(remote.updated_at) > Date.parse(response.updated_at)) { result.conflicts++; continue; }
     try {
-      // Vérifier si une version plus récente existe déjà sur le serveur
-      const serverTimestamp = serverUpdatedAt.get(
-        `${response.visite_id}:${response.point_controle_id}`
-      );
-
-      if (serverTimestamp) {
-        const serverTime = new Date(serverTimestamp).getTime();
-        const localTime = new Date(response.updated_at).getTime();
-
-        if (serverTime > localTime) {
-          // Conserver les deux versions jusqu'à une résolution explicite.
-          // Une date client ne justifie pas la destruction du travail local.
-          conflicts++;
-          continue;
-        }
+      for (const photo of related) await upload(photo);
+      assertOfflineScope(scope);
+      const { data, error } = await supabase.from("reponses").upsert({
+        visite_id: response.visite_id, point_controle_id: response.point_controle_id,
+        valeur: response.valeur, remarque: response.remarque, photos: canoniserUrlsStockage(response.photos), updated_at: response.updated_at,
+      }, { onConflict: "visite_id,point_controle_id" }).select("id");
+      if (error || data?.length !== 1) { result.errors++; continue; }
+      assertOfflineScope(scope);
+      const acknowledged = await markResponseSynced(scope, response.key, response.revision);
+      if (acknowledged) {
+        result.syncedResponses++;
+        for (const photo of related) { await deletePendingPhoto(scope, photo.id); result.syncedPhotos++; }
       }
-
-      const { error } = await supabase.from("reponses").upsert(
-        {
-          visite_id: response.visite_id,
-          point_controle_id: response.point_controle_id,
-          valeur: response.valeur,
-          remarque: response.remarque,
-          photos: canoniserUrlsStockage(response.photos),
-          updated_at: response.updated_at,
-        },
-        { onConflict: "visite_id,point_controle_id" }
-      );
-
-      if (error) {
-        errors++;
-        continue;
-      }
-
-      await markResponseSynced(response.key);
-      syncedResponses++;
-    } catch {
-      errors++;
-    }
+      await supabase.from("visites").update({ statut: "en_cours" }).eq("id", response.visite_id).eq("statut", "brouillon");
+    } catch { result.errors++; }
   }
-
-  return { syncedResponses, syncedPhotos, conflicts, errors, discarded };
+  // Une photo seule ne disparaît que si une réponse serveur la référence déjà.
+  for (const photo of photos.filter(p => !processedPhotos.has(p.id))) {
+    assertOfflineScope(scope);
+    const referenced = records.data.some(r => r.visite_id === photo.visite_id && (r.photos ?? []).some((url: string) => referenceStockage(url)?.chemin === photoPath(photo)));
+    if (!writable.has(photo.visite_id) || !referenced) { result.errors++; continue; }
+    try { await upload(photo); await deletePendingPhoto(scope, photo.id); result.syncedPhotos++; } catch { result.errors++; }
+  }
+  return result;
 }

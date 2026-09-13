@@ -1,4 +1,5 @@
 "use client";
+import { unlockOfflineSessionAfterLogin } from "@/lib/offline/scope";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -65,6 +66,10 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    try { unlockOfflineSessionAfterLogin(); } catch {
+      setError("Mot de passe modifié. Autorisez le stockage local du site puis reconnectez-vous.");
+      setLoading(false); return;
+    }
     setSuccess(true);
     setLoading(false);
 

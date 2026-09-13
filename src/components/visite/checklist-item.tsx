@@ -52,12 +52,11 @@ export function ChecklistItem({
     chantierId,
     visiteId,
     reponseId,
+    pointId: pointControle.id,
   });
 
   useEffect(() => {
-    if (initialPhotos.length > 0) {
-      photoUpload.initPhotos(initialPhotos);
-    }
+    photoUpload.initPhotos(initialPhotos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -93,10 +92,9 @@ export function ChecklistItem({
     }
   }
 
-  function handlePhotoRemove(url: string) {
+  async function handlePhotoRemove(url: string) {
     const newPhotos = photoUpload.photos.filter((p) => p !== url);
-    photoUpload.removePhoto(url);
-    emitChange(valeur, remarque, newPhotos);
+    if (await photoUpload.removePhoto(url)) emitChange(valeur, remarque, newPhotos);
   }
 
   async function handleReplaceAnnotated(oldUrl: string, blob: Blob) {

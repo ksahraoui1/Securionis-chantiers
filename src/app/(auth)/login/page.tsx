@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { logoutOfflineSession } from "@/lib/offline/logout";
+import { unlockOfflineSessionAfterLogin } from "@/lib/offline/scope";
 import { FormulaireCodeMfa } from "@/components/compte/formulaire-code-mfa";
 
 export default function LoginPage() {
@@ -14,6 +16,13 @@ export default function LoginPage() {
   /** Facteur à confirmer quand le mot de passe ne suffit pas (APP-03). */
   const [facteurAConfirmer, setFacteurAConfirmer] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("deconnexion") === "locale") {
+      const timer = setTimeout(() => setError("La session locale a été effacée. La révocation distante n’a pas pu être confirmée."), 0);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,6 +39,11 @@ export default function LoginPage() {
       setError("Email ou mot de passe incorrect.");
       setLoading(false);
       return;
+    }
+
+    try { unlockOfflineSessionAfterLogin(); } catch {
+      setError("Autorisez le stockage local de ce site pour ouvrir une session isolée.");
+      setLoading(false); return;
     }
 
     // Le mot de passe donne une session de niveau simple. Si un second facteur
@@ -52,11 +66,8 @@ export default function LoginPage() {
   }
 
   async function abandonner() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    setFacteurAConfirmer(null);
-    setPassword("");
-    setLoading(false);
+    const revoked = await logoutOfflineSession();
+    window.location.replace(revoked ? "/login" : "/login?deconnexion=locale");
   }
 
   if (facteurAConfirmer) {

@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { useOfflineScope } from "@/components/ui/offline-provider";
+import { offlinePreferenceKey } from "@/lib/offline/scope";
+import { createOfflineClient } from "@/lib/offline/client";
 import type { Tables } from "@/types/database";
 
 interface NouvelleVisiteFormProps {
@@ -17,6 +20,7 @@ export function NouvelleVisiteForm({
   chantierId,
   inspecteurId,
 }: NouvelleVisiteFormProps) {
+  const scope = useOfflineScope();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -187,7 +191,7 @@ export function NouvelleVisiteForm({
     setError(null);
 
     try {
-      const supabase = createClient();
+      const supabase = await createOfflineClient(scope);
 
       const { data: visite, error: insertError } = await supabase
         .from("visites")
@@ -205,7 +209,7 @@ export function NouvelleVisiteForm({
       }
 
       // Store selected theme IDs in localStorage for the checklist to use
-      localStorage.setItem(`visite-themes-${visite.id}`, JSON.stringify(selectedThemeIds));
+      localStorage.setItem(offlinePreferenceKey(scope, `visite-themes-${visite.id}`), JSON.stringify(selectedThemeIds));
 
       router.push(`/chantiers/${chantierId}/visites/${visite.id}`);
     } catch (err) {
