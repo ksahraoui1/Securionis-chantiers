@@ -260,6 +260,7 @@ interface RapportVisiteProps {
   entrepriseTelephone?: string | null;
   entrepriseEmail?: string | null;
   versionId?: string;
+  archiveMention?: string;
 }
 
 export function RapportVisite({
@@ -275,6 +276,7 @@ export function RapportVisite({
   entrepriseTelephone,
   entrepriseEmail,
   versionId,
+  archiveMention,
 }: RapportVisiteProps) {
   const dateFormatted = new Date(visite.date_visite).toLocaleDateString(
     "fr-CH",
@@ -336,6 +338,7 @@ export function RapportVisite({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {archiveMention && <Text style={{ fontSize: 7, color: "#6b7280", marginBottom: 8 }}>{archiveMention}</Text>}
         {/* Header */}
         {entrepriseLogoUrl ? (
           <View style={styles.headerRow}>

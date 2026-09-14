@@ -1,3 +1,5 @@
+import { ArchiveSources } from "@/components/visite/archive-sources";
+import { canAccessChantier, getUserRole } from "@/lib/utils/security";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { RapportActions } from "./rapport-actions";
@@ -120,6 +122,9 @@ export default async function RapportPage({
     } catch { return { ...version, url: null }; }
   }));
 
+  const { data: archive, error: archiveError } = await supabase.from("visite_archives").select("id,mode,sha256,created_at").eq("visite_id", visiteId).maybeSingle();
+  const role = await getUserRole(supabase, user.id);
+  const peutArchiver = (role === "administrateur" || role === "inspecteur") && await canAccessChantier(supabase, user.id, chantierId);
   const ncCount =
     reponses?.filter((r) => r.valeur === "non_conforme").length ?? 0;
   const conformeCount =
@@ -170,7 +175,7 @@ export default async function RapportPage({
                 {new Date(visite.date_visite).toLocaleDateString("fr-CH")} ont été corrigées
               </p>
               <p className="text-xs text-green-700 mt-1">
-                Vous pouvez régénérer le rapport PDF mis à jour et l&apos;envoyer par email aux destinataires.
+                Le suivi des corrections est à jour ci-dessous. Les constats et les sources archivés restent ceux de la visite.
               </p>
             </div>
           </div>
@@ -240,6 +245,8 @@ export default async function RapportPage({
           </p>
         </div>
       )}
+
+      {(role === "administrateur" || role === "inspecteur") && <ArchiveSources visiteId={visiteId} auteurId={user.id} archive={archive} erreur={!!archiveError} editable={peutArchiver} />}
 
       <RapportActions
         visiteId={visiteId}

@@ -31,7 +31,7 @@ test('Toutes les routes API refusent le MFA incomplet avant tout privilège', as
   const { NextRequest } = require('next/server');
   const dir = path.resolve(__dirname, '../src/app/api');
   const files = fs.readdirSync(dir, { recursive: true }).filter(f => f.endsWith('route.ts'));
-  assert.equal(files.length, 18);
+  assert.equal(files.length, 19);
   for (const file of files) {
     const route = load(path.join(dir, file), { '@/lib/supabase/server': {
       createClient: async () => session(false),
@@ -190,6 +190,12 @@ test('Génération : motif obligatoire, droits actuels et données complètes av
   const client = { auth: { getUser: async () => ({ data: { user }, error: null }) }, rpc: async () => ({ data: true, error: null }),
     storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://signed.test/file' }, error: null }) }) },
     from(table) {
+      if (table === 'visite_archives') {
+        const contenu = JSON.stringify({ format: 'securionis-archive-v1', mode: 'cloture', fichiers: [], source: { visite: { ...visit, statut: 'terminee' }, chantier: { id: visit.chantier_id, adresse: 'Adresse figée' }, inspecteur: { nom: 'Inspecteur figé', email: '' }, entreprise: {}, reponses: answers, ecarts: [], destinataires: [] } });
+        const archive = { id: 'archive-test', visite_id: visit.id, mode: 'cloture', created_at: '2026-09-14', contenu, sha256: require('node:crypto').createHash('sha256').update(contenu).digest('hex') };
+        const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: answers === null ? null : archive, error: answers === null ? Error('lecture refusée') : null }) };
+        return query;
+      }
       const data = { visites: { ...visit, inspecteur_id: user.id, statut: 'terminee', rapport_url: 'ancien' }, chantiers: { id: visit.chantier_id }, profiles: { nom: 'Test', email: 'test@example.test', entreprise_id: null }, reponses: answers, ecarts: [], destinataires: [] }[table];
       const result = { data, error: data === null ? Error('lecture refusée') : null };
       const query = { select: () => query, eq: () => query, order: () => query, single: async () => result, then: (ok, fail) => Promise.resolve(result).then(ok, fail) };
@@ -202,7 +208,7 @@ test('Génération : motif obligatoire, droits actuels et données complètes av
     '@/lib/roles/limites': { getLimits: () => ({ canGeneratePdf: true }) },
     '@/lib/rate-limit': { checkRateLimit: async () => true },
     '@react-pdf/renderer': { renderToBuffer: async () => { rendered++; return Buffer.from('PDF'); } },
-    '@/components/pdf/rapport-visite': { RapportVisite: props => { assert.ok(props.versionId); assert.equal(props.signatureDataUri, undefined); return props; } },
+    '@/components/pdf/rapport-visite': { RapportVisite: props => { assert.ok(props.versionId); assert.equal(props.chantier.adresse, "Adresse figée"); assert.equal(props.inspecteur.nom, "Inspecteur figé"); assert.equal(props.signatureDataUri, undefined); return props; } },
     '@/lib/supabase/rapport-version': { ...load('src/lib/supabase/rapport-version.ts'), enregistrerVersionRapport: async (_, input) => { published++; assert.equal(input.motif, 'Réédition documentée'); return { chemin: 'version', sha256: 'hash' }; } },
   });
   const invoke = body => route.POST(new NextRequest('https://app.test/api/visites/id/pdf', { method: 'POST', body: JSON.stringify(body) }), { params: Promise.resolve({ id: visit.id }) });
@@ -212,7 +218,7 @@ test('Génération : motif obligatoire, droits actuels et données complètes av
   assigned = true;
   assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'autre-version' })).status, 409);
   answers = null;
-  assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'ancien' })).status, 500);
+  assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'ancien' })).status, 503);
   assert.equal(published, 0); assert.equal(rendered, 0);
   answers = [];
   assert.equal((await invoke({ motif: 'Réédition documentée', rapportReference: 'ancien' })).status, 200);
