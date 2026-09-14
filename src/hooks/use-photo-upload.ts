@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { assertOfflineScope, OFFLINE_CHANGED_EVENT } from "@/lib/offline/scope";
+import { runOfflinePreparation } from "@/lib/offline/preparations";
 import { useOfflineScope } from "@/components/ui/offline-provider";
 import { compressPhoto, validatePhoto } from "@/lib/utils/photo-compress";
 import { MAX_PHOTOS } from "@/lib/utils/constants";
@@ -63,12 +64,12 @@ export function usePhotoUpload({ chantierId, visiteId, reponseId, pointId }: Use
     if (invalid) { setError(invalid); return null; }
     setUploading(true);
     try {
-      const url = await queuePhoto(await compressPhoto(file));
+      const url = await runOfflinePreparation(scope, async () => queuePhoto(await compressPhoto(file)));
       setPhotos(prev => [...prev, url]);
       return url;
     } catch { setError("La photo n’a pas pu être sauvegardée sur cet appareil. Réessayez."); return null; }
     finally { setUploading(false); }
-  }, [photos.length, queuePhoto]);
+  }, [scope, photos.length, queuePhoto]);
   const removePhoto = useCallback(async (url: string) => {
     try {
       assertOfflineScope(scope);
@@ -83,7 +84,7 @@ export function usePhotoUpload({ chantierId, visiteId, reponseId, pointId }: Use
   const replacePhoto = useCallback(async (oldUrl: string, blob: Blob): Promise<string | null> => {
     setUploading(true); setError(null);
     try {
-      const url = await queuePhoto(blob);
+      const url = await runOfflinePreparation(scope, () => queuePhoto(blob));
       const original = previewRef.current[oldUrl];
       if (original) await deletePendingPhoto(scope, original.idLocal);
       setPhotos(prev => prev.map(p => p === oldUrl ? url : p));
