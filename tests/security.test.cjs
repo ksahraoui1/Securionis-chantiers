@@ -147,12 +147,12 @@ test('Synchronisation : erreur, absence RLS et conflit conservent la file', asyn
       if (table === 'visites') return situation === 'network' ? { data: null, error: Error('réseau') } : { data: situation === 'invisible' ? [] : [{ id: 'v' }], error: null };
       return { data: [{ visite_id: 'v', point_controle_id: 'p', updated_at: '2026-09-13T12:00:00Z' }], error: null };
     } }) }) };
-    const module = load('src/lib/offline/sync.ts', { '@/lib/supabase/client': { createClient: () => client }, './db': {
+    const module = load('src/lib/offline/sync.ts', { '@/lib/offline/client': { createOfflineClient: async () => client }, '@/lib/offline/scope': { assertOfflineScope() {} }, '@/lib/offline/db': {
       getUnsyncedResponses: async () => [pending],
-      getPendingPhotos: async () => situation === 'conflict' ? [] : [{ id: 1 }],
+      getAllPendingPhotos: async () => [],
       deletePendingPhoto: async () => { deleted++; }, markResponseSynced: async () => { marked++; },
     } });
-    const result = await module.syncPendingData();
+    const result = await module.syncPendingData({});
     assert.equal(deleted, 0, situation); assert.equal(marked, 0, situation);
     assert.equal(result.discarded, 0, situation);
     assert.equal(situation === 'conflict' ? result.conflicts : result.errors > 0, situation === 'conflict' ? 1 : true);

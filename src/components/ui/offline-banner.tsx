@@ -3,9 +3,9 @@
 import { useOnlineStatus } from "@/hooks/use-online-status";
 
 export function OfflineBanner() {
-  const { isOnline, pendingCount, syncing, triggerSync } = useOnlineStatus();
+  const { isOnline, pendingCount, syncing, syncError, triggerSync } = useOnlineStatus();
 
-  if (isOnline && pendingCount === 0) return null;
+  if (isOnline && pendingCount === 0 && !syncError) return null;
 
   return (
     <div
@@ -15,9 +15,10 @@ export function OfflineBanner() {
           : "bg-red-50 text-red-800 border-b border-red-200"
       }`}
     >
+      {syncError && <p role="status">{syncError}</p>}
       {!isOnline && (
         <span>
-          Hors-ligne — les modifications sont sauvegardées localement
+          Hors-ligne — gardez cette visite ouverte. Vérifiez l’état de sauvegarde de vos saisies.
         </span>
       )}
       {isOnline && pendingCount > 0 && (

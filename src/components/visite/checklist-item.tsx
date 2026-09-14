@@ -52,12 +52,11 @@ export function ChecklistItem({
     chantierId,
     visiteId,
     reponseId,
+    pointId: pointControle.id,
   });
 
   useEffect(() => {
-    if (initialPhotos.length > 0) {
-      photoUpload.initPhotos(initialPhotos);
-    }
+    photoUpload.initPhotos(initialPhotos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -93,10 +92,9 @@ export function ChecklistItem({
     }
   }
 
-  function handlePhotoRemove(url: string) {
+  async function handlePhotoRemove(url: string) {
     const newPhotos = photoUpload.photos.filter((p) => p !== url);
-    photoUpload.removePhoto(url);
-    emitChange(valeur, remarque, newPhotos);
+    if (await photoUpload.removePhoto(url)) emitChange(valeur, remarque, newPhotos);
   }
 
   async function handleReplaceAnnotated(oldUrl: string, blob: Blob) {
@@ -122,7 +120,8 @@ export function ChecklistItem({
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-400 p-4 space-y-4">
+    <fieldset disabled={!photoUpload.ready} className="min-w-0 bg-white rounded-lg border border-gray-400 p-4 space-y-4">
+      {!photoUpload.ready && <p role="status" className="text-sm text-gray-500">Reprise des photos locales…</p>}
       <div>
         <p className="font-medium text-gray-900">{pointControle.intitule}</p>
         {pointControle.critere && (
@@ -251,6 +250,6 @@ export function ChecklistItem({
         }}
         onInsertRemarque={handleAiRemarque}
       />
-    </div>
+    </fieldset>
   );
 }

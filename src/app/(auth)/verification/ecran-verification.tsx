@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { logoutOfflineSession } from "@/lib/offline/logout";
 import { FormulaireCodeMfa } from "@/components/compte/formulaire-code-mfa";
 
 export function EcranVerification({
@@ -14,10 +14,8 @@ export function EcranVerification({
   const router = useRouter();
 
   async function seDeconnecter() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    const revoked = await logoutOfflineSession().catch(() => false);
+    window.location.replace(revoked ? "/login" : "/login?deconnexion=locale");
   }
 
   return (

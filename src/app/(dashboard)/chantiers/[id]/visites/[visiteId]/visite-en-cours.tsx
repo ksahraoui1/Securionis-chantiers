@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChecklistForm } from "@/components/visite/checklist-form";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { createOfflineClient } from "@/lib/offline/client";
+import { useOfflineScope } from "@/components/ui/offline-provider";
+import { flushOfflineWrites, getUnsyncedResponses, getPendingPhotos } from "@/lib/offline/db";
+import { syncPendingData } from "@/lib/offline/sync";
 import { VALEURS_REPONSE, stripMarkdown } from "@/lib/utils/constants";
 
 interface VisiteEnCoursProps {
@@ -30,6 +33,7 @@ export function VisiteEnCours({
   categorieIds,
   existingReponses,
 }: VisiteEnCoursProps) {
+  const scope = useOfflineScope();
   const router = useRouter();
   const [validating, setValidating] = useState(false);
   const [showDelaiModal, setShowDelaiModal] = useState(false);
@@ -43,12 +47,22 @@ export function VisiteEnCours({
   const [remarquesGenerales, setRemarquesGenerales] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const handleValidate = useCallback(async () => {
+  async function readyToFinalize() {
+    await flushOfflineWrites(scope);
+    await syncPendingData(scope);
+    const [responses, photos] = await Promise.all([getUnsyncedResponses(scope), getPendingPhotos(scope, visiteId)]);
+    if (responses.some(r => r.visite_id === visiteId) || photos.length) {
+      throw new Error("Cette visite contient encore des réponses ou photos locales. Terminez leur synchronisation avant de valider.");
+    }
+    return createOfflineClient(scope);
+  }
+
+  async function handleValidate() {
     setValidating(true);
     setError(null);
 
     try {
-      const supabase = createClient();
+      const supabase = await readyToFinalize();
 
       // Fetch all reponses for this visite
       const { data: allReponses } = await supabase
@@ -107,7 +121,7 @@ export function VisiteEnCours({
       );
       setValidating(false);
     }
-  }, [visiteId]);
+  }
 
   async function handleDelaiConfirm() {
     const updated = [...ecartDrafts];
@@ -130,7 +144,7 @@ export function VisiteEnCours({
 
   async function finalizeVisite(drafts: EcartDraft[]) {
     try {
-      const supabase = createClient();
+      const supabase = await readyToFinalize();
 
       // FR-027: Create ecarts for each non-conforme
       if (drafts.length > 0) {
@@ -152,17 +166,17 @@ export function VisiteEnCours({
       }
 
       // Update visite statut to terminee + renseignements_par + remarques_generales
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabase
         .from("visites")
         .update({
           statut: "terminee",
           renseignements_par: renseignementsPar.trim() || null,
           remarques_generales: remarquesGenerales.trim() || null,
         })
-        .eq("id", visiteId);
+        .eq("id", visiteId).select("id");
 
-      if (updateError) {
-        throw new Error(updateError.message);
+      if (updateError || updated?.length !== 1) {
+        throw new Error(updateError?.message ?? "La visite n’a pas été mise à jour.");
       }
 
       router.push(`/chantiers/${chantierId}/visites/${visiteId}/rapport`);

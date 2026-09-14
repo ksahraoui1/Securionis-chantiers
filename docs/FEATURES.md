@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-13 (deuxième lot de corrections de sécurité)
+> Dernière mise à jour : 2026-09-13 (troisième lot de corrections de sécurité)
 
 ## Sécurité des sessions et des rapports
 
@@ -20,7 +20,7 @@ Le lot du 13 septembre 2026 couvre le MFA (S01), les références de rapports (S
 
 Validation du 13 septembre : 9 tests Node réussis, contrôle TypeScript et build local Webpack réussis ; scénario SQL PostgreSQL 17 réussi. Sur Supabase, les 94 références historiques correspondent au format attendu. Les migrations 055 et 056 sont appliquées et enregistrées sous `20260913160055` et `20260913160056` : 24 politiques MFA restrictives et le trigger de protection sont actifs. La simulation transactionnelle sur les données réelles confirme zéro chantier, visite ou objet visible pour le compte MFA en `aal1`, et les accès conservés en `aal2`. Aucun enregistrement métier n’a été supprimé pendant ces vérifications.
 
-Les rapports restent régénérables sous le même chemin : ce lot n’instaure pas l’immutabilité documentaire de S06. Il ne clôture pas l’isolation multi-entreprise, la protection du cache entre comptes, les réglages GitHub ou l’ensemble des autres constats du rapport d’audit.
+À la fin du lot 1, les rapports restaient régénérables sous le même chemin : ce lot n’instaure pas l’immutabilité documentaire de S06. Il ne clôture pas l’isolation multi-entreprise, la protection du cache entre comptes, les réglages GitHub ou l’ensemble des autres constats du rapport d’audit.
 
 ## Bibliothèque privée et versions des rapports — lot 2
 
@@ -36,13 +36,38 @@ Les rapports restent régénérables sous le même chemin : ce lot n’instaure 
 
 Les tests Node couvrent les chemins, l’absence d’écrasement, le calcul de l’empreinte, le conflit de publication, le motif, l’affectation actuelle, les lectures en erreur et le refus d’envoyer une autre version. `tests/security-db-versions.sql` reprend le lot précédent puis applique les vraies politiques Storage et les migrations 057/058 sur PostgreSQL jetable : invité/inspecteur/admin, déplacements, historique, réapplication et publication. GitHub Actions exécute désormais cette suite SQL avec PostgreSQL 17. Aucun email réel n’est envoyé par ces tests.
 
-Ce lot traite l’accès Storage de S05 et une partie de S06. Il ne clôture pas S06 : les constats d’une visite terminée ne sont pas encore figés par une clôture atomique, les images sources peuvent évoluer et le parcours d’avenant validé reste à construire. L’empreinte d’un PDF permet de vérifier ses octets ; elle ne constitue pas une signature électronique du validateur. Le modèle multi-entreprise S09 et l’isolation locale S08 restent à traiter. Les contrôles SQL ne remplacent pas une recette HTTP Storage avec des comptes de test distincts.
+Ce lot traite l’accès Storage de S05 et une partie de S06. Il ne clôture pas S06 : les constats d’une visite terminée ne sont pas encore figés par une clôture atomique, les images sources peuvent évoluer et le parcours d’avenant validé reste à construire. L’empreinte d’un PDF permet de vérifier ses octets ; elle ne constitue pas une signature électronique du validateur. À la fin du lot 2, le modèle multi-entreprise S09 et l’isolation locale S08 restaient à traiter (voir le lot 3 pour S08). Les contrôles SQL ne remplacent pas une recette HTTP Storage avec des comptes de test distincts.
 
 Validation du lot 2 le 13 septembre : 12 tests Node et la suite SQL PostgreSQL 17 réussis, TypeScript et lint sans erreur. La simulation sur Supabase confirme 0 fichier de bibliothèque pour l’invité, 5 pièces de checklist conservées, 76 fichiers pour l’inspecteur et 94 rapports historiques repris. Les migrations sont enregistrées sous `20260913170057` et `20260913170058`.
 
 ### Déploiement du lot 2
 
 Appliquer 057 et 058 avant la bascule du code, enregistrer les migrations, puis construire l’image, exécuter les tests et déployer le commit publié. Recharger les anciens onglets pour les nouvelles demandes de motif et de version email (service worker v9). Conserver l’image précédente, mais après publication d’un chemin `/versions/`, un retour à un code qui ne reconnaît pas ce format exige un correctif compatible : ne pas supprimer les archives ni rouvrir les politiques pour revenir en arrière. Les fichiers téléversés sans publication confirmée doivent être rapprochés de `rapport_versions` avant tout nettoyage.
+
+## Isolation locale et synchronisation — lot 3
+
+Ce lot traite la séparation locale S08 et renforce la conservation des saisies S07. Il ne modifie aucune politique Supabase et ne nécessite aucune migration SQL.
+
+- **Périmètre obligatoire** : les réponses, les blobs photo et le cache de lecture utilisent une base IndexedDB par UUID de compte et UUID d’entreprise (ou absence d’entreprise explicite). Les sélections de thèmes et de points en localStorage portent le même périmètre. Une opération n’accepte jamais implicitement le « compte courant ». Une session terminée ne peut plus lancer de lecture, d’écriture ou de synchronisation. Une écriture locale déjà acceptée peut finir dans sa base d’origine.
+- **Écran et réseau** : le contenu privé ne s’affiche qu’après concordance entre la session du navigateur et l’identité du layout serveur. Changement de compte, déconnexion et départ de page masquent ce contenu et interrompent le périmètre. Un verrou local prévient les autres onglets ; un retour depuis le cache de navigation force le rechargement. Les envois utilisent un JWT capturé, vérifié par Auth, puis contrôlent le MFA et l’entreprise actuelle. Les requêtes n’empruntent pas le jeton d’un compte connecté pendant l’attente et sont annulées à l’arrêt du périmètre.
+- **Saisie et accusés** : chaque changement de réponse est écrit immédiatement dans IndexedDB ; seul le réseau est temporisé. Une révision locale unique empêche l’accusé d’un ancien envoi d’effacer une frappe plus récente. L’état « sauvegardé hors ligne » n’est affiché qu’après réussite de l’écriture locale. La reprise de la checklist recharge les réponses en attente du même périmètre avant de monter les champs.
+- **Photos** : captures et annotations sont d’abord conservées comme blobs locaux, même en ligne. Le synchroniseur envoie le fichier avant la réponse et n’efface sa copie qu’après l’accusé de cette réponse, ou après vérification qu’une réponse serveur le référence déjà. Un fichier déjà présent est comparé octet par octet avant acceptation. Conflit, visite invisible/terminée, erreur réseau ou nouvelle révision conservent les données. Les aperçus locaux sont reconstitués à la reprise ; les contrôles du point attendent cette reprise avant d’accepter une modification, pour éviter qu’une saisie trop rapide écrase ses références photo ; les URL blob sont libérées au démontage. Une suppression demandée dans l’interface retire la référence et, le cas échéant, la copie locale. Les originaux distants sont conservés pour les versions antérieures des rapports ; leur nettoyage nécessite une procédure distincte.
+- **Validation** : avant lecture des réponses puis clôture, la visite attend les écritures locales et leur synchronisation. Une réponse ou photo restante pour cette visite bloque la validation avec un message explicite. Cela ne constitue pas encore une clôture atomique côté base.
+- **Déconnexion** : un avertissement signale les éléments en attente. Les réponses et photos enregistrées restent sur l’appareil pour le même compte et la même entreprise ; le cache de lecture est purgé. La révocation distante est tentée pendant au plus cinq secondes ; les cookies Auth de ce projet sont effacés localement même en cas d’échec, puis une navigation complète ferme le contexte mémoire. L’écran de connexion indique si la révocation distante n’a pas été confirmée. Le verrou n’est levé qu’après une authentification réussie.
+- **Service worker v10** : seul le code statique Next.js et une courte liste de ressources publiques de l’origine sont mis en cache. Aucun HTML de page authentifiée, flux RSC, appel API, média privé ou objet Supabase n’est conservé par ce cache. L’activation retire les anciens caches Securionis. Hors ligne, une nouvelle navigation montre une page neutre 503 ; une visite déjà chargée peut continuer à être renseignée. L’ouverture à froid d’une visite hors ligne n’est pas proposée.
+- **Ancien stockage** : la base historique `securionis-offline` ne contient pas de propriétaire vérifiable. Elle est conservée à part, sans lecture de son contenu, attribution automatique, synchronisation ni purge. Un bandeau signale son existence ; une récupération éventuelle demande une procédure d’identification du propriétaire. Les anciennes préférences non rattachées ne sont plus lues.
+
+### Vérification et limites du lot 3
+
+Les 24 tests Node incluent douze scénarios supplémentaires : séparation utilisateur/entreprise, changement de session pendant une écriture, accusé de révision, conservation et expiration, ancienne base, JWT capturé avec le vrai SDK et transport fictif, contrôles MFA/profil, photos en échec/doublon, caches du service worker et déconnexion réseau en erreur. IndexedDB est testé avec `fake-indexeddb` ; ces tests ne sollicitent aucun compte réel et n’envoient aucun email. TypeScript, lint (18 avertissements préexistants, aucune erreur) et build local Webpack passent.
+
+Recette navigateur locale le 13 septembre : composant `OfflineProvider` réel sous React StrictMode, moteur IndexedDB du navigateur et événements Auth fictifs. A enregistre une réponse et une photo ; un changement de session vers B masque immédiatement l’écran A ; B lit une file vide ; le retour à A restitue les deux éléments. Le verrouillage dans un onglet verrouille également le second. Cette recette ne remplace pas une campagne avec comptes Supabase distincts, reconnexions mobiles et coupures réseau physiques.
+
+Le chiffrement au repos de l’appareil n’est pas ajouté : un utilisateur ayant accès au profil du navigateur ou aux outils de développement peut inspecter son stockage. L’ancienne file reste à récupérer manuellement si elle contient des saisies utiles. La résolution guidée des conflits, la comparaison atomique des versions de réponses côté serveur, la clôture transactionnelle S06 et l’isolation multi-entreprise serveur S09 restent ouvertes. Une réponse peut encore évoluer côté serveur entre la lecture de conflit et l’écriture ; ce lot ne prétend pas résoudre cette concurrence. Les saisies qui n’ont pas obtenu de confirmation locale (stockage refusé, photo encore en préparation) ne sont pas garanties après fermeture.
+
+### Déploiement du lot 3
+
+Publier le commit testé, vérifier GitHub Actions, conserver l’image `044cea2` pour retour arrière, puis construire et basculer le conteneur sans `docker compose down`. Vérifier la santé, la page de connexion et le service worker v10, puis recharger l’application. Tous les anciens onglets doivent être rechargés pour remplacer le code déjà chargé en mémoire. Ne supprimer aucune base locale lors du déploiement ou d’un retour arrière ; l’ancien code ne sait pas relire les files v2. Un retour arrière exige donc une nouvelle mise à niveau avant de reprendre ces files.
 
 ## 1. Annotation des photos
 

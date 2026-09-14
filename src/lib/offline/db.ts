@@ -1,242 +1,109 @@
-// IndexedDB store pour le mode hors-ligne.
-// Stocke les réponses en attente de sync et les fiches déjà consultées.
+import { assertOfflineScope, OFFLINE_CHANGED_EVENT, type OfflineScope } from "@/lib/offline/scope";
 
-const DB_NAME = "securionis-offline";
-const DB_VERSION = 1;
+const STORES = { RESPONSES: "pending_responses", VISITES: "cached_visites", PHOTOS: "pending_photos" } as const;
+const writes = new Map<string, Promise<unknown>>();
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-const STORES = {
-  PENDING_RESPONSES: "pending_responses",
-  CACHED_VISITES: "cached_visites",
-  PENDING_PHOTOS: "pending_photos",
-} as const;
-
-function openDB(): Promise<IDBDatabase> {
+// L'ancienne base sans propriétaire n'est ni lue, ni attribuée, ni supprimée.
+export async function hasLegacyOfflineDatabase(): Promise<boolean> {
+  return typeof indexedDB.databases === "function" && (await indexedDB.databases()).some(db => db.name === "securionis-offline");
+}
+function openDB(scope: OfflineScope): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
+    const request = indexedDB.open(scope.database, 1);
     request.onupgradeneeded = () => {
       const db = request.result;
-
-      // Réponses en attente de synchronisation
-      if (!db.objectStoreNames.contains(STORES.PENDING_RESPONSES)) {
-        const store = db.createObjectStore(STORES.PENDING_RESPONSES, {
-          keyPath: "key",
-        });
-        store.createIndex("visite_id", "visite_id", { unique: false });
-        store.createIndex("synced", "synced", { unique: false });
-      }
-
-      // Fiches de visite mises en cache pour lecture offline
-      if (!db.objectStoreNames.contains(STORES.CACHED_VISITES)) {
-        db.createObjectStore(STORES.CACHED_VISITES, { keyPath: "visite_id" });
-      }
-
-      // Photos en attente d'upload
-      if (!db.objectStoreNames.contains(STORES.PENDING_PHOTOS)) {
-        const photoStore = db.createObjectStore(STORES.PENDING_PHOTOS, {
-          keyPath: "id",
-        });
-        photoStore.createIndex("visite_id", "visite_id", { unique: false });
-      }
+      const responses = db.createObjectStore(STORES.RESPONSES, { keyPath: "key" });
+      responses.createIndex("visite_id", "visite_id");
+      responses.createIndex("synced", "synced");
+      db.createObjectStore(STORES.VISITES, { keyPath: "visite_id" });
+      const photos = db.createObjectStore(STORES.PHOTOS, { keyPath: "id" });
+      photos.createIndex("visite_id", "visite_id");
     };
-
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
     request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("Stockage local occupé. Fermez les anciens onglets."));
   });
 }
-
-// --- Réponses en attente ---
+async function transaction<T>(scope: OfflineScope, stores: string | string[], mode: IDBTransactionMode, action: (tx: IDBTransaction, result: (value: T) => void) => void): Promise<T> {
+  const db = await openDB(scope);
+  return new Promise((resolve, reject) => {
+    let value: T;
+    const tx = db.transaction(stores, mode);
+    tx.oncomplete = () => {
+      db.close();
+      try {
+        if (mode === "readonly") assertOfflineScope(scope);
+        if (typeof window !== "undefined" && mode === "readwrite") window.dispatchEvent(new Event(OFFLINE_CHANGED_EVENT));
+        resolve(value);
+      } catch (error) { reject(error); }
+    };
+    tx.onerror = tx.onabort = () => { db.close(); reject(tx.error ?? new Error("Écriture locale interrompue")); };
+    try { action(tx, next => { value = next; }); } catch (error) { tx.abort(); reject(error); }
+  });
+}
+function write<T>(scope: OfflineScope, stores: string | string[], action: (tx: IDBTransaction, result: (value: T) => void) => void): Promise<T> {
+  assertOfflineScope(scope);
+  // Une écriture déjà acceptée termine dans SA base même si la session change.
+  // Les écritures suivantes sont refusées. L'ordre protège aussi les frappes rapides.
+  const operation = (writes.get(scope.database) ?? Promise.resolve()).catch(() => {}).then(() => transaction(scope, stores, "readwrite", action));
+  writes.set(scope.database, operation);
+  return operation;
+}
+async function read<T>(scope: OfflineScope, store: string, query: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  assertOfflineScope(scope);
+  await writes.get(scope.database);
+  assertOfflineScope(scope);
+  return transaction<T>(scope, store, "readonly", (tx, result) => { const req = query(tx.objectStore(store)); req.onsuccess = () => result(req.result); });
+}
+export async function flushOfflineWrites(scope: OfflineScope): Promise<void> { await writes.get(scope.database); }
 
 export interface PendingResponse {
-  key: string; // visite_id + point_controle_id
-  visite_id: string;
-  point_controle_id: string;
-  valeur: string;
-  remarque: string | null;
-  photos: string[];
-  updated_at: string;
-  synced: 0 | 1;
+  key: string; revision: string; visite_id: string; point_controle_id: string;
+  valeur: string; remarque: string | null; photos: string[]; updated_at: string; synced: 0 | 1;
 }
-
-export async function savePendingResponse(
-  data: Omit<PendingResponse, "key" | "synced">
-): Promise<void> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.PENDING_RESPONSES, "readwrite");
-  const store = tx.objectStore(STORES.PENDING_RESPONSES);
-
-  const record: PendingResponse = {
-    ...data,
-    key: `${data.visite_id}:${data.point_controle_id}`,
-    synced: 0,
-  };
-
-  store.put(record);
-
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+export function savePendingResponse(scope: OfflineScope, data: Omit<PendingResponse, "key" | "synced" | "revision">): Promise<PendingResponse> {
+  const record: PendingResponse = { ...data, photos: [...data.photos], key: `${data.visite_id}:${data.point_controle_id}`, revision: crypto.randomUUID(), synced: 0 };
+  return write(scope, STORES.RESPONSES, (tx, result) => { tx.objectStore(STORES.RESPONSES).put(record); result(record); });
 }
-
-export async function getUnsyncedResponses(): Promise<PendingResponse[]> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.PENDING_RESPONSES, "readonly");
-  const store = tx.objectStore(STORES.PENDING_RESPONSES);
-  const index = store.index("synced");
-  const request = index.getAll(0);
-
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-export async function markResponseSynced(key: string): Promise<void> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.PENDING_RESPONSES, "readwrite");
-  const store = tx.objectStore(STORES.PENDING_RESPONSES);
-  const request = store.get(key);
-
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => {
-      const record = request.result;
-      if (record) {
-        record.synced = 1;
-        store.put(record);
-      }
-      tx.oncomplete = () => resolve();
+export function getUnsyncedResponses(scope: OfflineScope): Promise<PendingResponse[]> { return read(scope, STORES.RESPONSES, store => store.index("synced").getAll(0)); }
+export function markResponseSynced(scope: OfflineScope, key: string, revision: string): Promise<boolean> {
+  return write(scope, STORES.RESPONSES, (tx, result) => {
+    const store = tx.objectStore(STORES.RESPONSES);
+    const req = store.get(key);
+    req.onsuccess = () => {
+      const record = req.result as PendingResponse | undefined;
+      if (record?.revision === revision) { store.delete(key); result(true); } else result(false);
     };
-    tx.onerror = () => reject(tx.error);
   });
 }
-
-export async function clearSyncedResponses(visiteId: string): Promise<void> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.PENDING_RESPONSES, "readwrite");
-  const store = tx.objectStore(STORES.PENDING_RESPONSES);
-  const index = store.index("visite_id");
-  const request = index.getAll(visiteId);
-
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => {
-      for (const record of request.result) {
-        if (record.synced === 1) {
-          store.delete(record.key);
-        }
-      }
-      tx.oncomplete = () => resolve();
-    };
-    tx.onerror = () => reject(tx.error);
+export function clearSyncedResponses(scope: OfflineScope, visiteId: string): Promise<void> {
+  return write(scope, STORES.RESPONSES, tx => {
+    const store = tx.objectStore(STORES.RESPONSES); const req = store.index("visite_id").getAll(visiteId);
+    req.onsuccess = () => { for (const record of req.result) if (record.synced === 1) store.delete(record.key); };
   });
 }
-
-// --- Cache de visites (lecture offline) ---
-
-export interface CachedVisite {
-  visite_id: string;
-  chantier_id: string;
-  data: unknown; // la fiche complète (points de contrôle, réponses, etc.)
-  cached_at: string;
+export interface CachedVisite { visite_id: string; chantier_id: string; data: unknown; cached_at: string }
+export function cacheVisite(scope: OfflineScope, visite: CachedVisite): Promise<void> { return write(scope, STORES.VISITES, tx => { tx.objectStore(STORES.VISITES).put(visite); }); }
+export async function getCachedVisite(scope: OfflineScope, visiteId: string): Promise<CachedVisite | undefined> {
+  const visite = await read<CachedVisite | undefined>(scope, STORES.VISITES, store => store.get(visiteId));
+  const age = Date.now() - Date.parse(visite?.cached_at ?? "");
+  return Number.isFinite(age) && age >= 0 && age < CACHE_MAX_AGE_MS ? visite : undefined;
 }
-
-export async function cacheVisite(visite: CachedVisite): Promise<void> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.CACHED_VISITES, "readwrite");
-  tx.objectStore(STORES.CACHED_VISITES).put(visite);
-
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+export interface PendingPhoto { id: string; visite_id: string; chantier_id: string; reponse_key: string; blob: Blob; filename: string }
+export function savePendingPhoto(scope: OfflineScope, photo: PendingPhoto): Promise<void> { return write(scope, STORES.PHOTOS, tx => { tx.objectStore(STORES.PHOTOS).put(photo); }); }
+export function getPendingPhotos(scope: OfflineScope, visiteId: string): Promise<PendingPhoto[]> { return read(scope, STORES.PHOTOS, store => store.index("visite_id").getAll(visiteId)); }
+export function getAllPendingPhotos(scope: OfflineScope): Promise<PendingPhoto[]> { return read(scope, STORES.PHOTOS, store => store.getAll()); }
+export function deletePendingPhoto(scope: OfflineScope, id: string): Promise<void> { return write(scope, STORES.PHOTOS, tx => { tx.objectStore(STORES.PHOTOS).delete(id); }); }
+export async function getPendingCount(scope: OfflineScope): Promise<number> {
+  const [responses, photos] = await Promise.all([getUnsyncedResponses(scope), getAllPendingPhotos(scope)]);
+  return responses.length + photos.length;
 }
-
-export async function getCachedVisite(
-  visiteId: string
-): Promise<CachedVisite | undefined> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.CACHED_VISITES, "readonly");
-  const request = tx.objectStore(STORES.CACHED_VISITES).get(visiteId);
-
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result ?? undefined);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-// --- Photos en attente d'upload ---
-
-export interface PendingPhoto {
-  id: string; // UUID
-  visite_id: string;
-  chantier_id: string;
-  /**
-   * Troisième segment du chemin de stockage, tel que `use-photo-upload` le
-   * construit : l'identifiant de la réponse si elle existe déjà, celui du point
-   * de contrôle sinon. ⚠️ `offline/sync.ts` le réutilise tel quel pour
-   * reconstruire `<chantier>/<visite>/<réponse>/<fichier>` — les deux doivent
-   * rester d'accord, sinon la photo montée n'est pas à l'URL enregistrée.
-   */
-  reponse_key: string;
-  blob: Blob;
-  filename: string;
-}
-
-export async function savePendingPhoto(photo: PendingPhoto): Promise<void> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.PENDING_PHOTOS, "readwrite");
-  tx.objectStore(STORES.PENDING_PHOTOS).put(photo);
-
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-export async function getPendingPhotos(
-  visiteId: string
-): Promise<PendingPhoto[]> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.PENDING_PHOTOS, "readonly");
-  const index = tx.objectStore(STORES.PENDING_PHOTOS).index("visite_id");
-  const request = index.getAll(visiteId);
-
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-export async function deletePendingPhoto(id: string): Promise<void> {
-  const db = await openDB();
-  const tx = db.transaction(STORES.PENDING_PHOTOS, "readwrite");
-  tx.objectStore(STORES.PENDING_PHOTOS).delete(id);
-
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-// --- Compteur de pending ---
-
-export async function getPendingCount(): Promise<number> {
-  const db = await openDB();
-  const tx = db.transaction(
-    [STORES.PENDING_RESPONSES, STORES.PENDING_PHOTOS],
-    "readonly"
-  );
-
-  const respIndex = tx
-    .objectStore(STORES.PENDING_RESPONSES)
-    .index("synced");
-  const respRequest = respIndex.count(0);
-
-  const photoRequest = tx.objectStore(STORES.PENDING_PHOTOS).count();
-
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () =>
-      resolve(respRequest.result + photoRequest.result);
-    tx.onerror = () => reject(tx.error);
+/** Effacer les lectures conservées, jamais les réponses ou photos non envoyées. */
+export function purgeReadCache(scope: OfflineScope): Promise<void> {
+  return write(scope, [STORES.VISITES, STORES.RESPONSES], tx => {
+    tx.objectStore(STORES.VISITES).clear();
+    const store = tx.objectStore(STORES.RESPONSES); const req = store.getAll();
+    req.onsuccess = () => { for (const record of req.result) if (record.synced === 1) store.delete(record.key); };
   });
 }

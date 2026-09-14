@@ -1,3 +1,4 @@
+import { OfflineProvider } from "@/components/ui/offline-provider";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -32,6 +33,8 @@ export default async function DashboardLayout({
     .select("nom, role, entreprise_id")
     .eq("id", user.id)
     .single();
+
+  if (!profile) throw new Error("Profil indisponible. Réessayez plus tard.");
 
   // Un compte administrateur ouvre tous les chantiers, toutes les visites, la
   // gestion des utilisateurs et le référentiel : son mot de passe ne devrait
@@ -76,6 +79,7 @@ export default async function DashboardLayout({
   const logoSigne = await signerUrl(supabase, entrepriseLogoUrl);
 
   return (
+    <OfflineProvider key={`${user.id}:${profile.entreprise_id ?? "sans-entreprise"}`} userId={user.id} entrepriseId={profile.entreprise_id}>
     <div className="min-h-screen bg-gray-50">
       <DashboardNav
         userName={profile?.nom ?? user.email ?? ""}
@@ -111,5 +115,6 @@ export default async function DashboardLayout({
         &copy;2026 - BTP-UP
       </footer>
     </div>
+    </OfflineProvider>
   );
 }

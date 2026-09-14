@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { usePathname } from "next/navigation";
+import { useOfflineScope } from "@/components/ui/offline-provider";
+import { Modal } from "@/components/ui/modal";
+import { flushOfflineWrites, getPendingCount } from "@/lib/offline/db";
+import { logoutOfflineSession } from "@/lib/offline/logout";
 import { BoutonRetour } from "./bouton-retour";
 
 interface DashboardNavProps {
@@ -19,14 +22,26 @@ export function DashboardNav({
   entrepriseLogoUrl,
 }: DashboardNavProps) {
   const pathname = usePathname();
-  const router = useRouter();
+  const scope = useOfflineScope();
+  const [logoutPending, setLogoutPending] = useState<number | null>(null);
+  const [logoutBusy, setLogoutBusy] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  async function finishLogout() {
+    setLogoutBusy(true);
+    const revoked = await logoutOfflineSession(scope).catch(() => false);
+    window.location.replace(revoked ? "/login" : "/login?deconnexion=locale");
+  }
   async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    if (logoutBusy) return;
+    setLogoutError(false);
+    try {
+      await flushOfflineWrites(scope);
+      const pending = await getPendingCount(scope);
+      if (pending > 0) { setLogoutPending(pending); return; }
+    } catch { setLogoutError(true); setLogoutPending(0); return; }
+    await finishLogout();
   }
 
   const links = [
@@ -68,6 +83,10 @@ export function DashboardNav({
 
   return (
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-20">
+      <Modal isOpen={logoutPending !== null} onClose={() => setLogoutPending(null)} title="Déconnexion de cet appareil">
+        <p className="mb-4 text-sm text-gray-700">{logoutError ? "La sauvegarde locale n’a pas pu être vérifiée. Les modifications non enregistrées peuvent être perdues en quittant cette page." : `${logoutPending} modification(s) attendent l’envoi. Elles seront conservées sur cet appareil et ne pourront être reprises qu’avec ce compte et cette entreprise.`}</p>
+        <div className="flex gap-3"><button className="rounded border px-4 py-2" onClick={() => setLogoutPending(null)}>Rester connecté</button><button className="rounded bg-blue-700 px-4 py-2 text-white" disabled={logoutBusy} onClick={finishLogout}>Se déconnecter</button></div>
+      </Modal>
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between gap-3 h-14 sm:h-16">
           {/* Retour + logo */}

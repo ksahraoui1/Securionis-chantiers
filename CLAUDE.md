@@ -16,6 +16,8 @@ La spécification détaillée, les limites restantes et l’ordre de déploiemen
 
 Le deuxième lot ajoute les migrations 057/058 et `enregistrerVersionRapport` : un PDF de visite est publié sous un chemin de version neuf, jamais écrasé. L’historique `rapport_versions` est en ajout seul. Toute réédition demande un motif et tout envoi porte la référence choisie. Ne pas réintroduire de signature graphique globale ni écrire directement `rapport_url` pour la génération ; utiliser la publication transactionnelle. Les tests SQL complets sont dans `tests/security-db-versions.sql` (base jetable uniquement).
 
+Le troisième lot isole IndexedDB et les préférences de visite avec `OfflineScope` (compte + entreprise). Tout appel au stockage hors ligne doit porter ce périmètre capturé ; les envois passent par `createOfflineClient`, jamais par un client de session mutable. Conserver les réponses/photos jusqu’à leur accusé exact de révision. Ne pas réattribuer ni purger la base historique sans propriétaire. Le service worker v10 ne cache que les ressources publiques : ne pas réintroduire de cache HTML/RSC ou média privé. Les tests de régression sont aussi dans `tests/offline-security.test.cjs`. La clôture atomique, les conflits serveur et S09 restent à traiter.
+
 ## Vue d'ensemble du projet
 
 **Securionis Chantiers** est une application SaaS de gestion des inspections de chantiers (sécurité au travail, basée sur les référentiels SUVA). Elle permet à des inspecteurs de :
