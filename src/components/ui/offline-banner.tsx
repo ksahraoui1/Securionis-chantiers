@@ -59,6 +59,7 @@ export function OfflineBanner() {
         </span>
       )}
       {pendingCount > 0 && <div className="mt-1">
+        <a href="/compte/saisies" className="mr-4 underline font-semibold">Comparer et reprendre mes saisies</a>
         <button onClick={exportBackup} disabled={exporting} className="underline font-semibold disabled:opacity-50">
           {exporting ? "Préparation de la copie…" : "Exporter mes saisies conservées"}
         </button>
