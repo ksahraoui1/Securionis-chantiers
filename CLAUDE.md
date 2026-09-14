@@ -38,6 +38,8 @@ Le lot 11 ferme les quotas en cas de panne (065), exige une sélection explicite
 
 Le premier lot du cycle des actions correctives (066) sépare le suivi des constats figés. Les statuts passent exclusivement par `avancer_cycle_ecart` : planifier → soumettre → vérifier, avec reprise motivée possible. Préserver la CAS, l’UUID exact après résultat incertain et le journal atomique. Ne jamais réintroduire le changement direct vers `corrige`, fabriquer des validations historiques ou muter les archives. Les invités restent en lecture et les inspecteurs doivent être affectés. Ce lot comporte une preuve écrite ; les pièces jointes et rappels sont des suites distinctes. Voir §29 et les tests `security-db-cycle.sql` / `security-db-cycle-concurrency.sh` sur base jetable.
 
+Le lot des pièces de preuve (067) ajoute `ecart_pieces`, le bucket privé `ecart-preuves` et `avancer_cycle_ecart_v2`. Le dépôt est lié à l’auteur, la NC et la révision ; l’association à la soumission est atomique avec son audit. Toujours servir les fichiers via l’API qui vérifie RLS, chemin et SHA-256 ; aucun lien Storage public ni écrasement. Conserver UUID et fichier après résultat incertain, ne pas effacer automatiquement les objets éventuellement publiés. La sélection doit rester exacte au rejeu. Les pièces anciennes ne migrent pas vers une nouvelle soumission. Voir §30 et `security-db-preuves.sql` après les suites précédentes, sur base jetable.
+
 ## Vue d'ensemble du projet
 
 **Securionis Chantiers** est une application SaaS de gestion des inspections de chantiers (sécurité au travail, basée sur les référentiels SUVA). Elle permet à des inspecteurs de :

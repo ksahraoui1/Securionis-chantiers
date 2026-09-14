@@ -93,6 +93,11 @@ jobs:
             psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-cycle.sql
             bash tests/security-db-cycle-concurrency.sh psql -h 127.0.0.1 -U postgres
 
+        - name: Private evidence attachments and atomic submission
+          env:
+            PGPASSWORD: security-test-only
+          run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-preuves.sql
+
         - name: Type-check
           run: npx tsc --noEmit
 
