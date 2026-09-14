@@ -68,6 +68,11 @@ jobs:
             PGPASSWORD: security-test-only
           run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-tenant.sql
 
+        - name: Immutable sources and historical archives
+          env:
+            PGPASSWORD: security-test-only
+          run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-archives.sql
+
         - name: Type-check
           run: npx tsc --noEmit
 

@@ -4,9 +4,10 @@ const load = require('./load-ts.cjs');
 const visite = '20000000-0000-4000-8000-000000000003';
 const empreinte = 'a'.repeat(64);
 const demande = { p_visite_id: visite, p_empreinte: empreinte, p_operation_id: '70000000-0000-4000-8000-000000000001', p_ecarts: [], p_renseignements_par: null, p_remarques_generales: null };
-function fixture({ responses = [], photos = [], recovery = [], rpc } = {}) {
+function fixture({ responses = [], photos = [], recovery = [], rpc, archive } = {}) {
   const calls = [], scope = {}, cache = new Map();
   const mocks = {
+    '@/lib/offline/archive': { ErreurPreparationArchive: load('src/lib/offline/archive.ts').ErreurPreparationArchive, preparerArchiveCloture: archive || (async () => {}) },
     '@/lib/offline/scope': { assertOfflineScope() {} },
     '@/lib/offline/db': {
       flushOfflineWrites: async () => calls.push('flush'), getRecoveryResponses: async () => recovery,
@@ -79,4 +80,10 @@ test('Clôture : une préparation photo en échec interrompt la validation engag
   reject(Error('stockage photo refusé'));
   await assert.rejects(photo); await assert.rejects(closing);
   assert.equal(f.calls.length, 0);
+});
+
+test('Clôture : un échec de copie ne ferme rien', async () => {
+  const f = fixture({ archive: async () => { throw new Error('Fichier inaccessible'); } });
+  await assert.rejects(f.module.envoyerCloture(f.scope, demande), e => e instanceof Error && /Fichier/.test(e.message));
+  assert.equal(f.calls.some(c => c?.name === 'cloturer_visite'), false);
 });

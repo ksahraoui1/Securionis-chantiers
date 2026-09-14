@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { referenceStockage } from "@/lib/utils/storage-reference";
 
@@ -8,7 +9,7 @@ const MAX_IMAGES = 200;
 export class ImagePdfInvalide extends Error {}
 
 /** Le moteur PDF reçoit seulement des octets, jamais une URL issue de la base. */
-export function creerChargeurImagesPdf(supabase: SupabaseClient) {
+export function creerChargeurImagesPdf(supabase: SupabaseClient, empreintes?: ReadonlyMap<string, string>) {
   let total = 0;
   let nombre = 0;
   return async (url: string | null | undefined, bucket: "rapports" | "visite-photos"): Promise<string | null> => {
@@ -41,6 +42,10 @@ export function creerChargeurImagesPdf(supabase: SupabaseClient) {
       lecteur.releaseLock();
     }
     const octets = Buffer.concat(morceaux);
+    if (empreintes) {
+      const attendue = empreintes.get(`${bucket}/${reference.chemin}`);
+      if (!attendue || createHash("sha256").update(octets).digest("hex") !== attendue) throw new ImagePdfInvalide("L’intégrité d’une image archivée ne peut pas être confirmée.");
+    }
     const png = octets.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     const jpeg = octets[0] === 0xff && octets[1] === 0xd8 && octets[2] === 0xff;
     if (!png && !jpeg) throw new ImagePdfInvalide("Seules les images PNG et JPEG sont admises dans le rapport.");

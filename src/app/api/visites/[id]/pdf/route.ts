@@ -1,3 +1,4 @@
+import { ArchiveError, lireArchive, sourceRapportArchive, verifierArchive } from "@/lib/supabase/visite-archive";
 import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
@@ -79,34 +80,12 @@ export async function POST(
     }
     const versionId = nouvelleVersionRapport();
 
-    // Charger toutes les données en parallèle
-    const [
-      { data: chantier },
-      { data: inspecteur },
-      { data: reponses },
-      { data: ecarts },
-      { data: destinataires },
-    ] = await Promise.all([
-      supabase.from("chantiers").select("*").eq("id", visite.chantier_id).single(),
-      supabase.from("profiles").select("nom, email, entreprise_id").eq("id", visite.inspecteur_id).single(),
-      supabase.from("reponses").select("*, points_controle:point_controle_id(intitule, critere, objet)").eq("visite_id", visiteId),
-      supabase.from("ecarts").select("*").eq("chantier_id", visite.chantier_id).order("created_at", { ascending: false }),
-      supabase.from("destinataires").select("*").eq("chantier_id", visite.chantier_id),
-    ]);
-
-    if (!chantier || !inspecteur || reponses === null || ecarts === null || destinataires === null) {
-      throw new Error("Données du rapport indisponibles");
-    }
-    let entreprise = null;
-    if (inspecteur.entreprise_id) {
-      const resultatEntreprise = await supabase.from("entreprises")
-        .select("nom, logo_url, adresse, npa, ville, telephone, email")
-        .eq("id", inspecteur.entreprise_id).single();
-      if (resultatEntreprise.error) throw new Error("Entreprise du rapport indisponible");
-      entreprise = resultatEntreprise.data;
-    }
-    const source = { chantier, visite, inspecteur, reponses, ecarts, destinataires, entreprise, versionId };
-    const chargerImage = creerChargeurImagesPdf(supabase);
+    const archive = await lireArchive(supabase, visiteId);
+    if (!archive) return NextResponse.json({ error: "Archivez d’abord les sources de cette visite depuis son rapport." }, { status: 409 });
+    const sourceFigee = sourceRapportArchive(archive);
+    const { chantier, inspecteur, reponses, ecarts, destinataires, entreprise } = sourceFigee;
+    const source = { ...sourceFigee, archiveId: archive.id, archiveSha256: archive.sha256, archiveMode: archive.mode, versionId };
+    const chargerImage = creerChargeurImagesPdf(supabase, new Map(verifierArchive(archive).fichiers.map(f => [`${f.bucket}/${f.chemin}`, f.sha256])));
     const logoSigne = await chargerImage(entreprise?.logo_url, "rapports");
     const reponsesSource = reponses ?? [];
     const photosAPlat: string[] = reponsesSource.flatMap((r) => r.photos ?? []);
@@ -132,7 +111,7 @@ export async function POST(
     const pdfBuffer = await renderToBuffer(
       RapportVisite({
         chantier: chantier!,
-        visite,
+        visite: sourceFigee.visite,
         inspecteur: inspecteur ?? { nom: "Inconnu", email: "" },
         reponses: reponsesSignees,
         ecarts: ecarts ?? [],
@@ -147,6 +126,7 @@ export async function POST(
         entrepriseTelephone: entreprise?.telephone ?? null,
         entrepriseEmail: entreprise?.email ?? null,
         versionId,
+        archiveMention: archive.mode === "reprise_historique" ? `Sources reprises le ${archive.created_at.slice(0,10)} (archive postérieure à la visite)` : `Sources figées à la clôture — archive ${archive.id}`,
       })
     );
 
@@ -166,6 +146,7 @@ export async function POST(
     if (signatureError || !signedData?.signedUrl) throw new Error("Rapport généré mais accès indisponible");
     return NextResponse.json({ url: signedData.signedUrl, filename, versionId, sha256, reference: storagePath });
   } catch (err) {
+    if (err instanceof ArchiveError) return NextResponse.json({ error: err.message }, { status: err.status });
     if (err instanceof PublicationRapportError) return NextResponse.json({ error: err.message }, { status: err.status });
     if (err instanceof ImagePdfInvalide) return NextResponse.json({ error: err.message }, { status: 422 });
     console.error("PDF generation error:", err);

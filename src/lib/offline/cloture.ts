@@ -1,3 +1,4 @@
+import { preparerArchiveCloture, ErreurPreparationArchive } from "@/lib/offline/archive";
 import { createOfflineClient } from "@/lib/offline/client";
 import { assertOfflineScope, type OfflineScope } from "@/lib/offline/scope";
 import { flushOfflineWrites, getUnsyncedResponses, getPendingPhotos, getRecoveryResponses } from "@/lib/offline/db";
@@ -46,6 +47,11 @@ export async function envoyerCloture(scope: OfflineScope, demande: DemandeClotur
   // la visite peut déjà être terminée et la procédure sait reconnaître son UUID.
   if (!reprise) await verifierFile(scope, demande.p_visite_id);
   const client = await createOfflineClient(scope);
+  try { await preparerArchiveCloture(scope, demande.p_visite_id, demande.p_operation_id, demande.p_empreinte); }
+  catch (error) {
+    throw new ErreurCloture(error instanceof Error ? error.message : "Archivage non confirmé.", error instanceof ErreurPreparationArchive && error.refusConfirme);
+  }
+  assertOfflineScope(scope);
   const { data, error } = await client.rpc("cloturer_visite", demande);
   assertOfflineScope(scope);
   if (error) throw erreurRpc(error);
