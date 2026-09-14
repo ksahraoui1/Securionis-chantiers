@@ -301,6 +301,7 @@ function labelStatutEcart(s: string): string {
   const map: Record<string, string> = {
     ouvert: "Ouvert",
     en_cours_correction: "En cours de correction",
+    a_verifier: "À vérifier",
     corrige: "Corrigé",
   };
   return map[s] ?? s;

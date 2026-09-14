@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/card";
 import { EcartStatusBadge } from "@/components/ecart/ecart-status-badge";
 import { signerUrl } from "@/lib/utils/url-signee";
 
+import { EcartCycle } from "@/components/ecart/ecart-cycle";
+
 const NAVY = "#002855";
 const BLEU_NC = "#2563EB";
 
@@ -145,6 +147,8 @@ export default async function NCDetailPage({
           </div>
         </dl>
       </Card>
+
+      <EcartCycle key={`${user.id}:${nc.id}`} ecartId={nc.id} auteurId={user.id} />
 
       {/* Plan comparé */}
       {comparaison && (

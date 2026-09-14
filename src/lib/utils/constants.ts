@@ -27,12 +27,14 @@ export const LABELS_STATUT_VISITE: Record<string, string> = {
 export const STATUTS_ECART = {
   OUVERT: "ouvert",
   EN_COURS_CORRECTION: "en_cours_correction",
+  A_VERIFIER: "a_verifier",
   CORRIGE: "corrige",
 } as const;
 
 export const LABELS_STATUT_ECART: Record<string, string> = {
   ouvert: "Ouvert",
   en_cours_correction: "En cours de correction",
+  a_verifier: "À vérifier",
   corrige: "Corrigé",
 };
 

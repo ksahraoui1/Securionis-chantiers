@@ -12,6 +12,8 @@ import { EcartListWithActions } from "./ecart-list-actions";
 import { ArchiveToggleButton } from "@/components/chantier/archive-toggle-button";
 import { signerUrls } from "@/lib/utils/url-signee";
 
+import { jourSuisse } from "@/lib/ecarts/cycle";
+
 export default async function ChantierDetailPage({
   params,
 }: {
@@ -44,11 +46,13 @@ export default async function ChantierDetailPage({
     { data: visites },
     { data: ecarts },
     { data: documents },
+    { data: suivis, error: suiviError },
   ] = await Promise.all([
     supabase.from("destinataires").select("*").eq("chantier_id", chantierId).order("nom"),
     supabase.from("visites").select("*, profiles:inspecteur_id(nom)").eq("chantier_id", chantierId).order("date_visite", { ascending: false }),
     supabase.from("ecarts").select("*").eq("chantier_id", chantierId).order("created_at", { ascending: false }),
     supabase.from("documents").select("*").eq("chantier_id", chantierId).order("categorie").order("nom"),
+    supabase.from("ecart_suivis").select("*, ecarts!inner(chantier_id)").eq("ecarts.chantier_id", chantierId),
   ]);
 
   // Count NC per visite + detect corrected visits for timeline
@@ -285,7 +289,7 @@ export default async function ChantierDetailPage({
       {/* Non-conformités */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 mb-3">Non-conformités</h2>
-        <EcartListWithActions ecarts={ecarts ?? []} chantierId={chantierId} />
+        <EcartListWithActions suivis={suivis ?? []} suiviIndisponible={!!suiviError} aujourdHui={jourSuisse()} ecarts={ecarts ?? []} chantierId={chantierId} />
       </div>
     </div>
   );

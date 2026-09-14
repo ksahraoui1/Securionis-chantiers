@@ -86,6 +86,13 @@ jobs:
             PGPASSWORD: security-test-only
           run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-quotas.sql
 
+        - name: Corrective action cycle and isolation
+          env:
+            PGPASSWORD: security-test-only
+          run: |
+            psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-cycle.sql
+            bash tests/security-db-cycle-concurrency.sh psql -h 127.0.0.1 -U postgres
+
         - name: Type-check
           run: npx tsc --noEmit
 

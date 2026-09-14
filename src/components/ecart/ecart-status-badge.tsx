@@ -3,6 +3,7 @@ import { LABELS_STATUT_ECART } from "@/lib/utils/constants";
 const COLORS: Record<string, string> = {
   ouvert: "bg-red-100 text-red-800",
   en_cours_correction: "bg-amber-100 text-amber-800",
+  a_verifier: "bg-blue-100 text-blue-800",
   corrige: "bg-green-100 text-green-800",
 };
 
