@@ -40,7 +40,19 @@ Ce lot traite l’accès Storage de S05 et une partie de S06. Il ne clôture pas
 
 Validation du lot 2 le 13 septembre : 12 tests Node et la suite SQL PostgreSQL 17 réussis, TypeScript et lint sans erreur. La simulation sur Supabase confirme 0 fichier de bibliothèque pour l’invité, 5 pièces de checklist conservées, 76 fichiers pour l’inspecteur et 94 rapports historiques repris. Les migrations sont enregistrées sous `20260913170057` et `20260913170058`.
 
-### Déploiement du lot 2
+### 21. Synchronisation atomique des réponses (2026-09-14)
+
+La migration **060** et le client hors ligne utilisent `synchroniser_reponse` à la place d’un upsert direct. Chaque écriture renouvelle une révision UUID et l’horodatage côté serveur. La procédure verrouille la visite, vérifie le MFA et l’affectation actuelle (ou le rôle administrateur), puis compare la révision observée par l’envoi. Deux créations concurrentes d’une même réponse ou deux modifications de la même révision ne peuvent plus s’écraser : la seconde reçoit un conflit `40001`. Le passage du brouillon à « en cours » appartient à la même transaction.
+
+Les rôles `authenticated`, `anon` et `service_role` ne peuvent plus écrire directement dans `reponses`. La suppression transactionnelle d’un brouillon et les protections de clôture restent actives. La migration ajoute des métadonnées techniques aux réponses existantes, sans changer leurs constats, leurs dates historiques ou leurs références de photos. Une maintenance privilégiée renouvelle aussi la révision et invalide le reçu précédent.
+
+Un envoi porte l’UUID de sa révision locale. Si son dernier accusé a été perdu, le serveur reconnaît le même auteur et le même contenu, sans réécriture. Un UUID réutilisé avec un contenu différent est refusé. Le client ne retire une saisie et ses photos qu’après un accusé correspondant à cet UUID et à la révision locale encore en attente. Un refus ou une réponse réseau incohérente conserve les données locales. Seul le dernier reçu par réponse est conservé ; ce mécanisme ne constitue pas un journal complet des opérations.
+
+**Limite S07 encore ouverte :** la révision comparée est celle lue au début de la synchronisation, pas celle affichée avant une ancienne saisie hors ligne. Le contrôle préalable des dates dépend encore de l’horloge de l’appareil. Une modification distante antérieure à la lecture de synchronisation peut donc encore être écrasée si ce contrôle chronologique la laisse passer. Il reste à conserver une version de départ fiable dans IndexedDB, gérer les éditions successives et proposer une résolution explicite des conflits. Ce lot ferme la course entre lecture et écriture, sans déclarer S07 entièrement résolu. S09 (isolation serveur par entreprise) et les limites S06 sur les photos sources, le référentiel et les avenants restent ouverts.
+
+**Validation et déploiement :** tests Node de conservation de la file, refus SQL, idempotence, rollback et concurrence réelle (création et modification). Exécuter les suites SQL de clôture et leur concurrence avant `security-db-sync.sql`, puis `security-db-sync-concurrency.sh`, uniquement sur PostgreSQL jetable. Construire l’image candidate, appliquer 060 et enregistrer `20260914130060` dans le suivi Supabase avant la bascule du conteneur. Recharger les anciens onglets : leur écriture directe échoue sans supprimer leur file locale. Conserver l’image précédente ; un retour applicatif doit conserver les protections SQL et nécessite une correction compatible pour reprendre les envois.
+
+## Déploiement du lot 2
 
 Appliquer 057 et 058 avant la bascule du code, enregistrer les migrations, puis construire l’image, exécuter les tests et déployer le commit publié. Recharger les anciens onglets pour les nouvelles demandes de motif et de version email (service worker v9). Conserver l’image précédente, mais après publication d’un chemin `/versions/`, un retour à un code qui ne reconnaît pas ce format exige un correctif compatible : ne pas supprimer les archives ni rouvrir les politiques pour revenir en arrière. Les fichiers téléversés sans publication confirmée doivent être rapprochés de `rapport_versions` avant tout nettoyage.
 

@@ -341,6 +341,10 @@ export type Database = {
           photos: string[];
           created_at: string;
           updated_at: string;
+          sync_revision: string;
+          sync_operation_id: string | null;
+          sync_acteur: string | null;
+          sync_requete_sha256: string | null;
         };
         Insert: {
           id?: string;

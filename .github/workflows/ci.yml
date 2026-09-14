@@ -49,6 +49,13 @@ jobs:
             PGPASSWORD: security-test-only
           run: bash tests/security-db-concurrency.sh psql -h 127.0.0.1 -U postgres -d postgres
 
+        - name: Atomic response synchronization tests
+          env:
+            PGPASSWORD: security-test-only
+          run: |
+            psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-sync.sql
+            bash tests/security-db-sync-concurrency.sh psql -h 127.0.0.1 -U postgres -d postgres
+
         - name: Type-check
           run: npx tsc --noEmit
 

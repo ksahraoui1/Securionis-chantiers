@@ -120,10 +120,18 @@ function syncFixture(mode) {
   const calls = { deleted: 0, marked: 0, uploads: 0, upserts: 0 };
   const client = {
     from: table => ({
-      select: () => ({ in: async () => ({ data: table === 'visites' ? [{ id: B, statut: mode === 'closed' ? 'terminee' : 'en_cours' }] : mode === 'conflict' ? [{ ...response, updated_at: '2027-01-01' }] : [], error: null }) }),
-      upsert: () => { calls.upserts++; return { select: async () => ({ data: mode === 'write-error' ? null : [{ id: 'server' }], error: mode === 'write-error' ? Error('réseau') : null }) }; },
+      select: () => ({ in: async () => ({ data: table === 'visites' ? [{ id: B, statut: mode === 'closed' ? 'terminee' : 'en_cours' }] : mode === 'conflict' ? [{ ...response, updated_at: '2027-01-01' }] : mode === 'race' ? [{ ...response, sync_revision: 'observed' }] : mode === 'retry' ? [{ ...response, updated_at: '2027-01-01', sync_revision: 'committed', sync_operation_id: response.revision, sync_acteur: A }] : [], error: null }) }),
+      upsert: () => { throw Error('Écriture directe interdite'); },
       update: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
     }),
+    rpc: async (name, args) => {
+      calls.upserts++;
+      assert.equal(name, 'synchroniser_reponse');
+      assert.equal(args.p_operation_id, response.revision);
+      assert.equal(args.p_revision_attendue, mode === 'race' ? 'observed' : mode === 'retry' ? 'committed' : null);
+      return { data: mode === 'bad-ack' ? { id: 'server', revision: 'r', operation_id: 'other' } : { id: 'server', revision: 'r', operation_id: response.revision },
+        error: mode === 'write-error' ? Error('réseau') : mode === 'race' ? { code: '40001' } : null };
+    },
     storage: { from: () => ({
       upload: async () => { calls.uploads++; return { error: mode === 'upload-error' ? Error('réseau') : mode.startsWith('duplicate') ? { statusCode: 409, message: 'already exists' } : null }; },
       download: async () => ({ data: new Blob([mode === 'duplicate-identical' ? 'original' : 'different']), error: null }),
@@ -139,13 +147,22 @@ function syncFixture(mode) {
       deletePendingPhoto: async () => { calls.deleted++; },
     },
   });
-  return { run: () => module.syncPendingData({}), calls };
+  return { run: () => module.syncPendingData({ userId: A }), calls };
 }
 test('Synchronisation : photo conservée en cas de conflit, clôture, erreur réseau ou nouvelle révision', async () => {
-  for (const mode of ['conflict', 'closed', 'upload-error', 'write-error', 'new-revision', 'duplicate-different']) {
+  for (const mode of ['conflict', 'closed', 'upload-error', 'write-error', 'new-revision', 'duplicate-different', 'race', 'bad-ack']) {
     const f = syncFixture(mode); await f.run(); assert.equal(f.calls.deleted, 0, mode);
     if (['conflict', 'closed', 'upload-error', 'duplicate-different'].includes(mode)) assert.equal(f.calls.upserts, 0, mode);
   }
+});
+test('Synchronisation : le refus atomique est un conflit et ne supprime aucun élément local', async () => {
+  const f = syncFixture('race'); const result = await f.run();
+  assert.equal(result.conflicts, 1); assert.equal(result.errors, 0);
+  assert.equal(f.calls.marked, 0); assert.equal(f.calls.deleted, 0);
+});
+test('Synchronisation : un accusé perdu peut être rejoué malgré l’horodatage serveur plus récent', async () => {
+  const f = syncFixture('retry'); const result = await f.run();
+  assert.equal(result.conflicts, 0); assert.equal(f.calls.marked, 1); assert.equal(f.calls.deleted, 1);
 });
 test('Synchronisation : photo retirée uniquement après accusé de réponse et contrôle des doublons', async () => {
   for (const mode of ['success', 'duplicate-identical']) {
