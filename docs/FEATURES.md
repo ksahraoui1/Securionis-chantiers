@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-14 (quatrième lot de corrections de sécurité)
+> Dernière mise à jour : 2026-09-14 (septième lot de corrections de sécurité)
 
 ## Sécurité des sessions et des rapports
 
@@ -631,3 +631,17 @@ Secrets, fournis au conteneur en marche uniquement :
 - `RESEND_API_KEY` / `RESEND_FROM_EMAIL` — Envoi d'emails (expéditeur sur le domaine racine vérifié)
 - `ANTHROPIC_API_KEY` — Analyse IA photos + Assistant juridique
 - `SENTRY_DSN` — DSN Sentry côté serveur (vide = Sentry inactif)
+
+## 24. Isolation serveur des entreprises — lot 7 (migration 062)
+
+Chaque administrateur agit dans son entreprise. Les chantiers, catégories, thèmes, points de contrôle, documents de bibliothèque et journaux d’audit portent un `entreprise_id`. Les autres données héritent du périmètre de leur parent. Les politiques **restrictives** s’ajoutent aux permissions métier existantes : connaître un UUID ou être administrateur ne permet plus de lire, modifier ou supprimer une donnée d’une autre entreprise. Les phases standard restent communes et en lecture seule.
+
+Les triggers vérifient aussi les relations : créateur et inspecteur de chantier, auteur de visite, catégories sélectionnées, point de réponse, pièces de bibliothèque, plans de comparaison et liens de NC doivent appartenir à la même entreprise. Une comparaison exige des plans du même chantier. L’entreprise et l’identité des objets ne peuvent pas être transférées. Un profil nouvellement créé sans entreprise peut être rattaché une première fois par le serveur ; aucun transfert ultérieur n’est autorisé, même via l’API d’administration. Les procédures privilégiées de clôture, synchronisation, suppression et publication de rapport vérifient leur entreprise indépendamment de la RLS.
+
+Les nouveaux fichiers de bibliothèque, pièces réglementaires et logos utilisent respectivement `base-documentaire/<entreprise>/…`, `points-controle/<entreprise>/<point>/…` et `logos/<entreprise>/…`. Les autres fichiers conservent le chantier dans leur chemin. Les références entrantes de fichiers et de photos sont vérifiées en base. Les anciens chemins de bibliothèque sont attribués à l’entreprise historique dans une table interne non exposée ; ils restent lisibles selon les droits métier, mais ne sont plus créés ni écrasés par les clients. Les nouveaux logos sont envoyés sous un nom neuf avec validation PNG/JPEG et taille maximale de 5 Mo. La configuration charge uniquement l’entreprise du compte et vérifie qu’une ligne a réellement été modifiée.
+
+**Reprise historique :** la première application exige une entreprise unique et refuse toute ambiguïté ou relation incohérente. L’inventaire préalable a identifié une entreprise, trois profils et douze chantiers, ainsi que 28 catégories, 450 thèmes, 487 points et 76 documents de bibliothèque. L’ajout des métadonnées n’altère pas les réponses ni les visites clôturées, et ne réécrit aucun PDF. La sauvegarde privée des 91 réponses supprimées reste indépendante. Les futures entreprises reçoivent leur propre catalogue : le clonage commercial/onboarding du référentiel n’est pas ajouté par cette migration.
+
+**Validation :** `tests/security-db-tenant.sql` reconstruit le schéma applicatif avec les migrations réelles, hors imports de catalogue, dans une base dédiée jetable. Il vérifie deux entreprises, les rôles administrateur/inspecteur/invité, un compte sans entreprise, les clés étrangères forgées, les accès Storage, les RPC privilégiées, le MFA et la réapplication de 062. Les tests Node couvrent le refus d’accès d’un administrateur à un chantier invisible et les préfixes d’upload. Ce scénario SQL ne remplace pas la recette finale GoTrue/HTTP Storage sur des comptes de test séparés.
+
+**Livraison :** construire et vérifier l’image candidate, appliquer 062 avant la bascule, enregistrer `20260914150062`, puis déployer le commit GitHub. Recharger les onglets pour les nouveaux chemins d’upload. Conserver une image de retour arrière ; les migrations restent en place et une ancienne interface d’upload nécessiterait une correction compatible. Les conflits guidés S07, les photos/référentiels archivés et avenants S06, puis le durcissement et la recette finale constituent les étapes suivantes demandées.

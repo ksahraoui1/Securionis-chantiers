@@ -62,17 +62,6 @@ export default async function DashboardLayout({
       entrepriseNom = entreprise.nom;
       entrepriseLogoUrl = entreprise.logo_url;
     }
-  } else {
-    // Fallback: load first entreprise if exists
-    const { data: entreprise } = await supabase
-      .from("entreprises")
-      .select("nom, logo_url")
-      .limit(1)
-      .maybeSingle();
-    if (entreprise) {
-      entrepriseNom = entreprise.nom;
-      entrepriseLogoUrl = entreprise.logo_url;
-    }
   }
 
   // Le bucket est privé (SEC-03) : le logo se sert par URL signée.

@@ -53,6 +53,11 @@ export async function canAccessChantier(
   userId: string,
   chantierId: string
 ): Promise<boolean> {
+  // Le rôle administrateur reste limité aux chantiers visibles dans son entreprise.
+  const { data: chantier, error } = await supabase.from("chantiers")
+    .select("id").eq("id", chantierId).maybeSingle();
+  if (error || !chantier) return false;
+
   const role = await getUserRole(supabase, userId);
   if (role === "administrateur") return true;
 
