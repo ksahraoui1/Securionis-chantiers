@@ -1,6 +1,6 @@
 import { assertOfflineScope, OFFLINE_CHANGED_EVENT, type OfflineScope } from "@/lib/offline/scope";
 
-const STORES = { RESPONSES: "pending_responses", VISITES: "cached_visites", PHOTOS: "pending_photos", RECOVERY: "recovery_responses" } as const;
+const STORES = { RESPONSES: "pending_responses", VISITES: "cached_visites", PHOTOS: "pending_photos", RECOVERY: "recovery_responses", COPIES: "saved_resolutions" } as const;
 const writes = new Map<string, Promise<unknown>>();
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -10,9 +10,10 @@ export async function hasLegacyOfflineDatabase(): Promise<boolean> {
 }
 function openDB(scope: OfflineScope): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(scope.database, 2);
+    const request = indexedDB.open(scope.database, 3);
     request.onupgradeneeded = () => {
       const db = request.result;
+      if (!db.objectStoreNames.contains(STORES.COPIES)) db.createObjectStore(STORES.COPIES, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORES.RECOVERY)) db.createObjectStore(STORES.RECOVERY, { keyPath: "recovery_key" });
       if (db.objectStoreNames.contains(STORES.RESPONSES)) return;
       const responses = db.createObjectStore(STORES.RESPONSES, { keyPath: "key" });
@@ -128,16 +129,25 @@ export function savePendingPhoto(scope: OfflineScope, photo: PendingPhoto): Prom
 export function getPendingPhotos(scope: OfflineScope, visiteId: string): Promise<PendingPhoto[]> { return read(scope, STORES.PHOTOS, store => store.index("visite_id").getAll(visiteId)); }
 export function getAllPendingPhotos(scope: OfflineScope): Promise<PendingPhoto[]> { return read(scope, STORES.PHOTOS, store => store.getAll()); }
 export function deletePendingPhoto(scope: OfflineScope, id: string): Promise<void> { return write(scope, STORES.PHOTOS, tx => { tx.objectStore(STORES.PHOTOS).delete(id); }); }
-export async function readOfflineBackup(scope: OfflineScope) {
+export interface SavedResolution {
+  id: string; created_at: string; kind: "resolution" | "import" | "photos";
+  responses: PendingResponse[]; photos: PendingPhoto[];
+}
+export interface LocalSnapshot { responses: PendingResponse[]; recovery: PendingResponse[]; photos: PendingPhoto[]; copies: SavedResolution[] }
+export async function readLocalSnapshot(scope: OfflineScope): Promise<LocalSnapshot> {
   assertOfflineScope(scope); await flushOfflineWrites(scope); assertOfflineScope(scope);
-  return transaction(scope, [STORES.RESPONSES, STORES.RECOVERY, STORES.PHOTOS], "readonly", (tx, result: (value: { format: string; user_id: string; entreprise_id: string | null; exported_at: string; responses: PendingResponse[]; recovery: PendingResponse[]; photos: PendingPhoto[] }) => void) => {
-    const backup = { format: "securionis-offline-backup-v1", user_id: scope.userId, entreprise_id: scope.entrepriseId, exported_at: new Date().toISOString(), responses: [] as PendingResponse[], recovery: [] as PendingResponse[], photos: [] as PendingPhoto[] };
-    const responses = tx.objectStore(STORES.RESPONSES).index("synced").getAll(0);
-    responses.onsuccess = () => { backup.responses = responses.result; };
-    const recovery = tx.objectStore(STORES.RECOVERY).getAll(); recovery.onsuccess = () => { backup.recovery = recovery.result; };
-    const photos = tx.objectStore(STORES.PHOTOS).getAll(); photos.onsuccess = () => { backup.photos = photos.result; };
-    result(backup);
+  return transaction(scope, Object.values(STORES).filter(s => s !== STORES.VISITES), "readonly", (tx, result) => {
+    const snapshot: LocalSnapshot = { responses: [], recovery: [], photos: [], copies: [] };
+    for (const [field, store] of [["responses", STORES.RESPONSES], ["recovery", STORES.RECOVERY], ["photos", STORES.PHOTOS], ["copies", STORES.COPIES]] as const) {
+      const req = tx.objectStore(store).getAll(); req.onsuccess = () => { snapshot[field] = req.result; };
+    }
+    result(snapshot);
   });
+}
+export async function readOfflineBackup(scope: OfflineScope) {
+  const snapshot = await readLocalSnapshot(scope);
+  return { format: "securionis-offline-backup-v2", user_id: scope.userId, entreprise_id: scope.entrepriseId,
+    exported_at: new Date().toISOString(), ...snapshot, responses: snapshot.responses.filter(r => r.synced === 0) };
 }
 export async function getPendingCount(scope: OfflineScope): Promise<number> {
   const [responses, photos, recovery] = await Promise.all([getUnsyncedResponses(scope), getAllPendingPhotos(scope), getRecoveryResponses(scope)]);
@@ -149,5 +159,80 @@ export function purgeReadCache(scope: OfflineScope): Promise<void> {
     tx.objectStore(STORES.VISITES).clear();
     const store = tx.objectStore(STORES.RESPONSES); const req = store.getAll();
     req.onsuccess = () => { for (const record of req.result) if (record.synced === 1) store.delete(record.key); };
+  });
+}
+
+/** Signature du contenu observé : un reçu ou une autre saisie invalide le choix. */
+export function responseSnapshotToken(records: PendingResponse[]): string {
+  return JSON.stringify([...records].sort((a, b) => (a.recovery_key ?? a.key).localeCompare(b.recovery_key ?? b.key)));
+}
+export function pendingPhotoPath(photo: PendingPhoto): string {
+  return `${photo.chantier_id}/${photo.visite_id}/${photo.reponse_key}/${photo.filename}`;
+}
+function photoReferenced(photo: PendingPhoto, records: PendingResponse[]): boolean {
+  const path = pendingPhotoPath(photo);
+  return records.some(r => r.photos.some(url => url === path || url.split("?")[0].endsWith(`/visite-photos/${path}`)));
+}
+export function draftsForKey(snapshot: LocalSnapshot, key: string): PendingResponse[] {
+  return [...snapshot.responses, ...snapshot.recovery].filter(r => r.key === key);
+}
+/** Remplace seulement l'ensemble de brouillons effectivement comparé.
+ * La copie et les octets sont enregistrés dans la même transaction que le choix.
+ */
+export async function stageResponseResolution(scope: OfflineScope, key: string, token: string,
+  next: PendingResponse | null): Promise<void> {
+  const accepted = await write<boolean>(scope, [STORES.RESPONSES, STORES.RECOVERY, STORES.PHOTOS, STORES.COPIES], (tx, result) => {
+    const main = tx.objectStore(STORES.RESPONSES).getAll();
+    const recoveries = tx.objectStore(STORES.RECOVERY).getAll();
+    const photos = tx.objectStore(STORES.PHOTOS).getAll();
+    let complete = 0;
+    const ready = () => {
+      if (++complete !== 3) return;
+      const all = [...main.result, ...recoveries.result] as PendingResponse[];
+      const previous = all.filter(r => r.key === key);
+      if (responseSnapshotToken(previous) !== token) { result(false); return; }
+      const savedPhotos = (photos.result as PendingPhoto[]).filter(p => photoReferenced(p, previous));
+      tx.objectStore(STORES.COPIES).add({ id: crypto.randomUUID(), kind: "resolution", created_at: new Date().toISOString(), responses: previous, photos: savedPhotos } satisfies SavedResolution);
+      for (const r of previous) if (r.recovery_key) tx.objectStore(STORES.RECOVERY).delete(r.recovery_key);
+      if (next) tx.objectStore(STORES.RESPONSES).put(next);
+      else tx.objectStore(STORES.RESPONSES).delete(key);
+      const remaining = [...all.filter(r => r.key !== key && r.synced === 0), ...(next?.synced === 0 ? [next] : [])];
+      for (const photo of savedPhotos) if (!photoReferenced(photo, remaining)) tx.objectStore(STORES.PHOTOS).delete(photo.id);
+      result(true);
+    };
+    main.onsuccess = recoveries.onsuccess = photos.onsuccess = ready;
+  });
+  if (!accepted) throw new Error("Une saisie locale a changé. Rechargez la comparaison avant de choisir.");
+}
+/** Une photo sans réponse active reste récupérable, sans bloquer la clôture. */
+export async function archiveUnusedPhotos(scope: OfflineScope, ids: string[]): Promise<number> {
+  return write(scope, [STORES.RESPONSES, STORES.RECOVERY, STORES.PHOTOS, STORES.COPIES], (tx, result) => {
+    const main = tx.objectStore(STORES.RESPONSES).getAll(), recoveries = tx.objectStore(STORES.RECOVERY).getAll(), photos = tx.objectStore(STORES.PHOTOS).getAll();
+    let complete = 0;
+    const ready = () => {
+      if (++complete !== 3) return;
+      const records = [...main.result, ...recoveries.result] as PendingResponse[];
+      const saved = (photos.result as PendingPhoto[]).filter(p => ids.includes(p.id) && !photoReferenced(p, records.filter(r => r.synced === 0)));
+      if (saved.length) {
+        tx.objectStore(STORES.COPIES).add({ id: crypto.randomUUID(), kind: "photos", created_at: new Date().toISOString(), responses: [], photos: saved } satisfies SavedResolution);
+        for (const p of saved) tx.objectStore(STORES.PHOTOS).delete(p.id);
+      }
+      result(saved.length);
+    };
+    main.onsuccess = recoveries.onsuccess = photos.onsuccess = ready;
+  });
+}
+/** Import en récupération seulement : jamais d'écrasement de la file courante. */
+export function storeImportedDrafts(scope: OfflineScope, id: string, responses: PendingResponse[], photos: PendingPhoto[], copies: SavedResolution[] = []): Promise<boolean> {
+  return write(scope, [STORES.RECOVERY, STORES.PHOTOS, STORES.COPIES], (tx, result) => {
+    const exists = tx.objectStore(STORES.COPIES).get(id);
+    exists.onsuccess = () => {
+      if (exists.result) { result(false); return; }
+      tx.objectStore(STORES.COPIES).add({ id, kind: "import", created_at: new Date().toISOString(), responses, photos } satisfies SavedResolution);
+      for (const copy of copies) tx.objectStore(STORES.COPIES).add(copy);
+      for (const response of responses) tx.objectStore(STORES.RECOVERY).add(response);
+      for (const photo of photos) tx.objectStore(STORES.PHOTOS).add(photo);
+      result(true);
+    };
   });
 }

@@ -39,7 +39,7 @@ async function synchronize(scope: OfflineScope): Promise<SyncResult> {
   const upload = async (photo: PendingPhoto): Promise<void> => {
     assertOfflineScope(scope);
     const path = photoPath(photo);
-    const { error } = await supabase.storage.from("visite-photos").upload(path, photo.blob, { contentType: "image/jpeg", upsert: false });
+    const { error } = await supabase.storage.from("visite-photos").upload(path, photo.blob, { contentType: photo.blob.type || "image/jpeg", upsert: false });
     if (!error) return;
     // Après une réponse réseau perdue, le fichier peut déjà exister. Son nom
     // seul n'est pas une preuve : comparer les octets avant de retirer la copie locale.

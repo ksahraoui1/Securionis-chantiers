@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-14 (septième lot de corrections de sécurité)
+> Dernière mise à jour : 2026-09-14 (huitième lot de corrections de sécurité)
 
 ## Sécurité des sessions et des rapports
 
@@ -645,3 +645,21 @@ Les nouveaux fichiers de bibliothèque, pièces réglementaires et logos utilise
 **Validation :** `tests/security-db-tenant.sql` reconstruit le schéma applicatif avec les migrations réelles, hors imports de catalogue, dans une base dédiée jetable. Il vérifie deux entreprises, les rôles administrateur/inspecteur/invité, un compte sans entreprise, les clés étrangères forgées, les accès Storage, les RPC privilégiées, le MFA et la réapplication de 062. Les tests Node couvrent le refus d’accès d’un administrateur à un chantier invisible et les préfixes d’upload. Ce scénario SQL ne remplace pas la recette finale GoTrue/HTTP Storage sur des comptes de test séparés.
 
 **Livraison :** construire et vérifier l’image candidate, appliquer 062 avant la bascule, enregistrer `20260914150062`, puis déployer le commit GitHub. Recharger les onglets pour les nouveaux chemins d’upload. Conserver une image de retour arrière ; les migrations restent en place et une ancienne interface d’upload nécessiterait une correction compatible. Les conflits guidés S07, les photos/référentiels archivés et avenants S06, puis le durcissement et la recette finale constituent les étapes suivantes demandées.
+
+### Livraison de l’isolation
+
+Le lot 7 a été fusionné par la PR **66**, source `5d5257e`, puis déployé sur `main` au commit **`18e8f38`**. Les CI de la PR et de main ont réussi. La migration 062 est enregistrée dans Supabase ; 23 politiques `entreprise_requise` restrictives et 82 attributions de fichiers historiques ont été vérifiées. Les 12 chantiers, 95 visites, 122 réponses, 83 écarts et la sauvegarde privée de 91 lignes sont conservés. Le conteneur est sain, exécuté comme `node`, exposé uniquement sur `127.0.0.1:3000` ; login, tableau de bord et configuration de l’entreprise fonctionnent. L’image précédente est conservée sous `securionis-app:rollback-9e56206-20260914`.
+
+## 25. Résolution guidée et reprise des sauvegardes — lot 8
+
+La page **Saisies conservées** (`/compte/saisies`), accessible depuis le bandeau et le pied de page, regroupe les brouillons par constat. Elle compare les valeurs locales, les remarques et les photos à la réponse serveur visible dans la même entreprise. L’utilisateur peut conserver la version serveur, sélectionner un brouillon ou fusionner explicitement le constat, la remarque et les photos (10 maximum). Les lectures impossibles ne sont jamais interprétées comme une absence de réponse.
+
+Avant un choix, le serveur est relu et toutes les révisions locales observées sont comparées dans une transaction IndexedDB. Un changement concurrent impose une nouvelle comparaison. Le choix enregistre une nouvelle opération avec la révision serveur effectivement observée, puis utilise la CAS existante de `synchroniser_reponse_v2`. Même conserver le contenu serveur sur une visite ouverte passe par cette comparaison atomique : une écriture concurrente reste détectable. Une erreur réseau ou un conflit conserve le choix dans la file. Les anciens accusés ne peuvent pas acquitter cette nouvelle opération.
+
+La base locale passe à la **version 3**, en ajoutant `saved_resolutions`. Chaque résolution conserve les brouillons précédents et les octets des photos disponibles dans une copie créée dans la même transaction que le choix. Ces copies ne bloquent pas la clôture, ne sont pas purgées à la déconnexion, et peuvent être exportées ou reprises. Les photos sans saisie active peuvent aussi être classées dans une copie, après vérification de leurs références actuelles. Classer un brouillon n’efface aucune réponse serveur et n’annule pas un envoi déjà arrivé au serveur. Sur une visite clôturée, aucun choix local ne peut réécrire les constats : les copies restent disponibles pour un futur avenant.
+
+L’export JSON **v2** inclut les copies avec leurs photos ; l’import accepte les formats v1 et v2, seulement pour le même compte et la même entreprise. Il vérifie la structure, les UUID, les valeurs, les signatures JPEG/PNG et les tailles (fichier de 100 Mo maximum, 75 Mo de photos décodées au total, 10 Mo par photo, 3 000 saisies et 1 000 photos maximum). Les photos actives importées reçoivent des chemins neufs et les références sont réécrites ensemble ; aucune photo existante n’est écrasée. Les saisies entrent dans des brouillons de récupération distincts, sans base présumée, et demandent une comparaison avant l’envoi. Les copies déjà archivées restent archivées. Le rejeu du même fichier est idempotent.
+
+**Validation :** 56 tests Node, TypeScript et build Webpack réussis ; lint sans erreur avec les 18 avertissements préexistants. Les nouveaux tests vérifient les frappes concurrentes, accusés retardés, CAS en échec, lectures indisponibles, visites clôturées, préservation des octets, changement de compte et rejeu d’importation. La recette navigateur sur données fictives vérifie le refus d’un choix devenu périmé, la fusion explicite, la conservation des deux brouillons et leur reprise sans envoi automatique. Aucun constat réel n’a été modifié pour cette recette.
+
+**Livraison et limites :** aucune migration Supabase nouvelle n’est nécessaire. Recharger les anciens onglets après mise à jour : une ancienne application qui ouvre IndexedDB en version 2 ne peut plus ouvrir une base déjà migrée en version 3. Conserver les migrations 055–062 et corriger en avant en cas de retour applicatif. Les copies sont locales, sans garantie contre l’effacement du profil navigateur ou une panne de l’appareil ; l’export permet une sauvegarde externe. L’ancienne base sans propriétaire reste isolée et n’est pas réattribuée par l’import. L’archivage serveur des sources et le parcours d’avenants constituent l’étape suivante.
