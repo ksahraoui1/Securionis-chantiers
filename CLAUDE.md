@@ -36,6 +36,8 @@ Le dixième lot (064) ajoute les avenants de visite en ajout seul. Préparer ave
 
 Le lot 11 ferme les quotas en cas de panne (065), exige une sélection explicite pour les emails et un journal préalable, borne les sessions Auth et verrouille la vue locale après inactivité. La CSP vient du middleware avec un nonce neuf : ne pas ajouter une deuxième CSP statique, ni remettre `unsafe-inline`/`unsafe-eval` dans script-src. Le layout racine reste dynamique. OpenCV utilise `opencv-csp.js` préparé depuis une empreinte officielle et quatre remplacements ; exécuter `node tests/opencv-no-eval.cjs`. La CI bloque les vulnérabilités npm modérées et supérieures. `main` est protégé : PR et CI obligatoires, aucun contournement administrateur. Voir §28.
 
+Le premier lot du cycle des actions correctives (066) sépare le suivi des constats figés. Les statuts passent exclusivement par `avancer_cycle_ecart` : planifier → soumettre → vérifier, avec reprise motivée possible. Préserver la CAS, l’UUID exact après résultat incertain et le journal atomique. Ne jamais réintroduire le changement direct vers `corrige`, fabriquer des validations historiques ou muter les archives. Les invités restent en lecture et les inspecteurs doivent être affectés. Ce lot comporte une preuve écrite ; les pièces jointes et rappels sont des suites distinctes. Voir §29 et les tests `security-db-cycle.sql` / `security-db-cycle-concurrency.sh` sur base jetable.
+
 ## Vue d'ensemble du projet
 
 **Securionis Chantiers** est une application SaaS de gestion des inspections de chantiers (sécurité au travail, basée sur les référentiels SUVA). Elle permet à des inspecteurs de :

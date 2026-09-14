@@ -383,7 +383,7 @@ export type Database = {
           priorite: "haute" | "moyenne" | "basse" | null;
           description: string;
           delai: string | null;
-          statut: "ouvert" | "en_cours_correction" | "corrige";
+          statut: "ouvert" | "en_cours_correction" | "a_verifier" | "corrige";
           updated_by: string | null;
           created_at: string;
           updated_at: string;
@@ -397,7 +397,7 @@ export type Database = {
           priorite?: "haute" | "moyenne" | "basse" | null;
           description: string;
           delai?: string | null;
-          statut?: "ouvert" | "en_cours_correction" | "corrige";
+          statut?: "ouvert" | "en_cours_correction" | "a_verifier" | "corrige";
           updated_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -407,7 +407,7 @@ export type Database = {
           priorite?: "haute" | "moyenne" | "basse" | null;
           description?: string;
           delai?: string | null;
-          statut?: "ouvert" | "en_cours_correction" | "corrige";
+          statut?: "ouvert" | "en_cours_correction" | "a_verifier" | "corrige";
           updated_by?: string | null;
           updated_at?: string;
         };
