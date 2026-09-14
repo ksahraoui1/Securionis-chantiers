@@ -3,6 +3,7 @@
 \connect securionis_tenant_test
 \ir ../supabase/migrations/063_archives_visites.sql
 begin;
+select test_assert((select relrowsecurity from pg_class where oid='securionis_prive.preparations_archives'::regclass),'préparations privées avec RLS');
 create function test_code(requete text, attendu text) returns void language plpgsql as $$ begin
  begin execute requete; exception when others then if sqlstate=attendu then return; end if; raise; end;
  raise exception 'TEST: requête autorisée à tort %',requete;

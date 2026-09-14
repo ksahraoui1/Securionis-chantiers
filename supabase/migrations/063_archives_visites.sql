@@ -19,6 +19,7 @@ create table securionis_prive.preparations_archives (
  empreinte text not null, source jsonb not null, fichiers jsonb not null,
  created_at timestamptz not null default clock_timestamp()
 );
+alter table securionis_prive.preparations_archives enable row level security;
 revoke all on securionis_prive.preparations_archives from public,anon,authenticated,service_role;
 create trigger preparation_immuable before update or delete on securionis_prive.preparations_archives for each row execute function public.refuser_mutation_version_rapport();
 
