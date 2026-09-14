@@ -37,14 +37,16 @@ export default async function VisitePage({
   }
 
   // Load existing reponses keyed by point_controle_id
-  const { data: reponses } = await supabase
+  const { data: reponses, error: reponsesError } = await supabase
     .from("reponses")
-    .select("id, point_controle_id, valeur, remarque, photos")
+    .select("id, point_controle_id, valeur, remarque, photos, sync_revision")
     .eq("visite_id", visiteId);
+
+  if (reponsesError || !reponses) throw new Error("Les réponses de la visite ne peuvent pas être chargées");
 
   const existingReponses: Record<
     string,
-    { id: string; valeur: string; remarque: string | null; photos: string[] }
+    { id: string; valeur: string; remarque: string | null; photos: string[]; base_revision?: string | null; local_revision?: string }
   > = {};
   if (reponses) {
     // Le bucket est privé (SEC-03) : les photos déjà enregistrées se servent
@@ -62,6 +64,7 @@ export default async function VisitePage({
 
       existingReponses[r.point_controle_id] = {
         id: r.id,
+        base_revision: r.sync_revision,
         valeur: r.valeur,
         remarque: r.remarque,
         photos,

@@ -148,7 +148,7 @@ test('Synchronisation : erreur, absence RLS et conflit conservent la file', asyn
       return { data: [{ visite_id: 'v', point_controle_id: 'p', updated_at: '2026-09-13T12:00:00Z' }], error: null };
     } }) }) };
     const module = load('src/lib/offline/sync.ts', { '@/lib/offline/client': { createOfflineClient: async () => client }, '@/lib/offline/scope': { assertOfflineScope() {} }, '@/lib/offline/db': {
-      getUnsyncedResponses: async () => [pending],
+      getRecoveryResponses: async () => [], getUnsyncedResponses: async () => [pending],
       getAllPendingPhotos: async () => [],
       deletePendingPhoto: async () => { deleted++; }, markResponseSynced: async () => { marked++; },
     } });

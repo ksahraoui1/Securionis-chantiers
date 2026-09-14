@@ -5,6 +5,7 @@ const load = require('./load-ts.cjs');
 const A = 'aaaaaaaa-1111-4111-8111-111111111111';
 const B = 'bbbbbbbb-2222-4222-8222-222222222222';
 const E = 'cccccccc-3333-4333-8333-333333333333';
+const edit = { editor_id: 'editor-a', base_revision: null };
 const data = { visite_id: 'visit', point_controle_id: 'point', valeur: 'conforme', remarque: 'privé A', photos: [], updated_at: '2026-09-13T10:00:00Z' };
 function fixture() {
   global.indexedDB = new IDBFactory();
@@ -14,12 +15,12 @@ function fixture() {
 test('IndexedDB : séparation compte/entreprise, reprise et refus des anciennes sessions', async () => {
   const { scope, db } = fixture();
   const a = scope.activateOfflineScope(A, E);
-  await db.savePendingResponse(a, data);
+  await db.savePendingResponse(a, data, edit);
   await db.savePendingPhoto(a, { id: 'photo', visite_id: 'visit', chantier_id: 'chantier', reponse_key: 'point', filename: 'p.jpg', blob: new Blob(['photo privée A']) });
   const b = scope.activateOfflineScope(B, E);
   assert.equal(await db.getPendingCount(b), 0);
   await assert.rejects(db.getUnsyncedResponses(a));
-  assert.throws(() => db.savePendingResponse(a, data));
+  assert.throws(() => db.savePendingResponse(a, data, edit));
   assert.throws(() => scope.offlinePreferenceKey(a, 'themes'));
   assert.ok(scope.offlinePreferenceKey(b, 'themes').includes(B));
   const anotherOrg = scope.activateOfflineScope(A, null);
@@ -31,7 +32,7 @@ test('IndexedDB : séparation compte/entreprise, reprise et refus des anciennes 
 test('IndexedDB : une écriture acceptée termine dans son compte après changement de session', async () => {
   const { scope, db } = fixture();
   const a = scope.activateOfflineScope(A, E);
-  const write = db.savePendingResponse(a, data);
+  const write = db.savePendingResponse(a, data, edit);
   const b = scope.activateOfflineScope(B, E);
   await write;
   assert.equal(await db.getPendingCount(b), 0);
@@ -40,16 +41,16 @@ test('IndexedDB : une écriture acceptée termine dans son compte après changem
 });
 test('Accusé de réception : une ancienne révision ne peut pas effacer une nouvelle saisie', async () => {
   const { scope, db } = fixture(); const a = scope.activateOfflineScope(A, E);
-  const first = await db.savePendingResponse(a, data);
-  const second = await db.savePendingResponse(a, { ...data, remarque: 'modification pendant envoi' });
-  assert.equal(await db.markResponseSynced(a, first.key, first.revision), false);
+  const first = await db.savePendingResponse(a, data, edit);
+  const second = await db.savePendingResponse(a, { ...data, remarque: 'modification pendant envoi' }, edit);
+  assert.equal(await db.markResponseSynced(a, first.key, first.revision, 'server-first'), false);
   assert.equal((await db.getUnsyncedResponses(a))[0].revision, second.revision);
-  assert.equal(await db.markResponseSynced(a, second.key, second.revision), true);
+  assert.equal(await db.markResponseSynced(a, second.key, second.revision, 'server-second'), true);
   assert.equal(await db.getPendingCount(a), 0);
 });
 test('Purge de lecture et expiration : aucune suppression des réponses/photos non envoyées', async () => {
   const { scope, db } = fixture(); const a = scope.activateOfflineScope(A, E);
-  await db.savePendingResponse(a, data);
+  await db.savePendingResponse(a, data, edit);
   await db.savePendingPhoto(a, { id: 'photo', visite_id: 'visit', blob: new Blob(['x']) });
   await db.cacheVisite(a, { visite_id: 'visit', cached_at: new Date().toISOString(), data: 'privé' });
   assert.equal((await db.getCachedVisite(a, 'visit')).data, 'privé');
@@ -116,19 +117,23 @@ test('Client réseau : session, identité vérifiée, MFA et entreprise contrôl
 
 function syncFixture(mode) {
   const photo = { id: 'photo', chantier_id: A, visite_id: B, reponse_key: E, filename: 'photo.jpg', blob: new Blob(['original']) };
-  const response = { ...data, key: `${B}:${E}`, revision: 'old', visite_id: B, point_controle_id: E, photos: [`https://fixture.supabase.co/storage/v1/object/public/visite-photos/${A}/${B}/${E}/photo.jpg`] };
+  const response = { ...data, key: `${B}:${E}`, revision: 'old', base_revision: mode === 'race' ? 'observed' : null, visite_id: B, point_controle_id: E, photos: [`https://fixture.supabase.co/storage/v1/object/public/visite-photos/${A}/${B}/${E}/photo.jpg`] };
+  if (mode === 'unknown') delete response.base_revision;
+  if (mode === 'skew') response.base_revision = 'observed';
+  if (mode === 'stale') { response.base_revision = 'initial'; response.updated_at = '2099-01-01'; }
+  if (mode === 'ancestor') { response.base_revision = 'initial'; response.ancestors = ['ancestor-op']; }
   const calls = { deleted: 0, marked: 0, uploads: 0, upserts: 0 };
   const client = {
     from: table => ({
-      select: () => ({ in: async () => ({ data: table === 'visites' ? [{ id: B, statut: mode === 'closed' ? 'terminee' : 'en_cours' }] : mode === 'conflict' ? [{ ...response, updated_at: '2027-01-01' }] : mode === 'race' ? [{ ...response, sync_revision: 'observed' }] : mode === 'retry' ? [{ ...response, updated_at: '2027-01-01', sync_revision: 'committed', sync_operation_id: response.revision, sync_acteur: A }] : [], error: null }) }),
+      select: () => ({ in: async () => ({ data: table === 'visites' ? [{ id: B, statut: mode === 'closed' ? 'terminee' : 'en_cours' }] : mode === 'conflict' ? [{ ...response, sync_revision: 'remote-new', updated_at: '2027-01-01' }] : mode === 'race' ? [{ ...response, sync_revision: 'observed' }] : mode === 'retry' ? [{ ...response, updated_at: '2027-01-01', sync_revision: 'committed', sync_operation_id: response.revision, sync_acteur: A }] : mode === 'skew' ? [{ ...response, sync_revision: 'observed', updated_at: '2099-01-01' }] : mode === 'stale' ? [{ ...response, sync_revision: 'remote-new' }] : mode === 'ancestor' ? [{ ...response, sync_revision: 'ancestor-server', sync_operation_id: 'ancestor-op', sync_acteur: A }] : [], error: null }) }),
       upsert: () => { throw Error('Écriture directe interdite'); },
       update: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
     }),
     rpc: async (name, args) => {
       calls.upserts++;
-      assert.equal(name, 'synchroniser_reponse');
+      assert.equal(name, 'synchroniser_reponse_v2');
       assert.equal(args.p_operation_id, response.revision);
-      assert.equal(args.p_revision_attendue, mode === 'race' ? 'observed' : mode === 'retry' ? 'committed' : null);
+      assert.equal(args.p_revision_attendue, ['race', 'skew'].includes(mode) ? 'observed' : mode === 'ancestor' ? 'ancestor-server' : null);
       return { data: mode === 'bad-ack' ? { id: 'server', revision: 'r', operation_id: 'other' } : { id: 'server', revision: 'r', operation_id: response.revision },
         error: mode === 'write-error' ? Error('réseau') : mode === 'race' ? { code: '40001' } : null };
     },
@@ -142,7 +147,7 @@ function syncFixture(mode) {
     '@/lib/offline/scope': { assertOfflineScope() {} },
     '@/lib/env': { getSupabaseUrl: () => 'https://fixture.supabase.co' },
     '@/lib/offline/db': {
-      getUnsyncedResponses: async () => [response], getAllPendingPhotos: async () => [photo],
+      getRecoveryResponses: async () => [], getUnsyncedResponses: async () => [response], getAllPendingPhotos: async () => [photo],
       markResponseSynced: async (_scope, key, revision) => { assert.equal(key, response.key); assert.equal(revision, 'old'); calls.marked++; return mode !== 'new-revision'; },
       deletePendingPhoto: async () => { calls.deleted++; },
     },
@@ -163,6 +168,16 @@ test('Synchronisation : le refus atomique est un conflit et ne supprime aucun é
 test('Synchronisation : un accusé perdu peut être rejoué malgré l’horodatage serveur plus récent', async () => {
   const f = syncFixture('retry'); const result = await f.run();
   assert.equal(result.conflicts, 0); assert.equal(f.calls.marked, 1); assert.equal(f.calls.deleted, 1);
+});
+test('Synchronisation : la base affichée prime sur les horloges et les anciennes files restent intactes', async () => {
+  for (const mode of ['unknown', 'stale']) {
+    const f = syncFixture(mode); const result = await f.run();
+    assert.equal(result.conflicts, 1); assert.equal(f.calls.upserts, 0); assert.equal(f.calls.uploads, 0); assert.equal(f.calls.deleted, 0);
+  }
+  for (const mode of ['skew', 'ancestor']) {
+    const f = syncFixture(mode); const result = await f.run();
+    assert.equal(result.conflicts, 0); assert.equal(f.calls.upserts, 1); assert.equal(f.calls.marked, 1);
+  }
 });
 test('Synchronisation : photo retirée uniquement après accusé de réponse et contrôle des doublons', async () => {
   for (const mode of ['success', 'duplicate-identical']) {
@@ -206,7 +221,7 @@ test('Service Worker : activation supprime les anciens caches privés sans touch
   await sw.activate(); assert.deepEqual([...sw.stores.keys()], ['securionis-static-v10', 'other-app']);
 });
 test('Déconnexion hors ligne : cookies de ce projet effacés, verrou posé, file conservée', async () => {
-  const { scope, db } = fixture(); const a = scope.activateOfflineScope(A, E); await db.savePendingResponse(a, data);
+  const { scope, db } = fixture(); const a = scope.activateOfflineScope(A, E); await db.savePendingResponse(a, data, edit);
   const globals = { window: global.window, localStorage: global.localStorage, sessionStorage: global.sessionStorage, document: global.document, location: global.location, caches: global.caches };
   const storage = new Map(), cookies = new Map([['sb-fixture-auth-token.0', 'secret'], ['sb-fixture-auth-token.1', 'secret'], ['sb-fixture-auth-token-code-verifier', 'secret'], ['other', 'keep']]);
   try {

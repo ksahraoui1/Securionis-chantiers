@@ -20,7 +20,7 @@ export function useOnlineStatus() {
     busy.current = true; setSyncing(true); setSyncError(null);
     try {
       const result = await syncPendingData(scope);
-      if (result.conflicts || result.errors) setSyncError(`${result.conflicts} conflit(s), ${result.errors} élément(s) non envoyé(s). Les données locales sont conservées.`);
+      if (result.conflicts || result.errors) setSyncError(`${result.conflicts} conflit(s) à vérifier, ${result.errors} autre(s) erreur(s). Les données locales sont conservées.`);
       await refreshPendingCount();
     } catch { if (!scope.signal.aborted) setSyncError("Synchronisation impossible. Les données enregistrées restent liées à ce compte."); }
     finally { busy.current = false; if (!scope.signal.aborted) setSyncing(false); }

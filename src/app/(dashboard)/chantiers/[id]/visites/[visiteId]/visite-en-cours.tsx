@@ -15,7 +15,7 @@ interface VisiteEnCoursProps {
   categorieIds: string[];
   existingReponses: Record<
     string,
-    { id: string; valeur: string; remarque: string | null; photos: string[] }
+    { id: string; valeur: string; remarque: string | null; photos: string[]; base_revision?: string | null; local_revision?: string }
   >;
 }
 

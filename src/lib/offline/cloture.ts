@@ -1,6 +1,6 @@
 import { createOfflineClient } from "@/lib/offline/client";
 import { assertOfflineScope, type OfflineScope } from "@/lib/offline/scope";
-import { flushOfflineWrites, getUnsyncedResponses, getPendingPhotos } from "@/lib/offline/db";
+import { flushOfflineWrites, getUnsyncedResponses, getPendingPhotos, getRecoveryResponses } from "@/lib/offline/db";
 import { waitOfflinePreparations } from "@/lib/offline/preparations";
 import { syncPendingData } from "@/lib/offline/sync";
 
@@ -17,8 +17,8 @@ async function verifierFile(scope: OfflineScope, visiteId: string) {
   await waitOfflinePreparations(scope);
   await flushOfflineWrites(scope);
   await syncPendingData(scope);
-  const [responses, photos] = await Promise.all([getUnsyncedResponses(scope), getPendingPhotos(scope, visiteId)]);
-  if (responses.some(r => r.visite_id === visiteId) || photos.length) {
+  const [responses, photos, recovery] = await Promise.all([getUnsyncedResponses(scope), getPendingPhotos(scope, visiteId), getRecoveryResponses(scope)]);
+  if ([...responses, ...recovery].some(r => r.visite_id === visiteId) || photos.length) {
     throw new ErreurCloture("Cette visite contient encore des réponses ou photos locales. Terminez leur synchronisation avant de valider.", true);
   }
   assertOfflineScope(scope);
