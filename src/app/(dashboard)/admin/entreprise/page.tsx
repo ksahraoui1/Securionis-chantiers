@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { validateLogoFile } from "@/lib/utils/file-validation";
+import { uploadFileToStorage } from "@/lib/utils/storage-upload";
 import { Button } from "@/components/ui/button";
 import { signerUrl, canoniserUrlStockage } from "@/lib/utils/url-signee";
 
@@ -38,11 +40,17 @@ export default function AdminEntreprisePage() {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("entreprises")
-        .select("*")
-        .limit(1)
-        .maybeSingle();
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = user ? await supabase.from("profiles")
+        .select("entreprise_id").eq("id", user.id).single() : { data: null };
+      if (!profile?.entreprise_id) {
+        setError("Aucune entreprise attribuée à ce compte.");
+        setLoading(false);
+        return;
+      }
+      const { data, error: loadError } = await supabase
+        .from("entreprises").select("*").eq("id", profile.entreprise_id).single();
+      if (loadError) setError("Impossible de charger votre entreprise.");
       if (data) {
         // Bucket privé (SEC-03) : le logo s'affiche par URL signée. La forme
         // canonique est rétablie à l'enregistrement — sinon une URL expirée
@@ -73,18 +81,10 @@ export default function AdminEntreprisePage() {
     setError(null);
     try {
       const supabase = createClient();
-      const ext = file.name.split(".").pop() ?? "png";
-      const path = `logos/entreprise-logo.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("rapports")
-        .upload(path, file, { contentType: file.type, upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("rapports").getPublicUrl(path);
+      if (!form.id) throw new Error("Entreprise requise");
+      const { publicUrl } = await uploadFileToStorage(file, {
+        bucket: "rapports", pathPrefix: "logos", validate: validateLogoFile,
+      });
 
       const logoAffichable = (await signerUrl(supabase, publicUrl)) ?? publicUrl;
       setForm((prev) => ({ ...prev, logo_url: logoAffichable }));
@@ -126,21 +126,10 @@ export default function AdminEntreprisePage() {
         updated_at: new Date().toISOString(),
       };
 
-      if (form.id) {
-        const { error: updateError } = await supabase
-          .from("entreprises")
-          .update(payload)
-          .eq("id", form.id);
-        if (updateError) throw updateError;
-      } else {
-        const { data, error: insertError } = await supabase
-          .from("entreprises")
-          .insert(payload)
-          .select("id")
-          .single();
-        if (insertError) throw insertError;
-        setForm((prev) => ({ ...prev, id: data.id }));
-      }
+      if (!form.id) throw new Error("Aucune entreprise attribuée à ce compte");
+      const { data: updated, error: updateError } = await supabase
+        .from("entreprises").update(payload).eq("id", form.id).select("id").single();
+      if (updateError || !updated) throw new Error(updateError?.message ?? "Modification refusée");
 
       setSuccess("Configuration enregistrée");
     } catch (err) {

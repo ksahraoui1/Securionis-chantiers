@@ -93,6 +93,7 @@ export type Database = {
       };
       categories: {
         Row: {
+          entreprise_id: string;
           id: string;
           phase_id: string | null;
           libelle: string;
@@ -101,6 +102,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          entreprise_id?: string;
           id?: string;
           phase_id?: string | null;
           libelle: string;
@@ -117,6 +119,7 @@ export type Database = {
       };
       themes: {
         Row: {
+          entreprise_id: string;
           id: string;
           categorie_id: string;
           libelle: string;
@@ -124,6 +127,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          entreprise_id?: string;
           id?: string;
           categorie_id: string;
           libelle: string;
@@ -138,6 +142,7 @@ export type Database = {
       };
       points_controle: {
         Row: {
+          entreprise_id: string;
           id: string;
           phase_id: string | null;
           categorie_id: string | null;
@@ -156,6 +161,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          entreprise_id?: string;
           id?: string;
           phase_id?: string | null;
           categorie_id?: string | null;
@@ -220,6 +226,7 @@ export type Database = {
       };
       chantiers: {
         Row: {
+          entreprise_id: string;
           id: string;
           nom: string | null;
           adresse: string;
@@ -236,6 +243,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          entreprise_id?: string;
           id?: string;
           nom?: string | null;
           adresse: string;
@@ -473,6 +481,7 @@ export type Database = {
       };
       base_documentaire: {
         Row: {
+          entreprise_id: string;
           id: string;
           titre: string;
           source: string;
@@ -486,6 +495,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          entreprise_id?: string;
           id?: string;
           titre: string;
           source?: string;
@@ -570,6 +580,7 @@ export type Database = {
       };
       audit_logs: {
         Row: {
+          entreprise_id: string;
           id: string;
           user_id: string | null;
           action: string;
@@ -580,6 +591,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          entreprise_id?: string;
           id?: string;
           user_id?: string | null;
           action: string;

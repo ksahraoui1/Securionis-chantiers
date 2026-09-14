@@ -38,9 +38,19 @@ export async function uploadFileToStorage(
   if (signatureError) throw new Error(signatureError);
 
   const ext = validation.sanitizedExtension!;
-  const path = buildStoragePath(pathPrefix, ext);
-
   const supabase = createClient();
+  // Le serveur vérifie cette frontière ; le préfixe est établi avec le profil
+  // authentifié pour que les bibliothèques et logos ne partagent aucun chemin.
+  const segments = pathPrefix.split("/");
+  if (bucket === "rapports" && ["base-documentaire", "points-controle", "logos"].includes(segments[0])) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) throw new Error("Connexion requise");
+    const { data: profile, error } = await supabase.from("profiles")
+      .select("entreprise_id").eq("id", user.id).single();
+    if (error || !profile?.entreprise_id) throw new Error("Entreprise requise pour envoyer un fichier");
+    segments.splice(1, 0, profile.entreprise_id);
+  }
+  const path = buildStoragePath(segments.join("/"), ext);
   const { error: storageError } = await supabase.storage
     .from(bucket)
     .upload(path, file, { contentType: file.type, upsert: false });

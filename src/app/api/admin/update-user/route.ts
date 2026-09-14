@@ -69,7 +69,8 @@ export async function PATCH(request: Request) {
   const { error: updateError } = await serviceClient
     .from("profiles")
     .update(updates)
-    .eq("id", userId);
+    .eq("id", userId)
+    .eq("entreprise_id", profile.entreprise_id);
 
   if (updateError) {
     console.error("Update user error:", updateError.message);
@@ -87,7 +88,8 @@ export async function PATCH(request: Request) {
       await serviceClient
         .from("profiles")
         .update({ email: email.trim() })
-        .eq("id", userId);
+        .eq("id", userId)
+        .eq("entreprise_id", profile.entreprise_id);
     }
   }
 

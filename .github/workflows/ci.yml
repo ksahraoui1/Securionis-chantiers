@@ -63,6 +63,11 @@ jobs:
             psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-origin.sql
             bash tests/security-db-maintenance.sh psql -h 127.0.0.1 -U postgres -d postgres
 
+        - name: Two-company isolation with full schema
+          env:
+            PGPASSWORD: security-test-only
+          run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-tenant.sql
+
         - name: Type-check
           run: npx tsc --noEmit
 
