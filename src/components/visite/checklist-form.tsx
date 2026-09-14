@@ -28,7 +28,7 @@ interface ChecklistFormProps {
   categorieIds: string[];
   existingReponses: Record<
     string,
-    { id: string; valeur: string; remarque: string | null; photos: string[] }
+    { id: string; valeur: string; remarque: string | null; photos: string[]; base_revision?: string | null; local_revision?: string }
   >;
   onValidate: () => void;
   validating: boolean;
@@ -60,7 +60,7 @@ export function ChecklistForm({
     try {
     const pending = (await getUnsyncedResponses(scope)).filter(r => r.visite_id === visiteId);
     const restored = { ...existingReponses };
-    for (const r of pending) restored[r.point_controle_id] = { id: existingReponses[r.point_controle_id]?.id ?? r.point_controle_id, valeur: r.valeur, remarque: r.remarque, photos: r.photos };
+    for (const r of pending) restored[r.point_controle_id] = { id: existingReponses[r.point_controle_id]?.id ?? r.point_controle_id, valeur: r.valeur, remarque: r.remarque, photos: r.photos, base_revision: r.base_revision, local_revision: r.revision };
     assertOfflineScope(scope);
     setRestoredResponses(restored);
     const supabase = createClient();
@@ -204,6 +204,7 @@ export function ChecklistForm({
       valeur: string;
       remarque: string | null;
       photos: string[];
+      origin: import("@/lib/offline/db").ResponseOrigin;
     }) => {
       save({
         visite_id: visiteId,
@@ -211,6 +212,7 @@ export function ChecklistForm({
         valeur: data.valeur,
         remarque: data.remarque,
         photos: data.photos,
+        origin: data.origin,
       });
     },
     [save, visiteId]
@@ -248,6 +250,7 @@ export function ChecklistForm({
           {saveStatus === "saving" && "Enregistrement..."}
           {saveStatus === "saved" && "Enregistré"}
           {saveStatus === "saved-offline" && "Sauvegardé hors-ligne"}
+          {saveStatus === "conflict" && "Saisie conservée — vérification requise"}
           {saveStatus === "error" && "Erreur de sauvegarde"}
         </span>
       </div>
@@ -267,6 +270,7 @@ export function ChecklistForm({
               chantierId={chantierId}
               visiteId={visiteId}
               reponseId={existing?.id ?? point.id}
+              initialOrigin={existing ? { base_revision: existing.base_revision, local_revision: existing.local_revision } : { base_revision: null }}
               initialValeur={existing?.valeur}
               initialRemarque={existing?.remarque}
               initialPhotos={existing?.photos ?? []}

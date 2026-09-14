@@ -1,6 +1,6 @@
 import { assertOfflineScope, OFFLINE_CHANGED_EVENT, type OfflineScope } from "@/lib/offline/scope";
 
-const STORES = { RESPONSES: "pending_responses", VISITES: "cached_visites", PHOTOS: "pending_photos" } as const;
+const STORES = { RESPONSES: "pending_responses", VISITES: "cached_visites", PHOTOS: "pending_photos", RECOVERY: "recovery_responses" } as const;
 const writes = new Map<string, Promise<unknown>>();
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -10,9 +10,11 @@ export async function hasLegacyOfflineDatabase(): Promise<boolean> {
 }
 function openDB(scope: OfflineScope): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(scope.database, 1);
+    const request = indexedDB.open(scope.database, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
+      if (!db.objectStoreNames.contains(STORES.RECOVERY)) db.createObjectStore(STORES.RECOVERY, { keyPath: "recovery_key" });
+      if (db.objectStoreNames.contains(STORES.RESPONSES)) return;
       const responses = db.createObjectStore(STORES.RESPONSES, { keyPath: "key" });
       responses.createIndex("visite_id", "visite_id");
       responses.createIndex("synced", "synced");
@@ -61,19 +63,50 @@ export async function flushOfflineWrites(scope: OfflineScope): Promise<void> { a
 export interface PendingResponse {
   key: string; revision: string; visite_id: string; point_controle_id: string;
   valeur: string; remarque: string | null; photos: string[]; updated_at: string; synced: 0 | 1;
+  // undefined : ancienne saisie dont la version d'origine est inconnue ; null : absence observée.
+  base_revision?: string | null; ancestors?: string[]; editor_id?: string; local_conflict?: boolean; recovery_key?: string;
 }
-export function savePendingResponse(scope: OfflineScope, data: Omit<PendingResponse, "key" | "synced" | "revision">): Promise<PendingResponse> {
-  const record: PendingResponse = { ...data, photos: [...data.photos], key: `${data.visite_id}:${data.point_controle_id}`, revision: crypto.randomUUID(), synced: 0 };
-  return write(scope, STORES.RESPONSES, (tx, result) => { tx.objectStore(STORES.RESPONSES).put(record); result(record); });
+export interface ResponseOrigin { base_revision?: string | null; local_revision?: string }
+export interface ResponseEdit extends ResponseOrigin { editor_id: string }
+export function savePendingResponse(scope: OfflineScope, data: Pick<PendingResponse, "visite_id" | "point_controle_id" | "valeur" | "remarque" | "photos" | "updated_at">, edit: ResponseEdit): Promise<PendingResponse> {
+  const record: PendingResponse = { ...data, photos: [...data.photos], key: `${data.visite_id}:${data.point_controle_id}`, revision: crypto.randomUUID(), synced: 0, base_revision: edit.base_revision, ancestors: [], editor_id: edit.editor_id };
+  return write(scope, [STORES.RESPONSES, STORES.RECOVERY], (tx, result) => {
+    const store = tx.objectStore(STORES.RESPONSES); const req = store.get(record.key);
+    req.onsuccess = () => {
+      const previous = req.result as PendingResponse | undefined;
+      if (previous && (previous.editor_id === edit.editor_id || previous.revision === edit.local_revision)) {
+        record.base_revision = previous.base_revision;
+        record.ancestors = previous.synced === 1 ? [] : [...(previous.ancestors ?? []), previous.revision];
+      } else if (previous?.synced === 0 || edit.local_revision) {
+        // Un autre formulaire a pris la main. Conserver aussi la nouvelle saisie
+        // sans remplacer sa file ni lui emprunter une version qu'elle n'a pas vue.
+        record.local_conflict = true;
+        record.recovery_key = `${record.key}:${edit.editor_id}`;
+        tx.objectStore(STORES.RECOVERY).put(record); result(record); return;
+      }
+      store.put(record); result(record);
+    };
+  });
 }
 export function getUnsyncedResponses(scope: OfflineScope): Promise<PendingResponse[]> { return read(scope, STORES.RESPONSES, store => store.index("synced").getAll(0)); }
-export function markResponseSynced(scope: OfflineScope, key: string, revision: string): Promise<boolean> {
+export function getRecoveryResponses(scope: OfflineScope): Promise<PendingResponse[]> { return read(scope, STORES.RECOVERY, store => store.getAll()); }
+export function markResponseSynced(scope: OfflineScope, key: string, revision: string, serverRevision: string): Promise<boolean> {
   return write(scope, STORES.RESPONSES, (tx, result) => {
     const store = tx.objectStore(STORES.RESPONSES);
     const req = store.get(key);
     req.onsuccess = () => {
       const record = req.result as PendingResponse | undefined;
-      if (record?.revision === revision) { store.delete(key); result(true); } else result(false);
+      if (record?.revision === revision) {
+        store.put({ ...record, synced: 1, base_revision: serverRevision, ancestors: [] }); result(true);
+      } else {
+        const index = record?.ancestors?.indexOf(revision) ?? -1;
+        if (record && index >= 0) {
+          // Avancer seulement un descendant de cet envoi ; un ancien accusé
+          // ne peut ni supprimer la nouvelle saisie, ni ramener sa base en arrière.
+          store.put({ ...record, base_revision: serverRevision, ancestors: record.ancestors!.slice(index + 1) });
+        }
+        result(false);
+      }
     };
   });
 }
@@ -95,9 +128,20 @@ export function savePendingPhoto(scope: OfflineScope, photo: PendingPhoto): Prom
 export function getPendingPhotos(scope: OfflineScope, visiteId: string): Promise<PendingPhoto[]> { return read(scope, STORES.PHOTOS, store => store.index("visite_id").getAll(visiteId)); }
 export function getAllPendingPhotos(scope: OfflineScope): Promise<PendingPhoto[]> { return read(scope, STORES.PHOTOS, store => store.getAll()); }
 export function deletePendingPhoto(scope: OfflineScope, id: string): Promise<void> { return write(scope, STORES.PHOTOS, tx => { tx.objectStore(STORES.PHOTOS).delete(id); }); }
+export async function readOfflineBackup(scope: OfflineScope) {
+  assertOfflineScope(scope); await flushOfflineWrites(scope); assertOfflineScope(scope);
+  return transaction(scope, [STORES.RESPONSES, STORES.RECOVERY, STORES.PHOTOS], "readonly", (tx, result: (value: { format: string; user_id: string; entreprise_id: string | null; exported_at: string; responses: PendingResponse[]; recovery: PendingResponse[]; photos: PendingPhoto[] }) => void) => {
+    const backup = { format: "securionis-offline-backup-v1", user_id: scope.userId, entreprise_id: scope.entrepriseId, exported_at: new Date().toISOString(), responses: [] as PendingResponse[], recovery: [] as PendingResponse[], photos: [] as PendingPhoto[] };
+    const responses = tx.objectStore(STORES.RESPONSES).index("synced").getAll(0);
+    responses.onsuccess = () => { backup.responses = responses.result; };
+    const recovery = tx.objectStore(STORES.RECOVERY).getAll(); recovery.onsuccess = () => { backup.recovery = recovery.result; };
+    const photos = tx.objectStore(STORES.PHOTOS).getAll(); photos.onsuccess = () => { backup.photos = photos.result; };
+    result(backup);
+  });
+}
 export async function getPendingCount(scope: OfflineScope): Promise<number> {
-  const [responses, photos] = await Promise.all([getUnsyncedResponses(scope), getAllPendingPhotos(scope)]);
-  return responses.length + photos.length;
+  const [responses, photos, recovery] = await Promise.all([getUnsyncedResponses(scope), getAllPendingPhotos(scope), getRecoveryResponses(scope)]);
+  return responses.length + photos.length + recovery.length;
 }
 /** Effacer les lectures conservées, jamais les réponses ou photos non envoyées. */
 export function purgeReadCache(scope: OfflineScope): Promise<void> {

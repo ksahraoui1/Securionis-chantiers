@@ -13,6 +13,7 @@ interface ChecklistItemProps {
   chantierId: string;
   visiteId: string;
   reponseId: string;
+  initialOrigin: import("@/lib/offline/db").ResponseOrigin;
   initialValeur?: string | null;
   initialRemarque?: string | null;
   initialPhotos?: string[];
@@ -21,6 +22,7 @@ interface ChecklistItemProps {
     valeur: string;
     remarque: string | null;
     photos: string[];
+    origin: import("@/lib/offline/db").ResponseOrigin;
   }) => void;
   documents?: Tables<"point_controle_documents">[];
   linkedDocs?: { id: string; titre: string; fichier_url: string; type_fichier: string }[];
@@ -38,6 +40,7 @@ export function ChecklistItem({
   chantierId,
   visiteId,
   reponseId,
+  initialOrigin,
   initialValeur,
   initialRemarque,
   initialPhotos = [],
@@ -45,6 +48,7 @@ export function ChecklistItem({
   documents = [],
   linkedDocs = [],
 }: ChecklistItemProps) {
+  const [origin] = useState(initialOrigin);
   const [valeur, setValeur] = useState(initialValeur ?? "");
   const [remarque, setRemarque] = useState(initialRemarque ?? "");
 
@@ -65,13 +69,14 @@ export function ChecklistItem({
       if (newValeur) {
         onChange({
           point_controle_id: pointControle.id,
+          origin,
           valeur: newValeur,
           remarque: newRemarque || null,
           photos: newPhotos,
         });
       }
     },
-    [onChange, pointControle.id]
+    [onChange, pointControle.id, origin]
   );
 
   function handleValeurChange(v: string) {
