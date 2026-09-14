@@ -13,7 +13,7 @@
  * la session Supabase de l'utilisateur. Voir `public/vendor/opencv/LISEZ-MOI.md`.
  */
 
-const CHEMIN_OPENCV = "/vendor/opencv/opencv.js";
+const CHEMIN_OPENCV = "/vendor/opencv/opencv-csp.js";
 
 // Le module met plusieurs secondes à s'initialiser sur une tablette ; au-delà,
 // c'est que quelque chose a échoué silencieusement.

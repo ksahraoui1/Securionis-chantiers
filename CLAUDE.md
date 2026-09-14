@@ -34,6 +34,8 @@ Le neuvième lot (063) exige la préparation serveur de l’archive avant `clotu
 
 Le dixième lot (064) ajoute les avenants de visite en ajout seul. Préparer avec `preparer_avenant_visite`, générer un PDF neuf puis publier via `publier_avenant_visite` : rôle/entreprise/affectation, rapport, archive et précédent sont revérifiés sous verrou. Le journal est atomique. Conserver la demande locale exacte après une réponse incertaine ; une correction crée un nouvel avenant, jamais une réouverture. L’envoi joint les avenants explicitement relus et son marquage passe par `confirmer_envoi_rapport`, pour ne pas acquitter un dossier qui a changé. Les tests simulent Resend : ne pas envoyer d’email réel pour la recette. Voir §27 et `security-db-avenants.sql` après les suites d’isolation/archives.
 
+Le lot 11 ferme les quotas en cas de panne (065), exige une sélection explicite pour les emails et un journal préalable, borne les sessions Auth et verrouille la vue locale après inactivité. La CSP vient du middleware avec un nonce neuf : ne pas ajouter une deuxième CSP statique, ni remettre `unsafe-inline`/`unsafe-eval` dans script-src. Le layout racine reste dynamique. OpenCV utilise `opencv-csp.js` préparé depuis une empreinte officielle et quatre remplacements ; exécuter `node tests/opencv-no-eval.cjs`. La CI bloque les vulnérabilités npm modérées et supérieures. `main` est protégé : PR et CI obligatoires, aucun contournement administrateur. Voir §28.
+
 ## Vue d'ensemble du projet
 
 **Securionis Chantiers** est une application SaaS de gestion des inspections de chantiers (sécurité au travail, basée sur les référentiels SUVA). Elle permet à des inspecteurs de :

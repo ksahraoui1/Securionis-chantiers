@@ -14,7 +14,7 @@ test('Email : un avenant non relu bloque avant téléchargement et avant envoi',
  const visite={id:ids.visite,chantier_id:ids.chantier,rapport_url:'rapport'};
  const client={from:table=>{assert.equal(table,'visites');const q={select:()=>q,eq:()=>q,single:async()=>({data:visite,error:null})};return q;},storage:{from:()=>{downloads++;throw Error('Téléchargement prématuré');}}};
  const route=load('src/app/api/visites/[id]/email/route.ts',{'@/lib/supabase/server':{createClient:async()=>client},'@/lib/supabase/require-api-user':{requireApiUser:async()=>({user:{id:ids.user},response:null})},'@/lib/utils/security':{canAccessVisite:async()=>true,canAccessChantier:async()=>true,getUserRole:async()=> 'inspecteur'},'@/lib/roles/limites':{getLimits:()=>({canSendEmail:true})},'@/lib/rate-limit':{checkRateLimit:async()=>true},'@/lib/supabase/avenant':{...load('src/lib/supabase/avenant.ts'),lireAvenants:async()=>[{id:ids.id}]},'@/lib/email/send-rapport':{sendRapport:async()=>{sent++;}}});
- const response=await route.POST(new NextRequest('https://app.test/api/email',{method:'POST',body:JSON.stringify({rapportReference:'rapport',avenantsIds:[]})}),{params:Promise.resolve({id:ids.visite})});assert.equal(response.status,409);assert.equal(sent,0);assert.equal(downloads,0);
+ const response=await route.POST(new NextRequest('https://app.test/api/email',{method:'POST',body:JSON.stringify({rapportReference:'rapport',avenantsIds:[],destinataireIds:[]})}),{params:Promise.resolve({id:ids.visite})});assert.equal(response.status,409);assert.equal(sent,0);assert.equal(downloads,0);
 });
 test('Email : le rapport et les avenants sont joints ensemble, taille totale bornée',async()=>{
  let calls=0,payload;

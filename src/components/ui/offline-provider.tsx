@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { hasLegacyOfflineDatabase } from "@/lib/offline/db";
-import { activateOfflineScope, deactivateOfflineScope, isOfflineLocked, OFFLINE_LOCK_KEY, type OfflineScope } from "@/lib/offline/scope";
+import { activateOfflineScope, deactivateOfflineScope, isOfflineLocked, lockOfflineSession, OFFLINE_LOCK_KEY, type OfflineScope } from "@/lib/offline/scope";
+import { surveillerInactivite } from "@/lib/offline/inactivity";
 
 const ScopeContext = createContext<OfflineScope | null>(null);
 export function useOfflineScope(): OfflineScope {
@@ -50,7 +51,9 @@ export function OfflineProvider({ userId, entrepriseId, children }: { userId: st
     window.addEventListener("pagehide", stop);
     window.addEventListener("pageshow", onShow);
     document.addEventListener("visibilitychange", onVisible);
+    const arreterInactivite = surveillerInactivite(lockOfflineSession);
     return () => {
+      arreterInactivite();
       disposed = true;
       subscription.unsubscribe();
       current?.signal.removeEventListener("abort", stop);

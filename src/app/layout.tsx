@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { SwRegister } from "@/components/ui/sw-register";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Securionis Chantiers",
   description: "Application de contrôle de chantiers",
