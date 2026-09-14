@@ -42,7 +42,12 @@ jobs:
         - name: Database security regression tests
           env:
             PGPASSWORD: security-test-only
-          run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-versions.sql
+          run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-cloture.sql
+
+        - name: Concurrent database closure tests
+          env:
+            PGPASSWORD: security-test-only
+          run: bash tests/security-db-concurrency.sh psql -h 127.0.0.1 -U postgres -d postgres
 
         - name: Type-check
           run: npx tsc --noEmit

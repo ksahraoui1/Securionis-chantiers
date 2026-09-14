@@ -32,6 +32,7 @@ interface ChecklistFormProps {
   >;
   onValidate: () => void;
   validating: boolean;
+  editingDisabled?: boolean;
 }
 
 export function ChecklistForm({
@@ -41,6 +42,7 @@ export function ChecklistForm({
   existingReponses,
   onValidate,
   validating,
+  editingDisabled = false,
 }: ChecklistFormProps) {
   const scope = useOfflineScope();
   const [restoredResponses, setRestoredResponses] = useState(existingReponses);
@@ -250,6 +252,7 @@ export function ChecklistForm({
         </span>
       </div>
 
+      <fieldset disabled={editingDisabled} className="min-w-0 space-y-4">
       {points.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           Aucun point de contrôle pour les thèmes sélectionnés.
@@ -300,6 +303,8 @@ export function ChecklistForm({
           onCancel={() => setShowThemeAdder(false)}
         />
       )}
+
+      </fieldset>
 
       <div className="sticky bottom-0 bg-gray-50 pt-4 pb-6 border-t">
         <button

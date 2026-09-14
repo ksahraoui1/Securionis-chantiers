@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ChecklistForm } from "@/components/visite/checklist-form";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { createOfflineClient } from "@/lib/offline/client";
 import { useOfflineScope } from "@/components/ui/offline-provider";
-import { flushOfflineWrites, getUnsyncedResponses, getPendingPhotos } from "@/lib/offline/db";
-import { syncPendingData } from "@/lib/offline/sync";
-import { VALEURS_REPONSE, stripMarkdown } from "@/lib/utils/constants";
+import { preparerCloture, envoyerCloture, ErreurCloture, type DemandeCloture } from "@/lib/offline/cloture";
+import { stripMarkdown } from "@/lib/utils/constants";
 
 interface VisiteEnCoursProps {
   visiteId: string;
@@ -37,9 +35,6 @@ export function VisiteEnCours({
   const router = useRouter();
   const [validating, setValidating] = useState(false);
   const [showDelaiModal, setShowDelaiModal] = useState(false);
-  const [nonConformeReponses, setNonConformeReponses] = useState<
-    { id: string; description: string }[]
-  >([]);
   const [ecartDrafts, setEcartDrafts] = useState<EcartDraft[]>([]);
   const [currentEcartIndex, setCurrentEcartIndex] = useState(0);
   const [delaiInput, setDelaiInput] = useState("");
@@ -47,83 +42,32 @@ export function VisiteEnCours({
   const [remarquesGenerales, setRemarquesGenerales] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  async function readyToFinalize() {
-    await flushOfflineWrites(scope);
-    await syncPendingData(scope);
-    const [responses, photos] = await Promise.all([getUnsyncedResponses(scope), getPendingPhotos(scope, visiteId)]);
-    if (responses.some(r => r.visite_id === visiteId) || photos.length) {
-      throw new Error("Cette visite contient encore des réponses ou photos locales. Terminez leur synchronisation avant de valider.");
-    }
-    return createOfflineClient(scope);
-  }
+  const empreinte = useRef<string | null>(null);
+  const tentative = useRef<DemandeCloture | null>(null);
+  const actionEnCours = useRef(false);
+  const [confirmationIncertaine, setConfirmationIncertaine] = useState(false);
 
   async function handleValidate() {
-    setValidating(true);
-    setError(null);
-
+    if (actionEnCours.current) return;
+    actionEnCours.current = true;
+    setValidating(true); setError(null);
     try {
-      const supabase = await readyToFinalize();
-
-      // Fetch all reponses for this visite
-      const { data: allReponses } = await supabase
-        .from("reponses")
-        .select("id, point_controle_id, valeur, remarque")
-        .eq("visite_id", visiteId);
-
-      if (!allReponses) {
-        throw new Error("Impossible de charger les reponses");
-      }
-
-      // Filter non-conforme
-      const ncReponses = allReponses.filter(
-        (r) => r.valeur === VALEURS_REPONSE.NON_CONFORME
-      );
-
-      if (ncReponses.length > 0) {
-        // Load point_controle intitule for description
-        const pointIds = ncReponses.map((r) => r.point_controle_id);
-        const { data: points } = await supabase
-          .from("points_controle")
-          .select("id, intitule")
-          .in("id", pointIds);
-
-        const pointMap = new Map(points?.map((p) => [p.id, p.intitule]) ?? []);
-
-        const ncWithDesc = ncReponses.map((r) => ({
-          id: r.id,
-          description: stripMarkdown(
-            r.remarque ||
-            pointMap.get(r.point_controle_id) ||
-            "Non-conformité"
-          ),
-        }));
-
-        setNonConformeReponses(ncWithDesc);
-        setEcartDrafts(
-          ncWithDesc.map((nc) => ({
-            reponse_id: nc.id,
-            description: nc.description,
-            delai: "",
-          }))
-        );
-        setCurrentEcartIndex(0);
-        setDelaiInput("");
-        setShowDelaiModal(true);
-        setValidating(false);
-        return;
-      }
-
-      // No NC responses — finalize directly
-      await finalizeVisite([]);
+      if (tentative.current) { await finalizeVisite([], true); return; }
+      const preparation = await preparerCloture(scope, visiteId);
+      empreinte.current = preparation.empreinte;
+      if (preparation.non_conformites.length) {
+        const drafts = preparation.non_conformites.map(nc => ({ reponse_id: nc.id, description: stripMarkdown(nc.description), delai: nc.delai ?? "" }));
+        setEcartDrafts(drafts); setCurrentEcartIndex(0); setDelaiInput(drafts[0].delai);
+        setShowDelaiModal(true); setValidating(false);
+      } else { await finalizeVisite([]); }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Une erreur est survenue"
-      );
+      setError(err instanceof Error ? err.message : "Impossible de préparer la validation.");
       setValidating(false);
-    }
+    } finally { actionEnCours.current = false; }
   }
 
   async function handleDelaiConfirm() {
+    if (actionEnCours.current) return;
     const updated = [...ecartDrafts];
     updated[currentEcartIndex] = {
       ...updated[currentEcartIndex],
@@ -138,52 +82,31 @@ export function VisiteEnCours({
       // All delais collected — finalize
       setShowDelaiModal(false);
       setValidating(true);
-      await finalizeVisite(updated);
+      actionEnCours.current = true;
+      try { await finalizeVisite(updated); } finally { actionEnCours.current = false; }
     }
   }
 
-  async function finalizeVisite(drafts: EcartDraft[]) {
+  async function finalizeVisite(drafts: EcartDraft[], reprise = false) {
     try {
-      const supabase = await readyToFinalize();
-
-      // FR-027: Create ecarts for each non-conforme
-      if (drafts.length > 0) {
-        const ecartsToInsert = drafts.map((d) => ({
-          chantier_id: chantierId,
-          reponse_id: d.reponse_id,
-          description: d.description,
-          delai: d.delai || null,
-          statut: "ouvert" as const,
-        }));
-
-        const { error: ecartError } = await supabase
-          .from("ecarts")
-          .insert(ecartsToInsert);
-
-        if (ecartError) {
-          throw new Error(ecartError.message);
-        }
+      if (!tentative.current) {
+        if (!empreinte.current) throw new ErreurCloture("Reprenez la validation.", true);
+        tentative.current = {
+          p_visite_id: visiteId, p_empreinte: empreinte.current, p_operation_id: crypto.randomUUID(),
+          p_ecarts: drafts.map(d => ({ reponse_id: d.reponse_id, delai: d.delai.trim() || null })),
+          p_renseignements_par: renseignementsPar.trim() || null,
+          p_remarques_generales: remarquesGenerales.trim() || null,
+        };
       }
-
-      // Update visite statut to terminee + renseignements_par + remarques_generales
-      const { data: updated, error: updateError } = await supabase
-        .from("visites")
-        .update({
-          statut: "terminee",
-          renseignements_par: renseignementsPar.trim() || null,
-          remarques_generales: remarquesGenerales.trim() || null,
-        })
-        .eq("id", visiteId).select("id");
-
-      if (updateError || updated?.length !== 1) {
-        throw new Error(updateError?.message ?? "La visite n’a pas été mise à jour.");
-      }
-
+      setConfirmationIncertaine(true);
+      await envoyerCloture(scope, tentative.current, reprise);
       router.push(`/chantiers/${chantierId}/visites/${visiteId}/rapport`);
+      router.refresh();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Erreur lors de la finalisation"
-      );
+      if (err instanceof ErreurCloture && err.refusConfirme) {
+        tentative.current = null; setConfirmationIncertaine(false);
+      }
+      setError(err instanceof Error ? err.message : "La clôture n’a pas pu être confirmée. Réessayez la même demande.");
       setValidating(false);
     }
   }
@@ -192,6 +115,7 @@ export function VisiteEnCours({
 
   return (
     <>
+      <fieldset disabled={validating || showDelaiModal || confirmationIncertaine} className="min-w-0">
       <div className="mb-6 bg-white rounded-lg border border-gray-400 p-4">
         <label
           htmlFor="renseignements_par"
@@ -234,6 +158,8 @@ export function VisiteEnCours({
         />
       </div>
 
+      </fieldset>
+
       <ChecklistForm
         visiteId={visiteId}
         chantierId={chantierId}
@@ -241,8 +167,10 @@ export function VisiteEnCours({
         existingReponses={existingReponses}
         onValidate={handleValidate}
         validating={validating}
+        editingDisabled={validating || showDelaiModal || confirmationIncertaine}
       />
 
+      {confirmationIncertaine && !validating && <p className="mt-4 text-sm text-amber-800">La demande est conservée. Le bouton de validation réessaie la même opération sans modifier les constats.</p>}
       {error && (
         <div className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">
           {error}

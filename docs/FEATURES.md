@@ -1,6 +1,6 @@
 # Fonctionnalités — Securionis Chantiers
 
-> Dernière mise à jour : 2026-09-13 (troisième lot de corrections de sécurité)
+> Dernière mise à jour : 2026-09-14 (quatrième lot de corrections de sécurité)
 
 ## Sécurité des sessions et des rapports
 
@@ -68,6 +68,32 @@ Le chiffrement au repos de l’appareil n’est pas ajouté : un utilisateur aya
 ### Déploiement du lot 3
 
 Publier le commit testé, vérifier GitHub Actions, conserver l’image `044cea2` pour retour arrière, puis construire et basculer le conteneur sans `docker compose down`. Vérifier la santé, la page de connexion et le service worker v10, puis recharger l’application. Tous les anciens onglets doivent être rechargés pour remplacer le code déjà chargé en mémoire. Ne supprimer aucune base locale lors du déploiement ou d’un retour arrière ; l’ancien code ne sait pas relire les files v2. Un retour arrière exige donc une nouvelle mise à niveau avant de reprendre ces files.
+
+## Clôture transactionnelle et gel des constats — lot 4
+
+La migration 059 et le nouveau parcours de validation corrigent la clôture en deux requêtes séparées. Le lot traite la clôture atomique de S06 et la concurrence entre clôture et modification d’un constat. Il ne remplace pas le travail restant sur les conflits de réponses hors ligne S07.
+
+- **Préparation contrôlée** : `preparer_cloture_visite` vérifie le MFA, le profil et le rattachement actuel (ou le rôle administrateur). L’auteur retiré du chantier ne peut plus valider. La procédure verrouille la visite et les intitulés de ses points, retourne les non-conformités et une empreinte SHA-256 des données serveur. Une visite vide est refusée.
+- **Tout ou rien** : `cloturer_visite` recontrôle les mêmes droits et compare l’empreinte sous verrou. Elle exige exactement une entrée par réponse non conforme, sans oubli, doublon ni réponse étrangère. Les descriptions viennent des constats serveur ; seuls les délais et les renseignements de visite sont fournis par le formulaire. Les non-conformités et le statut terminé sont inscrits dans la même transaction. Une erreur à la dernière étape annule également leur création. Une NC déjà présente dans une visite ouverte est réutilisée en conservant son statut de suivi ; les doublons et incohérences antérieurs entraînent un refus explicite, sans suppression automatique.
+- **Comparaison à la validation** : une réponse, un intitulé, les données de visite ou une NC modifiés depuis la préparation entraînent un conflit SQL `40001`. L’utilisateur reprend la validation des constats actuels. Les triggers de réponses et de NC utilisent le verrou de la visite : une modification concurrente termine avant la comparaison, ou est refusée après la clôture. Les rattachements des réponses et des NC deviennent immuables.
+- **Traçabilité et relance** : la date serveur, l’UUID du validateur, l’UUID de l’opération et l’empreinte de sa demande sont inscrits sur la visite. Une relance strictement identique par le même acteur renvoie la réussite déjà enregistrée. Un UUID réutilisé avec un contenu différent est refusé. Après une réponse réseau perdue, le formulaire conserve la même demande en mémoire, bloque la modification des champs et permet sa relance. Un rechargement consulte l’état serveur de la visite ; une visite déjà terminée ouvre son rapport.
+- **Constats figés** : après clôture, les réponses ne peuvent être ajoutées, modifiées, déplacées ou supprimées. Les renseignements de visite, les descriptions et les délais des NC sont figés, y compris pour un client administrateur et pour les écritures métier du service. Une visite terminée ne peut être rouverte ou supprimée. Le statut de correction des NC, son auteur et sa date peuvent toujours évoluer. La publication contrôlée des PDF et le suivi des emails restent autorisés. Les NC issues de plans sans réponse de checklist conservent leur fonctionnement.
+- **Saisie locale** : la validation attend aussi les préparations photo déjà engagées, puis les écritures et la synchronisation de cette visite. Les champs sont désactivés pendant la préparation des délais et tant que l’issue d’une clôture reste incertaine. Les réponses et photos non envoyées restent conservées ; aucune file n’est purgée pour forcer une validation.
+- **Historique** : les visites déjà terminées sont protégées sans inventer de validateur ni de date de clôture. Le précontrôle de production du 14 septembre a relevé 95 visites terminées, aucun doublon de NC par réponse et les colonnes attendues. Aucune visite métier n’a été clôturée pour les tests.
+
+### Vérifications du lot 4
+
+30 tests Node passent, dont six scénarios de clôture : attente d’une préparation photo, file non envoyée, préparation invalide, distinction entre refus SQL et issue réseau incertaine, relance de la même demande et échec de préparation photo. TypeScript, lint (aucune erreur, 18 avertissements préexistants) et compilation locale Webpack passent.
+
+`tests/security-db-cloture.sql` reprend les migrations et tests des lots précédents, applique et réapplique 059 dans PostgreSQL 17 jetable, puis vérifie les droits, le MFA, les refus de clôture directe, les listes de NC, les conflits, le rollback d’une panne tardive, l’idempotence, le gel des données, le suivi des corrections et la suppression d’un brouillon. `tests/security-db-concurrency.sh` ouvre réellement deux sessions : clôture avant écriture, puis écriture avant clôture ; les verrous, refus et absence d’écriture partielle sont contrôlés. GitHub Actions exécute ces deux suites.
+
+Recette navigateur locale : vrai formulaire React sous StrictMode, transport et données fictifs. Après préparation du délai, une perte de réponse réseau laisse les champs figés ; le bouton de validation renvoie exactement le même UUID et le même contenu puis ouvre le rapport après confirmation. Ce contrôle ne remplace pas un test de bout en bout avec plusieurs comptes Supabase sur des appareils mobiles.
+
+### Limites et déploiement du lot 4
+
+S06 reste partiel : les octets des photos sources et le référentiel complet des points ne sont pas archivés à la clôture, et le parcours d’avenant validé reste à construire. L’empreinte de comparaison des constats n’est pas une signature électronique. S07 conserve son conflit côté client entre deux réponses pendant une visite ouverte ; une comparaison atomique des révisions serveur et une interface de résolution restent nécessaires. S09 (isolation multi-entreprise serveur) reste ouvert.
+
+Appliquer 059 et l’enregistrer sous `20260914120059` dans le suivi Supabase avant de basculer le code testé. La migration ne nécessite aucun effacement ni conversion de saisies locales. Les anciens onglets ne pourront plus terminer une visite par UPDATE direct et doivent être rechargés. Conserver l’image `d2cc583` pour retour arrière technique, ainsi que toutes les files locales. Après migration, l’ancien formulaire de clôture est incompatible : en cas de retour de conteneur, livrer un correctif compatible avec la procédure, sans désactiver les protections en base.
 
 ## 1. Annotation des photos
 
