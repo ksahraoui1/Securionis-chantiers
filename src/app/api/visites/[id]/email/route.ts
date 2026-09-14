@@ -45,7 +45,7 @@ export async function POST(
     // Optional body:
     //   - destinataireIds?: string[]  — restreindre aux destinataires sélectionnés du chantier
     //   - extraEmails?: string[]      — emails ad-hoc hors liste chantier
-    // Si destinataireIds absent : envoi à tous les destinataires du chantier (rétro-compat).
+    // Sélection explicite obligatoire : une demande invalide n’élargit jamais l’envoi.
     let selectedIds: string[] | null = null;
     let extraEmails: string[] = [];
     let referenceAttendue: string | null = null;
@@ -60,22 +60,18 @@ export async function POST(
           if (!Array.isArray(parsed.avenantsIds) || parsed.avenantsIds.some((v: unknown) => typeof v !== "string")) return NextResponse.json({ error: "Liste des avenants invalide." }, { status: 400 });
           avenantsAttendus = parsed.avenantsIds;
         }
-        if (Array.isArray(parsed?.destinataireIds)) {
-          selectedIds = parsed.destinataireIds.filter(
-            (id: unknown): id is string => typeof id === "string",
-          );
-        }
-        if (Array.isArray(parsed?.extraEmails)) {
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          extraEmails = parsed.extraEmails
-            .filter((e: unknown): e is string => typeof e === "string")
-            .map((e: string) => e.trim())
-            .filter((e: string) => e.length > 0 && !/[\r\n]/.test(e) && emailRegex.test(e));
+        if (!Array.isArray(parsed?.destinataireIds) || parsed.destinataireIds.length > 50 || parsed.destinataireIds.some((id: unknown) => typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id))) throw new Error("Sélection invalide");
+        selectedIds = [...new Set<string>(parsed.destinataireIds)];
+        if (parsed.extraEmails !== undefined) {
+          if (!Array.isArray(parsed.extraEmails) || parsed.extraEmails.length > 50 || parsed.extraEmails.some((e: unknown) => typeof e !== "string" || e.length > 254 || /[\r\n]/.test(e) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()))) throw new Error("Email invalide");
+          extraEmails = [...new Set<string>(parsed.extraEmails.map((e: string) => e.trim().toLowerCase()))];
         }
       }
     } catch {
       return NextResponse.json({ error: "Demande invalide. Vérifiez les destinataires." }, { status: 400 });
     }
+
+    if (selectedIds === null) return NextResponse.json({ error: "Sélection explicite des destinataires requise." }, { status: 400 });
 
     // Load visite
     const { data: visite } = await supabase
@@ -115,10 +111,13 @@ export async function POST(
       .single();
 
     // Load destinataires du chantier
-    const { data: allDestinataires } = await supabase
+    const { data: allDestinataires, error: erreurDestinataires } = await supabase
       .from("destinataires")
       .select("*")
       .eq("chantier_id", visite.chantier_id);
+
+    if (erreurDestinataires) return NextResponse.json({ error: "Liste des destinataires indisponible." }, { status: 503 });
+    if (selectedIds.some(id => !(allDestinataires ?? []).some(d => d.id === id))) return NextResponse.json({ error: "La liste des destinataires a changé. Relisez votre sélection." }, { status: 409 });
 
     // Filtrer si une sélection a été demandée (anti-injection : on n'envoie qu'à des destinataires liés au chantier)
     const baseDestinataires = selectedIds
@@ -133,7 +132,7 @@ export async function POST(
 
     const destinataires = [...baseDestinataires, ...adHocDestinataires];
 
-    if (destinataires.length === 0) {
+    if (destinataires.length === 0 || destinataires.length > 50) {
       return NextResponse.json(
         { error: "Aucun destinataire sélectionné" },
         { status: 400 }
@@ -185,6 +184,9 @@ export async function POST(
     const derniereLecture = await lireAvenants(supabase, visiteId);
     if (JSON.stringify(derniereLecture.map(a => a.id)) !== JSON.stringify(idsAvenants)) return NextResponse.json({ error: "Un avenant vient d’être ajouté. Vérifiez les pièces jointes avant l’envoi." }, { status: 409 });
 
+    const tentativeId = crypto.randomUUID();
+    if (!(await journaliser({ userId: user.id, action: "prepare_rapport_email", resource: "visite", resourceId: visiteId, details: { tentative_id: tentativeId, rapport_reference: referenceAttendue, avenants_ids: idsAvenants, destinataires: destinataires.map(d => d.email) } }))) return NextResponse.json({ error: "Journal de transmission indisponible. Aucun email n’a été envoyé." }, { status: 503 });
+
     const sentTo = await sendRapport(
       pdfBuffer,
       destinataires,
@@ -202,17 +204,18 @@ export async function POST(
     if (marquageError || dossierMarque !== true) console.error("Email envoyé ; dossier modifié ou confirmation indisponible", { visiteId, code: marquageError?.code });
 
     // Audit log
-    await journaliser({
+    const traceConfirmee = await journaliser({
       userId: user.id,
       action: "send_rapport_email",
       resource: "visite",
       resourceId: visiteId,
-      details: { sent_to: sentTo, count: sentTo.length, rapport_reference: referenceAttendue, avenants_ids: idsAvenants },
+      details: { tentative_id: tentativeId, sent_to: sentTo, count: sentTo.length, rapport_reference: referenceAttendue, avenants_ids: idsAvenants },
     });
 
     return NextResponse.json({
       sent_to: sentTo,
       count: sentTo.length,
+      traceConfirmee,
       dossierAJour: dossierMarque === true && !marquageError,
     });
   } catch (err) {

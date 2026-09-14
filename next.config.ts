@@ -1,77 +1,6 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
-/**
- * Content-Security-Policy
- *
- * Une seule directive change d'une page à l'autre : `script-src`. Le reste est
- * commun, défini une fois ici pour qu'aucune des deux politiques ne dérive.
- *
- * ⚠️ Les deux règles d'en-têtes ci-dessous doivent rester **mutuellement
- * exclusives**. Lorsqu'un navigateur reçoit deux en-têtes CSP, il applique leur
- * **intersection** : envoyer les deux à la même page reviendrait à appliquer la
- * plus stricte partout, et la page de comparaison cesserait de fonctionner.
- */
-const CSP_COMMUNE = [
-  "default-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "img-src 'self' https: data: blob:",
-  "font-src 'self' https://fonts.gstatic.com",
-  // Supabase + Sentry ingest (ingestion + replay)
-  "connect-src 'self' https://*.supabase.co https://*.supabase.in https://*.sentry.io https://*.ingest.sentry.io",
-  "frame-src 'self' https://*.supabase.co https://*.supabase.in",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-];
-
-// 'unsafe-inline' reste requis par les scripts RSC inline de Next.js (Turbopack
-// ne propage pas le nonce). 'unsafe-eval' est RETIRÉ : inutile en production et
-// vecteur d'escalade XSS (eval / new Function).
-const SCRIPT_SRC_STRICT = "'self' 'unsafe-inline'";
-
-/**
- * Exception unique : la comparaison de plans.
- *
- * OpenCV.js est bâti sur Embind, qui **fabrique chaque fonction liée à partir
- * d'une chaîne de caractères** (`craftInvokerFunction`, via `new_(Function,…)`).
- * Rien ne permet de l'en empêcher sans recompiler la bibliothèque avec
- * `-sDYNAMIC_EXECUTION=0`. Deux autres sites d'évaluation ont pu être
- * neutralisés dans la copie locale (voir `public/vendor/opencv/LISEZ-MOI.md`),
- * celui-ci non.
- *
- * `'unsafe-eval'` est donc accordé à cette seule route, et couvre du même coup
- * `WebAssembly.instantiate`. Le reste de l'application conserve la politique
- * durcie lors de l'audit de juillet 2026.
- *
- * OpenCV.js est servi depuis `/vendor/opencv` — donc `'self'`, jamais un CDN :
- * `'unsafe-eval'` n'ouvre la porte à aucun code tiers.
- */
-const SCRIPT_SRC_COMPARAISON = `${SCRIPT_SRC_STRICT} 'unsafe-eval'`;
-
-/**
- * ⚠️ **Une CSP par route ne vaut que pour un chargement de document.**
- *
- * Le navigateur attache la politique au document, pas à l'URL : atteindre la
- * comparaison par une navigation client-side de Next.js (`<Link>`) conserve la
- * politique **stricte** de la page de départ, WebAssembly y est refusé, et
- * OpenCV.js s'interrompt sans que rien ne le dise. Les liens qui mènent ici
- * sont donc de simples `<a>` (`plan-comparaison.tsx`, page de détail d'une NC),
- * et la page se recharge d'elle-même si elle constate le contraire.
- */
-const CHEMIN_COMPARAISON = "/chantiers/:id/comparaison";
-
-// Toutes les routes sauf la comparaison. La négation est portée par le motif
-// lui-même : c'est ce qui garantit qu'une seule des deux règles s'applique.
-const CHEMIN_HORS_COMPARAISON =
-  "/:chemin((?!chantiers/[^/]+/comparaison$).*)";
-
-function politique(scriptSrc: string): string {
-  return [`script-src ${scriptSrc}`, ...CSP_COMMUNE].join("; ");
-}
-
 const nextConfig: NextConfig = {
   // Image Docker multi-étapes (SEC-02) : `standalone` produit un `server.js`
   // autonome avec les seuls modules importés, au lieu d'embarquer le code
@@ -87,7 +16,7 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-XSS-Protection", value: "1; mode=block" },
+          { key: "X-XSS-Protection", value: "0" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",
@@ -108,24 +37,6 @@ const nextConfig: NextConfig = {
         source: "/vendor/opencv/:fichier*",
         headers: [
           { key: "Cache-Control", value: "public, max-age=2592000" },
-        ],
-      },
-      {
-        source: CHEMIN_HORS_COMPARAISON,
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: politique(SCRIPT_SRC_STRICT),
-          },
-        ],
-      },
-      {
-        source: CHEMIN_COMPARAISON,
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: politique(SCRIPT_SRC_COMPARAISON),
-          },
         ],
       },
     ];

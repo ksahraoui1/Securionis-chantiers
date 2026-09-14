@@ -37,7 +37,10 @@ jobs:
           run: npm ci
 
         - name: Security regression tests
-          run: npm run test:security
+          run: |
+            npm run test:security
+            node tests/opencv-no-eval.cjs
+            npm audit --audit-level=moderate
 
         - name: Database security regression tests
           env:
@@ -77,6 +80,11 @@ jobs:
           env:
             PGPASSWORD: security-test-only
           run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-avenants.sql
+
+        - name: Bounded quotas
+          env:
+            PGPASSWORD: security-test-only
+          run: psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/security-db-quotas.sql
 
         - name: Type-check
           run: npx tsc --noEmit

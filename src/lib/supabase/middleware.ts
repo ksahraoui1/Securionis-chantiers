@@ -43,6 +43,7 @@ export async function updateSession(request: NextRequest) {
   const isPublic = publicPaths.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   if (!user && !isPublic) {
+    if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Connexion requise." }, { status: 401 });
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

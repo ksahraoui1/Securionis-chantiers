@@ -240,7 +240,7 @@ test('Email : une version différente de celle choisie est refusée avant tout t
     '@/lib/rate-limit': { checkRateLimit: async () => true },
     '@/lib/email/send-rapport': { sendRapport: async () => { sent++; } },
   });
-  for (const body of [{ rapportReference: 'ancienne-version' }, {}]) {
+  for (const body of [{ rapportReference: 'ancienne-version', destinataireIds: [] }, { destinataireIds: [] }]) {
     const response = await route.POST(new NextRequest('https://app.test/api/visites/id/email', { method: 'POST', body: JSON.stringify(body) }), { params: Promise.resolve({ id: visit.id }) });
     assert.equal(response.status, 409);
   }

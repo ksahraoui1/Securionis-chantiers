@@ -180,7 +180,7 @@ export function RapportActions({
       setEmailSent(body.dossierAJour !== false);
       setShowEmailModal(false);
       setSuccessMessage(
-        `Email envoyé à ${body.count} destinataire(s) : ${(body.sent_to ?? []).join(", ")}${body.dossierAJour === false ? ". Le dossier a évolué ou sa confirmation est indisponible : rechargez pour vérifier les dernières pièces." : ""}`,
+        `Email envoyé à ${body.count} destinataire(s) : ${(body.sent_to ?? []).join(", ")}${body.dossierAJour === false ? ". Le dossier a évolué ou sa confirmation est indisponible : rechargez pour vérifier les dernières pièces." : ""}${body.traceConfirmee === false ? ". La confirmation du journal est indisponible ; ne renvoyez pas le même email sans vérifier son historique." : ""}`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'envoi");

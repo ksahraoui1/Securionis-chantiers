@@ -28,15 +28,14 @@ import { createServiceClient } from "@/lib/supabase/server";
  * @param windowMs     durée de la fenêtre, en millisecondes
  * @returns `true` si l'appel est autorisé, `false` s'il dépasse le quota
  *
- * **En cas de panne de la base, l'appel est autorisé.** Un limiteur de débit
- * indisponible ne doit pas rendre l'application indisponible ; l'échec est
- * journalisé côté serveur — donc remonté à Sentry — pour rester visible.
+ * Un compteur indisponible refuse les opérations : aucune dépense sans quota.
  */
 export async function checkRateLimit(
   key: string,
   maxRequests: number,
   windowMs: number
 ): Promise<boolean> {
+  if (!key || key.length > 256 || !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100000 || !Number.isFinite(windowMs) || windowMs < 1000 || windowMs > 86400000) return false;
   try {
     const serviceClient = await createServiceClient();
     const { data, error } = await serviceClient.rpc("consommer_quota", {
@@ -47,11 +46,11 @@ export async function checkRateLimit(
 
     if (error) {
       console.error(`[rate-limit] Échec du comptage pour « ${key} » :`, error.message);
-      return true;
+      return false;
     }
-    return data !== false;
+    return data === true;
   } catch (err) {
     console.error(`[rate-limit] Exception lors du comptage pour « ${key} » :`, err);
-    return true;
+    return false;
   }
 }
