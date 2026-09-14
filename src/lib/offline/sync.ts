@@ -28,7 +28,7 @@ async function synchronize(scope: OfflineScope): Promise<SyncResult> {
   const visiteIds = [...new Set([...responses.map(r => r.visite_id), ...photos.map(p => p.visite_id)])];
   const [visites, records] = await Promise.all([
     supabase.from("visites").select("id, statut").in("id", visiteIds),
-    supabase.from("reponses").select("id, visite_id, point_controle_id, updated_at, photos").in("visite_id", visiteIds),
+    supabase.from("reponses").select("id, visite_id, point_controle_id, updated_at, photos, sync_revision, sync_operation_id, sync_acteur").in("visite_id", visiteIds),
   ]);
   if (visites.error || !visites.data || records.error || !records.data) return { ...result, errors: responses.length + photos.length };
   const writable = new Set(visites.data.filter(v => v.statut !== "terminee").map(v => v.id));
@@ -54,22 +54,24 @@ async function synchronize(scope: OfflineScope): Promise<SyncResult> {
     related.forEach(photo => processedPhotos.add(photo.id));
     if (!writable.has(response.visite_id)) { result.errors++; continue; }
     const remote = server.get(response.key);
-    if (remote && Date.parse(remote.updated_at) > Date.parse(response.updated_at)) { result.conflicts++; continue; }
+    const retry = typeof remote?.sync_operation_id === "string" && remote.sync_operation_id === response.revision && remote?.sync_acteur === scope.userId;
+    if (remote && !retry && Date.parse(remote.updated_at) > Date.parse(response.updated_at)) { result.conflicts++; continue; }
     try {
       for (const photo of related) await upload(photo);
       assertOfflineScope(scope);
-      const { data, error } = await supabase.from("reponses").upsert({
-        visite_id: response.visite_id, point_controle_id: response.point_controle_id,
-        valeur: response.valeur, remarque: response.remarque, photos: canoniserUrlsStockage(response.photos), updated_at: response.updated_at,
-      }, { onConflict: "visite_id,point_controle_id" }).select("id");
-      if (error || data?.length !== 1) { result.errors++; continue; }
+      const { data, error } = await supabase.rpc("synchroniser_reponse", {
+        p_visite_id: response.visite_id, p_point_controle_id: response.point_controle_id,
+        p_revision_attendue: remote?.sync_revision ?? null, p_operation_id: response.revision,
+        p_valeur: response.valeur, p_remarque: response.remarque, p_photos: canoniserUrlsStockage(response.photos),
+      });
+      if (error?.code === "40001") { result.conflicts++; continue; }
+      if (error || !data || typeof data.id !== "string" || typeof data.revision !== "string" || data.operation_id !== response.revision) { result.errors++; continue; }
       assertOfflineScope(scope);
       const acknowledged = await markResponseSynced(scope, response.key, response.revision);
       if (acknowledged) {
         result.syncedResponses++;
         for (const photo of related) { await deletePendingPhoto(scope, photo.id); result.syncedPhotos++; }
       }
-      await supabase.from("visites").update({ statut: "en_cours" }).eq("id", response.visite_id).eq("statut", "brouillon");
     } catch { result.errors++; }
   }
   // Une photo seule ne disparaît que si une réponse serveur la référence déjà.
