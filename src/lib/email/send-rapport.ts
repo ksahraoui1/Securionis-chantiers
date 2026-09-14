@@ -21,11 +21,12 @@ export async function sendRapport(
   chantierAdresse: string,
   dateVisite: string,
   inspecteurNom?: string,
-  entreprise?: EntrepriseInfo | null
+  entreprise?: EntrepriseInfo | null,
+  avenants: { filename: string; content: Buffer }[] = []
 ): Promise<string[]> {
-  const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50 Mo
-  if (pdfBuffer.byteLength > MAX_PDF_SIZE) {
-    throw new Error("Le PDF est trop volumineux pour l'envoi par email");
+  const MAX_PDF_SIZE = 25 * 1024 * 1024; // Marge pour l’encodage des pièces jointes
+  if (pdfBuffer.byteLength + avenants.reduce((n,a) => n + a.content.byteLength, 0) > MAX_PDF_SIZE) {
+    throw new Error("Les pièces jointes dépassent la limite de 25 Mo par email");
   }
 
   const dateFormatted = new Date(dateVisite).toLocaleDateString("fr-CH", {
@@ -51,12 +52,13 @@ export async function sendRapport(
       from: getResendFromEmail(),
       to: allEmails,
       subject,
-      html: buildEmailHtml(dateFormatted, inspecteurNom, entreprise),
+      html: buildEmailHtml(dateFormatted, inspecteurNom, entreprise, avenants.length),
       attachments: [
         {
           filename,
           content: pdfBuffer,
         },
+        ...avenants,
       ],
     });
 
@@ -75,7 +77,8 @@ export async function sendRapport(
 function buildEmailHtml(
   dateFormatted: string,
   inspecteurNom?: string,
-  entreprise?: EntrepriseInfo | null
+  entreprise?: EntrepriseInfo | null,
+  nombreAvenants = 0
 ): string {
   let signature = "";
 
@@ -104,7 +107,7 @@ function buildEmailHtml(
   return `
     <p><strong>Ne veuille pas répondre à cette email ! Utilisez : ks.aigle@gmail.com</strong></p>
     <p>Bonjour,</p>
-    <p>Veuillez trouver ci-joint le rapport de visite du ${dateFormatted}.</p>
+    <p>Veuillez trouver ci-joint le rapport de visite du ${dateFormatted}${nombreAvenants ? `, accompagné de ses ${nombreAvenants} avenant(s) conservé(s)` : ""}.</p>
     <p>Excellente journée<br/>Portez-vous bien<br/>Bien à vous</p>
     ${signature}
   `;

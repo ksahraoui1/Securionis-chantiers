@@ -1,9 +1,10 @@
+import { AvenantError, chargerPdfAvenant, lireAvenants } from "@/lib/supabase/avenant";
 import { verifierRapportVisite } from "@/lib/utils/storage-reference";
 import { requireApiUser } from "@/lib/supabase/require-api-user";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendRapport } from "@/lib/email/send-rapport";
-import { canAccessVisite, getUserRole } from "@/lib/utils/security";
+import { canAccessVisite, canAccessChantier, getUserRole } from "@/lib/utils/security";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getLimits } from "@/lib/roles/limites";
 import { journaliser } from "@/lib/audit";
@@ -48,11 +49,17 @@ export async function POST(
     let selectedIds: string[] | null = null;
     let extraEmails: string[] = [];
     let referenceAttendue: string | null = null;
+    let avenantsAttendus: string[] | null = null;
     try {
       const text = await request.text();
+      if (text.length > 32768) return NextResponse.json({ error: "Demande trop volumineuse." }, { status: 413 });
       if (text) {
         const parsed = JSON.parse(text);
         referenceAttendue = typeof parsed?.rapportReference === "string" ? parsed.rapportReference : null;
+        if (parsed?.avenantsIds !== undefined) {
+          if (!Array.isArray(parsed.avenantsIds) || parsed.avenantsIds.some((v: unknown) => typeof v !== "string")) return NextResponse.json({ error: "Liste des avenants invalide." }, { status: 400 });
+          avenantsAttendus = parsed.avenantsIds;
+        }
         if (Array.isArray(parsed?.destinataireIds)) {
           selectedIds = parsed.destinataireIds.filter(
             (id: unknown): id is string => typeof id === "string",
@@ -67,7 +74,7 @@ export async function POST(
         }
       }
     } catch {
-      // Body absent ou invalide → fallback à tous
+      return NextResponse.json({ error: "Demande invalide. Vérifiez les destinataires." }, { status: 400 });
     }
 
     // Load visite
@@ -94,6 +101,11 @@ export async function POST(
     if (referenceAttendue !== visite.rapport_url) {
       return NextResponse.json({ error: "La version du rapport a changé. Rechargez la page avant l’envoi." }, { status: 409 });
     }
+
+    if (!(await canAccessChantier(supabase, user.id, visite.chantier_id))) return NextResponse.json({ error: "Une affectation actuelle est requise pour envoyer le rapport." }, { status: 403 });
+    const avenants = await lireAvenants(supabase, visiteId);
+    const idsAvenants = avenants.map(a => a.id);
+    if (JSON.stringify(avenantsAttendus ?? []) !== JSON.stringify(idsAvenants)) return NextResponse.json({ error: "L’historique des avenants a changé. Rechargez et vérifiez les pièces jointes avant l’envoi." }, { status: 409 });
 
     // Load chantier for address
     const { data: chantier } = await supabase
@@ -160,7 +172,18 @@ export async function POST(
       );
     }
 
+    if (pdfBlob.size > 25 * 1024 * 1024) return NextResponse.json({ error: "Les pièces jointes dépassent 25 Mo." }, { status: 422 });
     const pdfBuffer = Buffer.from(await pdfBlob.arrayBuffer());
+    let taillePieces = pdfBuffer.byteLength;
+    const piecesAvenants: { filename: string; content: Buffer }[] = [];
+    for (const avenant of avenants) {
+      const content = await chargerPdfAvenant(supabase, avenant, visite.chantier_id);
+      taillePieces += content.byteLength;
+      if (taillePieces > 25 * 1024 * 1024) return NextResponse.json({ error: "Les pièces jointes dépassent 25 Mo. Téléchargez les rapports et avenants séparément." }, { status: 422 });
+      piecesAvenants.push({ filename: `avenant_${avenant.numero}_${avenant.id}.pdf`, content });
+    }
+    const derniereLecture = await lireAvenants(supabase, visiteId);
+    if (JSON.stringify(derniereLecture.map(a => a.id)) !== JSON.stringify(idsAvenants)) return NextResponse.json({ error: "Un avenant vient d’être ajouté. Vérifiez les pièces jointes avant l’envoi." }, { status: 409 });
 
     const sentTo = await sendRapport(
       pdfBuffer,
@@ -168,24 +191,15 @@ export async function POST(
       chantier?.adresse ?? "Chantier",
       visite.date_visite,
       inspecteur?.nom,
-      entreprise
+      entreprise,
+      piecesAvenants
     );
 
-    // Marquer la visite comme envoyée. Résultat vérifié : un refus RLS ne lève
-    // aucune erreur et ne touche aucune ligne (piège n° 43) — l'email est
-    // parti, la visite doit le dire.
-    const { data: marquees, error: marquageError } = await supabase
-      .from("visites")
-      .update({ email_envoye: true, updated_at: new Date().toISOString() })
-      .eq("id", visiteId)
-      .eq("rapport_url", referenceAttendue)
-      .select("id");
-    if (marquageError || !marquees || marquees.length === 0) {
-      console.error(
-        `[visite ${visiteId}] Email envoyé mais email_envoye non marqué :`,
-        marquageError?.message ?? "aucune ligne touchée (refus RLS ?)",
-      );
-    }
+    const service = await createServiceClient();
+    const { data: dossierMarque, error: marquageError } = await service.rpc("confirmer_envoi_rapport", {
+      p_visite_id: visiteId, p_auteur_id: user.id, p_rapport_reference: referenceAttendue, p_dernier_avenant: idsAvenants.at(-1) ?? null,
+    });
+    if (marquageError || dossierMarque !== true) console.error("Email envoyé ; dossier modifié ou confirmation indisponible", { visiteId, code: marquageError?.code });
 
     // Audit log
     await journaliser({
@@ -193,14 +207,16 @@ export async function POST(
       action: "send_rapport_email",
       resource: "visite",
       resourceId: visiteId,
-      details: { sent_to: sentTo, count: sentTo.length, rapport_reference: referenceAttendue },
+      details: { sent_to: sentTo, count: sentTo.length, rapport_reference: referenceAttendue, avenants_ids: idsAvenants },
     });
 
     return NextResponse.json({
       sent_to: sentTo,
       count: sentTo.length,
+      dossierAJour: dossierMarque === true && !marquageError,
     });
   } catch (err) {
+    if (err instanceof AvenantError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error("Email send error:", err);
     return NextResponse.json(
       { error: "Erreur lors de l'envoi de l'email" },

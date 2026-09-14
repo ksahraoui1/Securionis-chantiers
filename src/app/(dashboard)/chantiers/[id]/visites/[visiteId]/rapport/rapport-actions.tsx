@@ -13,6 +13,8 @@ interface RapportActionsProps {
   rapportReference: string | null;
   emailEnvoye: boolean;
   destinataires: Tables<"destinataires">[];
+  avenantsIds: string[];
+  avenantsError: boolean;
 }
 
 export function RapportActions({
@@ -22,6 +24,8 @@ export function RapportActions({
   rapportReference,
   emailEnvoye,
   destinataires,
+  avenantsIds,
+  avenantsError,
 }: RapportActionsProps) {
   const router = useRouter();
   const [reference, setReference] = useState(rapportReference);
@@ -161,6 +165,7 @@ export function RapportActions({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rapportReference: reference,
+          avenantsIds,
           destinataireIds: Array.from(selectedIds),
           extraEmails: adHocEmails,
         }),
@@ -172,10 +177,10 @@ export function RapportActions({
         throw new Error(body.error ?? "Erreur lors de l'envoi");
       }
 
-      setEmailSent(true);
+      setEmailSent(body.dossierAJour !== false);
       setShowEmailModal(false);
       setSuccessMessage(
-        `Email envoyé à ${body.count} destinataire(s) : ${(body.sent_to ?? []).join(", ")}`,
+        `Email envoyé à ${body.count} destinataire(s) : ${(body.sent_to ?? []).join(", ")}${body.dossierAJour === false ? ". Le dossier a évolué ou sa confirmation est indisponible : rechargez pour vérifier les dernières pièces." : ""}`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'envoi");
@@ -256,7 +261,7 @@ export function RapportActions({
         size="lg"
         variant={!pdfGenerated || !hasDestinataires ? "secondary" : "primary"}
         className="w-full"
-        disabled={!pdfGenerated || !hasDestinataires}
+        disabled={!pdfGenerated || !hasDestinataires || avenantsError}
         onClick={openEmailModal}
       >
         {emailSent ? "Renvoyer par email…" : "Envoyer par email…"}
@@ -274,6 +279,7 @@ export function RapportActions({
         title="Choisir les destinataires"
       >
         <div className="space-y-3">
+          <p className="text-sm text-gray-700">Pièces jointes : le rapport et {avenantsIds.length} avenant(s) conservé(s). Si un avenant est ajouté entre-temps, l’envoi demandera une nouvelle vérification.</p>
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">
               {totalSelected} sélectionné{totalSelected > 1 ? "s" : ""}

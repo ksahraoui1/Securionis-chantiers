@@ -1,3 +1,5 @@
+import { AvenantsVisite } from "@/components/visite/avenants";
+import type { Avenant } from "@/lib/visites/avenant";
 import { ArchiveSources } from "@/components/visite/archive-sources";
 import { canAccessChantier, getUserRole } from "@/lib/utils/security";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
@@ -123,6 +125,7 @@ export default async function RapportPage({
   }));
 
   const { data: archive, error: archiveError } = await supabase.from("visite_archives").select("id,mode,sha256,created_at").eq("visite_id", visiteId).maybeSingle();
+  const { data: avenants, error: avenantsError } = await supabase.from("visite_avenants").select("*").eq("visite_id", visiteId).order("numero", { ascending: true });
   const role = await getUserRole(supabase, user.id);
   const peutArchiver = (role === "administrateur" || role === "inspecteur") && await canAccessChantier(supabase, user.id, chantierId);
   const ncCount =
@@ -248,6 +251,8 @@ export default async function RapportPage({
 
       {(role === "administrateur" || role === "inspecteur") && <ArchiveSources visiteId={visiteId} auteurId={user.id} archive={archive} erreur={!!archiveError} editable={peutArchiver} />}
 
+      <AvenantsVisite visiteId={visiteId} archiveId={archive?.id ?? null} rapportReference={visite.rapport_url} avenants={(avenants ?? []) as Avenant[]} erreur={!!avenantsError} editable={peutArchiver} />
+
       <RapportActions
         visiteId={visiteId}
         hasRapportUrl={!!visite.rapport_url}
@@ -255,6 +260,8 @@ export default async function RapportPage({
         rapportReference={visite.rapport_url}
         emailEnvoye={visite.email_envoye}
         destinataires={destinataires ?? []}
+        avenantsIds={(avenants ?? []).map(a => a.id)}
+        avenantsError={!!avenantsError}
       />
 
       <section className="mt-8 rounded-lg border border-gray-300 bg-white p-4">

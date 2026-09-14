@@ -31,7 +31,7 @@ test('Toutes les routes API refusent le MFA incomplet avant tout privilège', as
   const { NextRequest } = require('next/server');
   const dir = path.resolve(__dirname, '../src/app/api');
   const files = fs.readdirSync(dir, { recursive: true }).filter(f => f.endsWith('route.ts'));
-  assert.equal(files.length, 19);
+  assert.equal(files.length, 20);
   for (const file of files) {
     const route = load(path.join(dir, file), { '@/lib/supabase/server': {
       createClient: async () => session(false),
