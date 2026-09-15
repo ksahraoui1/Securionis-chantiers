@@ -2935,3 +2935,7 @@ Config : `eslint.config.mjs` (flat config ESLint 9, sans `FlatCompat`).
 ### Brouillons durables du cycle correctif (2026-09-15)
 
 `src/lib/offline/cycle.ts` conserve chaque copie dans une base IndexedDB dédiée au scope compte/entreprise, sans migration des files de visite. `use-cycle-draft.ts` annonce la sauvegarde après commit local ; le dépôt et la transition attendent cette sauvegarde. Les octets des File et les UUID sont conservés, et une transition incertaine est rejouée exactement après réouverture. Toute reprise crée un nouvel identifiant de copie ; les anciennes copies restent disponibles, sans écrasement entre onglets ni envoi automatique. Une révision différente exige une comparaison explicite, puis la CAS serveur demeure autoritaire. Les API et migrations 066/067 restent inchangées. Détails, recette et limites : `docs/FEATURES.md` §31. Ce lot ne remplace pas le test physique mobile ni une restauration externe.
+
+### Recette et sauvegardes Storage (2026-09-15)
+
+Le contrôle connecté des brouillons est terminé sans écrire de données de recette en production. Les sauvegardes physiques Supabase ne couvrent pas les octets Storage. `scripts/backup/storage.cjs` propose leur copie chiffrée et leur restauration locale sans réseau ; ne jamais confondre validation de cet outil avec une restauration complète de la base. La procédure est dans `scripts/backup/README.md`. Les fichiers privés, la clé et les sorties de recette restent hors Git ; aucun projet facturé ni transfert de données vers une destination nouvelle sans autorisation explicite.
