@@ -1,5 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type SetStateAction } from "react";
+import { useOfflineScope } from "@/components/ui/offline-provider";
+import { assertOfflineScope, type OfflineScope } from "@/lib/offline/scope";
+import { useCycleDraft } from "./use-cycle-draft";
 import { useRouter } from "next/navigation";
 import { ACTIONS_CYCLE, estEnRetard, validerDemandeCycle, type ActionCycle, type DemandeCycle, type EvenementEcart, type SuiviEcart } from "@/lib/ecarts/cycle";
 import { EcartStatusBadge } from "./ecart-status-badge";
@@ -7,39 +10,56 @@ import { EcartPieces, LiensPieces, type PieceBrouillon } from "./ecart-pieces";
 import type { PieceEcart } from "@/lib/ecarts/pieces";
 interface Etat { ecart: {id:string;statut:string}; suivi:SuiviEcart|null; historique:EvenementEcart[]; piecesActuelles?:PieceEcart[]; peutModifier:boolean; auteurId:string;entrepriseId:string }
 export function EcartCycle({ecartId,auteurId}:{ecartId:string;auteurId:string}) {
+ const scope=useOfflineScope();
+ return <CycleLocal key={`${scope.database}:${ecartId}`} ecartId={ecartId} auteurId={auteurId} scope={scope}/>;
+}
+function CycleLocal({ecartId,auteurId,scope}:{ecartId:string;auteurId:string;scope:OfflineScope}) {
  const router=useRouter();
- const [pieces,setPieces]=useState<PieceBrouillon[]>([]);
+ const local=useCycleDraft(scope,ecartId);
+ const {draft}=local;
+ const pieces=draft?.pieces??[];
+ const responsable=draft?.responsable??"", echeance=draft?.echeance??"", commentaire=draft?.commentaire??"", pending=draft?.pending??null;
+ const edit=(patch:Parameters<typeof local.update>[0])=>{void local.update(patch).catch(()=>{});};
+ const setResponsable=(v:string)=>edit({responsable:v});
+ const setEcheance=(v:string)=>edit({echeance:v});
+ const setCommentaire=(v:string)=>edit({commentaire:v});
+ const setPieces=(v:SetStateAction<PieceBrouillon[]>)=>edit({pieces:typeof v==="function"?v(local.current.current?.pieces??[]):v});
  const [envoiPiece,setEnvoiPiece]=useState(false);
  const [etat,setEtat]=useState<Etat|null>(null);
- const [responsable,setResponsable]=useState(""); const [echeance,setEcheance]=useState(""); const [commentaire,setCommentaire]=useState("");
- const [pending,setPending]=useState<DemandeCycle|null>(null); const [busy,setBusy]=useState(false); const [conflit,setConflit]=useState(false); const [message,setMessage]=useState("");
+ const [busy,setBusy]=useState(false); const [conflit,setConflit]=useState(false); const [message,setMessage]=useState("");
  async function charger(initial=false) {
-  const response=await fetch(`/api/ecarts/${ecartId}/statut`,{cache:"no-store"});
+  const response=await fetch(`/api/ecarts/${ecartId}/statut`,{cache:"no-store",signal:scope.signal});
   const data=await response.json();
   if(!response.ok) throw new Error(data.error || "Suivi indisponible.");
-  if(data.auteurId!==auteurId) throw new Error("Le compte a changé. Rechargez la page.");
+  assertOfflineScope(scope);
+  if(data.auteurId!==auteurId || data.entrepriseId!==scope.entrepriseId) throw new Error("Le compte a changé. Rechargez la page.");
   setEtat(data);
-  if(initial) {setResponsable(data.suivi?.responsable??"");setEcheance(data.suivi?.echeance??"");}
+  local.initialiser(data.suivi?.responsable??"",data.suivi?.echeance??"",data.suivi?.revision??0);
+  if(initial) await local.update({responsable:data.suivi?.responsable??"",echeance:data.suivi?.echeance??"",baseRevision:data.suivi?.revision??0});
  }
  useEffect(()=>{ let active=true;
-  fetch(`/api/ecarts/${ecartId}/statut`,{cache:"no-store"}).then(async r=>{const d=await r.json();if(!r.ok) throw new Error(d.error||"Suivi indisponible.");if(d.auteurId!==auteurId) throw new Error("Rechargez la page pour le compte actuel.");return d;}).then(d=>{if(active){setEtat(d);setResponsable(d.suivi?.responsable??"");setEcheance(d.suivi?.echeance??"");}}).catch(e=>{if(active)setMessage(e.message);});
+  fetch(`/api/ecarts/${ecartId}/statut`,{cache:"no-store",signal:scope.signal}).then(async r=>{const d=await r.json();if(!r.ok) throw new Error(d.error||"Suivi indisponible.");assertOfflineScope(scope);if(d.auteurId!==auteurId || d.entrepriseId!==scope.entrepriseId) throw new Error("Rechargez la page pour le compte actuel.");return d;}).then(d=>{if(active){setEtat(d);local.initialiser(d.suivi?.responsable??"",d.suivi?.echeance??"",d.suivi?.revision??0);}}).catch(e=>{if(active)setMessage(e.message);});
   return ()=>{active=false;};
- },[ecartId,auteurId]);
- useEffect(()=>{const handler=(e:BeforeUnloadEvent)=>{if(pending || pieces.length || commentaire || (etat && (responsable!==(etat.suivi?.responsable??"") || echeance!==(etat.suivi?.echeance??"")))){e.preventDefault();}};window.addEventListener("beforeunload",handler);return()=>window.removeEventListener("beforeunload",handler);},[pending,pieces.length,commentaire,responsable,echeance,etat]);
+ // Le périmètre et la NC sont immuables pour cette instance (clé du composant).
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[ecartId,auteurId,scope]);
+ useEffect(()=>{const handler=(e:BeforeUnloadEvent)=>{if(local.unsaved)e.preventDefault();};window.addEventListener("beforeunload",handler);return()=>window.removeEventListener("beforeunload",handler);},[local.unsaved]);
  async function envoyer(action:ActionCycle, retry=false) {
-  if(!etat || busy || envoiPiece) return;
+  if(!etat || !draft || busy || envoiPiece || (!retry && (pending || conflit || draft.baseRevision!==(etat.suivi?.revision??0)))) return;
   if(action==="soumettre" && !retry && pieces.some(p=>!p.piece || p.revision!==etat.suivi?.revision)) {setMessage("Envoyez chaque pièce sélectionnée pour la révision actuelle, ou retirez-la avant de soumettre.");return;}
   let demande:DemandeCycle;
   try { demande=retry && pending ? pending : validerDemandeCycle({operationId:crypto.randomUUID(),auteurId,entrepriseId:etat.entrepriseId,revision:etat.suivi?.revision??0,action,responsable:action==="planifier"?responsable:etat.suivi?.responsable,echeance:action==="planifier"?echeance:etat.suivi?.echeance,commentaire:action==="planifier"?null:commentaire,pieces:action==="soumettre"?pieces.map(p=>p.id):[]}); } catch(e) {setMessage((e as Error).message);return;}
-  setPending(demande);setBusy(true);setMessage("");
+  setBusy(true);setMessage("");
   try {
-   const response=await fetch(`/api/ecarts/${ecartId}/statut`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(demande)});
-   const data=await response.json();
-   if(!response.ok) {if(data.refusConfirme===true){setPending(null);if(response.status===409)setConflit(true);}throw new Error(data.error||"Résultat non confirmé.");}
+   await local.update({pending:demande});assertOfflineScope(scope);
+   const response=await fetch(`/api/ecarts/${ecartId}/statut`,{method:"PATCH",signal:scope.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify(demande)});
+   const data=await response.json();assertOfflineScope(scope);
+   if(!response.ok) {if(data.refusConfirme===true){await local.update({pending:null});if(response.status===409)setConflit(true);}throw new Error(data.error||"Résultat non confirmé.");}
    if(data.operation_id!==demande.operationId || data.revision!==demande.revision+1) throw new Error("Résultat non confirmé. Réessayez la même demande.");
-   setPending(null);if(demande.action==="soumettre")setPieces([]);if(demande.action!=="planifier")setCommentaire("");setMessage("Action enregistrée dans l’historique.");
+   await local.update({pending:null,baseRevision:data.revision,pieces:demande.action==="soumettre"?[]:pieces,commentaire:demande.action!=="planifier"?"":commentaire,termine:demande.action==="valider"});
+   setMessage("Action enregistrée dans l’historique.");
    try {await charger(true);router.refresh();} catch {setConflit(true);setMessage("Action enregistrée. La relecture est indisponible ; actualisez le suivi avant de continuer.");}
-  } catch(e) {setMessage((e as Error).message);} finally {setBusy(false);}
+  } catch(e) {if(!scope.signal.aborted)setMessage((e as Error).message);} finally {if(!scope.signal.aborted)setBusy(false);}
  }
  async function relire() {setBusy(true);try{await charger(!etat);setConflit(false);setMessage("État actualisé. Vos textes sont conservés : comparez-les au suivi avant une nouvelle action.");}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}
  async function historiqueAncien() {
@@ -47,18 +67,22 @@ export function EcartCycle({ecartId,auteurId}:{ecartId:string;auteurId:string}) 
   setBusy(true);
   try {
    const avant=etat.historique[etat.historique.length-1].revision;
-   const response=await fetch(`/api/ecarts/${ecartId}/statut?avant=${avant}`,{cache:"no-store"});
-   const data=await response.json();
+   const response=await fetch(`/api/ecarts/${ecartId}/statut?avant=${avant}`,{cache:"no-store",signal:scope.signal});
+   const data=await response.json();assertOfflineScope(scope);
    if(!response.ok || data.auteurId!==auteurId) throw new Error("Historique indisponible pour ce compte.");
    setEtat(current=>current?{...current,historique:[...current.historique,...data.historique.filter((e:EvenementEcart)=>!current.historique.some(h=>h.id===e.id))]}:current);
-  } catch(e) {setMessage((e as Error).message);} finally {setBusy(false);}
+  } catch(e) {if(!scope.signal.aborted)setMessage((e as Error).message);} finally {if(!scope.signal.aborted)setBusy(false);}
  }
  const statut=etat?.ecart.statut; const planifiable=statut==="ouvert" || statut==="en_cours_correction";
- const verrouille=busy||envoiPiece||!!pending||conflit;
+ const baseChangee=!!draft && !!etat && draft.baseRevision!==(etat.suivi?.revision??0);
+ const verrouille=busy||envoiPiece||!!pending||conflit||baseChangee||!draft;
  const bouton="min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium bg-[#002855] text-white disabled:opacity-50";
  return <section className="bg-white rounded-xl border border-gray-300 p-4 space-y-4" aria-label="Cycle des actions correctives">
   <h2 className="text-lg font-semibold text-[#002855]">Cycle des actions correctives</h2>
   <p className="text-sm text-gray-600">Planifier → Corriger → Soumettre une preuve → Vérifier. Ce suivi est distinct du constat et des rapports archivés.</p>
+  {local.status && <p role="status" className="text-sm text-gray-600">{local.status}</p>}
+  {local.unsaved && <button className={bouton} disabled={busy||envoiPiece} onClick={()=>{void local.update({}).catch(()=>{});}}>Réessayer la sauvegarde locale</button>}
+  {local.copies.filter(d=>d.id!==draft?.id && !d.termine).length>0 && <details className="rounded-lg border p-3"><summary>Copies conservées sur cet appareil</summary><p className="text-xs my-2">La reprise crée une copie indépendante. Comparez-la au suivi actuel ; aucun envoi automatique.</p><ul>{local.copies.filter(d=>d.id!==draft?.id && !d.termine).map(d=><li key={d.id} className="my-3 text-sm"><p>{new Date(d.updatedAt).toLocaleString("fr-CH")} · {d.responsable || "Sans responsable"} · {d.pieces.length} pièce(s){d.pending?" · Demande à confirmer":""}</p><p className="whitespace-pre-wrap break-words">{d.commentaire.slice(0,200)}</p><button className={bouton} disabled={busy||envoiPiece||!!pending||local.unsaved||!etat} onClick={()=>{void local.reprendre(d).then(()=>{setConflit(false);setMessage("Copie reprise. Vérifiez le suivi actuel avant de continuer.");}).catch(()=>{});}}>Reprendre cette copie</button></li>)}</ul></details>}
   {message && <p role="status" className="text-sm rounded-lg bg-blue-50 p-3 whitespace-pre-wrap">{message}</p>}
   {!etat && <button className={bouton} disabled={busy} onClick={relire}>Charger le suivi</button>}
   {etat && <>
@@ -68,21 +92,22 @@ export function EcartCycle({ecartId,auteurId}:{ecartId:string;auteurId:string}) 
    {statut==="corrige" && !etat.suivi && <p className="text-sm text-gray-600">Correction historique : aucune validation issue du nouveau cycle n’est enregistrée.</p>}
    {!etat.peutModifier && <p className="text-sm text-gray-600">Consultation seule. Un inspecteur affecté au chantier ou un administrateur peut agir.</p>}
    {etat.peutModifier && statut!=="corrige" && <>
-    <p className="text-xs text-gray-500">Connexion requise. Les textes non enregistrés restent dans cette page. Aucun rappel n’est envoyé automatiquement.</p>
+    <p className="text-xs text-gray-500">Textes et fichiers sont conservés sur cet appareil après confirmation de la sauvegarde. Retrouvez les copies depuis cette NC avec le même compte. Connexion requise pour charger le suivi et transmettre ; aucun envoi automatique. L’effacement des données du navigateur supprime les copies locales.</p>
     {planifiable && <fieldset disabled={verrouille} className="space-y-3">
      <legend className="font-medium text-sm">Planification</legend>
      <label className="block text-sm">Responsable (personne ou entreprise)<input className="mt-1 block w-full rounded-lg border border-gray-400 p-2" value={responsable} onChange={e=>setResponsable(e.target.value)} maxLength={200}/></label>
      <label className="block text-sm">Échéance<input type="date" min="2000-01-01" max="2100-12-31" className="mt-1 block w-full rounded-lg border border-gray-400 p-2" value={echeance} onChange={e=>setEcheance(e.target.value)}/></label>
      <button className={bouton} disabled={verrouille} onClick={()=>envoyer("planifier")}>Enregistrer la planification</button>
     </fieldset>}
-    {((statut==="en_cours_correction" && !!etat.suivi) || pieces.length>0) && <EcartPieces ecartId={ecartId} auteurId={auteurId} entrepriseId={etat.entrepriseId} revision={etat.suivi?.revision??0} pieces={pieces} setPieces={setPieces} disabled={verrouille} peutAjouter={statut==="en_cours_correction"} onActivite={setEnvoiPiece}/>}
+    {((statut==="en_cours_correction" && !!etat.suivi) || pieces.length>0) && <EcartPieces demandeEnAttente={!!pending} scope={scope} avantEnvoi={()=>local.update({})} ecartId={ecartId} auteurId={auteurId} entrepriseId={etat.entrepriseId} revision={etat.suivi?.revision??0} pieces={pieces} setPieces={setPieces} disabled={verrouille} peutAjouter={statut==="en_cours_correction"} onActivite={setEnvoiPiece}/>}
     {(statut==="en_cours_correction" && !!etat.suivi || statut==="a_verifier") && <fieldset disabled={verrouille} className="space-y-3">
-     <label className="block text-sm">{statut==="a_verifier"?"Conclusion de vérification ou motif de reprise (10 caractères minimum)":"Preuve écrite : travaux réalisés, contrôle effectué et références (20 caractères minimum)"}<textarea rows={5} maxLength={5000} className="mt-1 block w-full rounded-lg border border-gray-400 p-2" value={commentaire} onChange={e=>setCommentaire(e.target.value)}/></label>
+     <label className="block text-sm">{statut==="a_verifier" && pending?.action!=="soumettre"?"Conclusion de vérification ou motif de reprise (10 caractères minimum)":"Preuve écrite : travaux réalisés, contrôle effectué et références (20 caractères minimum)"}<textarea rows={5} maxLength={5000} className="mt-1 block w-full rounded-lg border border-gray-400 p-2" value={commentaire} onChange={e=>setCommentaire(e.target.value)}/></label>
      <div className="flex flex-wrap gap-2">{statut==="a_verifier"?<><button disabled={verrouille} className={bouton} onClick={()=>envoyer("valider")}>Valider la correction</button><button disabled={verrouille} className={bouton} onClick={()=>envoyer("reprendre")}>Demander une reprise</button></>:<button disabled={verrouille || pieces.some(p=>!p.piece || p.revision!==etat.suivi?.revision) || responsable!==etat.suivi?.responsable || echeance!==etat.suivi?.echeance} className={bouton} onClick={()=>envoyer("soumettre")}>Soumettre à vérification</button>}</div>
      {statut==="en_cours_correction" && (responsable!==etat.suivi?.responsable || echeance!==etat.suivi?.echeance) && <p className="text-sm text-amber-800">Enregistrez la planification modifiée avant de soumettre la preuve.</p>}
     </fieldset>}
    </>}
-   {pending && <div className="space-y-2"><p className="text-sm text-amber-800">Le résultat reste à confirmer. Gardez cette page ouverte ; la reprise renvoie exactement la même demande.</p><button className={bouton} disabled={busy} onClick={()=>envoyer(pending.action,true)}>Vérifier / réessayer la même demande</button></div>}
+   {pending && <div className="space-y-2"><p className="text-sm text-amber-800">Le résultat reste à confirmer. La demande conservée permet de réessayer après réouverture avec le même identifiant et le même contenu.</p><button className={bouton} disabled={busy} onClick={()=>envoyer(pending.action,true)}>Vérifier / réessayer la même demande</button></div>}
+   {baseChangee && !pending && <div className="space-y-2"><p className="text-sm text-amber-800">Cette copie vient d’une autre révision. Comparez vos textes au responsable, à l’échéance et aux preuves enregistrées ci-dessus. Les pièces d’une ancienne révision devront être sélectionnées à nouveau.</p><button className={bouton} disabled={busy||envoiPiece} onClick={()=>{void local.update({baseRevision:etat.suivi?.revision??0}).then(()=>setConflit(false)).catch(()=>{});}}>J’ai comparé : travailler sur cette révision</button></div>}
    {conflit && <button className={bouton} disabled={busy} onClick={relire}>Relire l’état actuel en conservant mes textes</button>}
    <h3 className="font-semibold text-[#002855]">Historique ({etat.suivi?.revision??0})</h3>
    {etat.historique.length===0?<p className="text-sm text-gray-500">Aucune action enregistrée dans ce cycle.</p>:<ol className="space-y-3">{etat.historique.map(e=><li key={e.id} className="border-l-2 border-blue-200 pl-3 text-sm space-y-1"><p className="font-medium">{ACTIONS_CYCLE[e.action]} · {e.auteur_nom}</p><p className="text-xs text-gray-500">{new Date(e.created_at).toLocaleString("fr-CH",{timeZone:"Europe/Zurich"})}</p><p>{e.responsable} · échéance {e.echeance.split("-").reverse().join(".")}</p><EcartStatusBadge statut={e.statut_apres}/>{e.commentaire && <p className="whitespace-pre-wrap">{e.commentaire}</p>}<LiensPieces ecartId={ecartId} pieces={e.ecart_pieces??[]}/></li>)}</ol>}
