@@ -2939,3 +2939,7 @@ Config : `eslint.config.mjs` (flat config ESLint 9, sans `FlatCompat`).
 ### Recette et sauvegardes Storage (2026-09-15)
 
 Le contrôle connecté des brouillons est terminé sans écrire de données de recette en production. Les sauvegardes physiques Supabase ne couvrent pas les octets Storage. `scripts/backup/storage.cjs` propose leur copie chiffrée et leur restauration locale sans réseau ; ne jamais confondre validation de cet outil avec une restauration complète de la base. La procédure est dans `scripts/backup/README.md`. Les fichiers privés, la clé et les sorties de recette restent hors Git ; aucun projet facturé ni transfert de données vers une destination nouvelle sans autorisation explicite.
+
+### Recette terrain et isolation HTTP (2026-09-15)
+
+Deux entreprises fictives temporaires ont passé 30 contrôles GoTrue/TOTP, PostgREST, Storage et API avec des sessions utilisateur réelles. Le nettoyage des fixtures HTTP et leur absence ont été vérifiés. Résultats et limites : `docs/recette-terrain-2026-09-15.md`, spécification §33. Le chantier « RECETTE MOBILE — 15 septembre 2026 » et sa visite en brouillon restent disponibles pour la manipulation sur appareil physique. Ne pas marquer la recette mobile terminée avant les observations iPhone/iPad et la vérification serveur de la reprise réseau. Ce lot ne modifie ni code applicatif ni base : mise à jour du dépôt VPS après CI, image conservée.
