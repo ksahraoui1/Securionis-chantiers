@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { hasLegacyOfflineDatabase } from "@/lib/offline/db";
 import { activateOfflineScope, deactivateOfflineScope, isOfflineLocked, lockOfflineSession, OFFLINE_LOCK_KEY, type OfflineScope } from "@/lib/offline/scope";
 import { surveillerInactivite } from "@/lib/offline/inactivity";
 
@@ -15,7 +14,6 @@ export function useOfflineScope(): OfflineScope {
 export function OfflineProvider({ userId, entrepriseId, children }: { userId: string; entrepriseId: string | null; children: React.ReactNode }) {
   const [scope, setScope] = useState<OfflineScope | null>(null);
   const [locked, setLocked] = useState(false);
-  const [legacy, setLegacy] = useState(false);
   const privateView = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let disposed = false, invalidated = false;
@@ -37,7 +35,6 @@ export function OfflineProvider({ userId, entrepriseId, children }: { userId: st
       current.signal.addEventListener("abort", stop, { once: true });
       setScope(current);
       setLocked(false);
-      void hasLegacyOfflineDatabase().then(value => { if (!disposed) setLegacy(value); }).catch(() => {});
     }).catch(stop);
     const onStorage = (event: StorageEvent) => { if (event.key === OFFLINE_LOCK_KEY && event.newValue === "1") stop(); };
     const onShow = (event: PageTransitionEvent) => { if (event.persisted) window.location.reload(); };
@@ -72,7 +69,6 @@ export function OfflineProvider({ userId, entrepriseId, children }: { userId: st
     </div>}
     <div ref={privateView} hidden={!scope}>
       {scope && <ScopeContext.Provider value={scope}>
-        {legacy && <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">Un ancien stockage local sans propriétaire identifié est conservé à part. Si vous aviez des modifications non envoyées avant cette mise à jour, contactez votre administrateur pour leur récupération.</p>}
         {children}
       </ScopeContext.Provider>}
     </div>

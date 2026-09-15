@@ -2949,3 +2949,7 @@ Les deux visites du chantier « RECETTE MOBILE — 15 septembre 2026 » sont cl�
 Le chantier fictif est désormais archivé à la demande de l’utilisateur : absent des listes actives et du tableau de bord, historique conservé. Ne pas présenter cet archivage réversible comme une purge définitive.
 
 Confirmation ultérieure « ca fonctionne » reçue à la question sur la photo hors ligne puis retrouvée après reconnexion/rechargement Safari : retour utilisateur positif retenu pour ce parcours photo, avec conservation serveur vérifiée indépendamment. Ne plus présenter cette confirmation comme attendue. Le texte de remarque reste non testé, le modèle/version du système non renseignés et les réglages réseau non observés directement par l’agent.
+
+### Retrait du bandeau de stockage ancien (2026-09-15)
+
+À la demande de l’utilisateur, `OfflineProvider` n’affiche plus le bandeau permanent sur l’ancien stockage local et ne lance plus la détection réservée à ce bandeau. Les anciennes bases IndexedDB restent conservées séparément ; aucun effacement ou rattachement automatique. Garder l’isolation et le verrouillage de session existants. Spécification §34. Cette modification cliente nécessite une nouvelle image VPS et le rechargement des pages ouvertes, sans migration Supabase.
