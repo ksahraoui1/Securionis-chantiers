@@ -25,6 +25,25 @@ async function decrypt(source,target,key,meta,max){
  await handle.close();
  if(limit.bytes!==meta.size||hash.digest('hex')!==meta.sha256){await fs.rm(target,{force:true});throw Error('Intégrité de sauvegarde invalide.');}
 }
+function storageReader(origin,key,transport=fetch){
+ if(!/^https:\/\/[a-z]{20}\.supabase\.co$/.test(origin||'')||!key)throw Error('Configuration Supabase invalide.');
+ const segment=value=>{if(typeof value!=='string'||!value||value==='.'||value==='..'||/[\\/\0]/.test(value))throw Error('Chemin distant invalide.');return encodeURIComponent(value);};
+ async function request(route,body,stream=false){
+  const response=await transport(origin+'/storage/v1/'+route,{method:body?'POST':'GET',headers:{apikey:key,Authorization:'Bearer '+key,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(120000)});
+  if(!response.ok||!response.body){await response.body?.cancel();throw Error('Lecture Storage refusée ou indisponible.');}
+  if(stream)return{data:response.body,error:null};
+  const chunks=[];let size=0;
+  for await(const chunk of Readable.fromWeb(response.body)){size+=chunk.length;if(size>16*1024*1024)throw Error('Réponse d’inventaire trop grande.');chunks.push(chunk);}
+  return{data:JSON.parse(Buffer.concat(chunks).toString('utf8')),error:null};
+ }
+ return{storage:{listBuckets:async()=>{
+  const buckets=[];
+  for(let offset=0;;offset+=1000){const r=await request('bucket?limit=1000&offset='+offset+'&sortColumn=name&sortOrder=asc');if(!Array.isArray(r.data))throw Error('Inventaire invalide.');buckets.push(...r.data);if(buckets.length>10000)throw Error('Trop de buckets.');if(r.data.length<1000)return{data:buckets,error:null};}
+ },from:bucket=>({
+  list:(prefix,options)=>request('object/list/'+segment(bucket),{...options,prefix}),
+  download:name=>({asStream:()=>request('object/'+segment(bucket)+'/'+name.split('/').map(segment).join('/'),undefined,true)})
+ })}};
+}
 async function inventory(client){
  const {data:buckets,error}=await client.storage.listBuckets();if(error||!Array.isArray(buckets))throw Error('Inventaire des buckets indisponible.');
  const objects=[];let declared=0;
@@ -86,14 +105,13 @@ async function restore(dir,out,key){
  await fs.writeFile(path.join(out,'VERIFIED.json'),JSON.stringify({count:manifest.files.length,bytes:total,verifiedAt:new Date().toISOString()}),{flag:'wx',mode:0o600});
  return{count:manifest.files.length,bytes:total};
 }
-module.exports={backup,restore,inventory,encrypt,decrypt,filename};
+module.exports={backup,restore,inventory,encrypt,decrypt,filename,storageReader};
 if(require.main===module){(async()=>{
  const [action,dir,out]=process.argv.slice(2),key=await fs.readFile(process.env.BACKUP_KEY_FILE||'');keyValid(key);
  let result;
  if(action==='backup'){
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL;if(!/^https:\/\/[a-z]{20}\.supabase\.co$/.test(url||'')||!process.env.SUPABASE_SERVICE_ROLE_KEY)throw Error('Configuration Supabase invalide.');
-  const {createClient}=require('@supabase/supabase-js');
-  const client=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{fetch:(url,options)=>fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(120000)})}});
+  const client=storageReader(url,process.env.SUPABASE_SERVICE_ROLE_KEY);
   result=await backup(client,dir,key,new URL(url).hostname.split('.')[0]);
  }else if(action==='restore')result=await restore(dir,out,key);else throw Error('Usage : storage.cjs backup DOSSIER_NEUF | restore SAUVEGARDE DOSSIER_NEUF');
  console.log(JSON.stringify({action,...result}));

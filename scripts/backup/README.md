@@ -10,7 +10,7 @@ Sources : [sauvegardes Supabase](https://supabase.com/docs/guides/platform/backu
 
 ## Outil de sauvegarde des fichiers
 
-`storage.cjs` est un outil d’exploitation Node.js 22, distinct de l’application. Il utilise le SDK Supabase déjà présent dans l’image pour **lire** les buckets et leurs fichiers. Il n’appelle aucune API d’écriture, de suppression ou de restauration distante.
+`storage.cjs` est un outil d’exploitation Node.js 22, distinct de l’application. Il utilise les API HTTP Storage avec fetch natif pour **lire** les buckets et leurs fichiers ; aucune dépendance npm supplémentaire. Il n’appelle aucune API d’écriture, de suppression ou de restauration distante.
 
 - Inventaire récursif et paginé, avec vérification de stabilité avant/après copie. Si le stockage évolue, aucun reçu de succès n’est écrit : ce n’est pas un instantané transactionnel avec la base.
 - Chiffrement AES-256-GCM avec IV neuf pour chaque fichier et pour le manifeste. La clé comporte 32 octets aléatoires ; elle n’entre jamais dans le dépôt, l’image ou les arguments de commande.
@@ -27,7 +27,7 @@ Avant la première exécution, faire autoriser explicitement la copie des fichie
 
 Préparer un parent privé et une clé de 32 octets dans un fichier 0600 hors dépôt, avec création exclusive. Ne jamais remplacer une clé existante. Les variables requises pour la sauvegarde sont `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` et `BACKUP_KEY_FILE`. Seule cette dernière est nécessaire à la restauration locale.
 
-Exemple dans l’image applicative existante, avec les chemins privés approuvés. `IMAGE_VALIDEE` désigne l’image déjà contrôlée ; les dossiers de sortie doivent être neufs. Le script est monté sous `/app/scripts` pour accéder au SDK installé dans `/app/node_modules`.
+Exemple dans l’image applicative existante, avec les chemins privés approuvés. `IMAGE_VALIDEE` désigne l’image déjà contrôlée ; les dossiers de sortie doivent être neufs. Le script est monté sous `/app/scripts` ; il utilise uniquement les modules natifs de Node.js.
 
 ```bash
 docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
