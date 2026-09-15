@@ -40,6 +40,8 @@ Les données de ces deux entreprises, leurs comptes Auth et leurs fichiers ont �
 
 Une visite en brouillon a été préparée dans le chantier **RECETTE MOBILE — 15 septembre 2026**, avec le point **Test1**, dans l’entreprise de l’utilisateur. Elle est distincte des fixtures HTTP supprimées. L’utilisateur a indiqué disposer d’un iPhone ou d’un iPad ; le modèle, la version iOS/iPadOS et le mode Safari/application installée ne sont pas encore confirmés.
 
+Au relevé serveur de 08:22 UTC, cette visite est **en cours** et contient une réponse « Non conforme », sans remarque ni photo (horodatage de la réponse : 08:13:16 UTC). Ce relevé constitue un point de comparaison ; il ne prouve ni l’appareil utilisé, ni une coupure réseau, ni une synchronisation après coupure. Une confirmation de l’utilisateur est attendue avant de poursuivre le scénario physique.
+
 | Étape | Action et preuve attendue | État |
 | --- | --- | --- |
 | Préchargement | Ouvrir la visite avec le réseau, sélectionner Test1 et commencer le contrôle ; vérifier la lisibilité et les commandes tactiles | À confirmer sur appareil |
