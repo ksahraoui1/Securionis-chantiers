@@ -2,7 +2,7 @@
 
 ## État
 
-**Isolation HTTP : validée pour le périmètre ci-dessous. Recette Safari : manipulation déclarée, réponse et photo conservées côté serveur ; scénario hors ligne encore à confirmer.** Une émulation de téléphone ou un test SQL ne vaut pas une validation sur iPhone/iPad.
+**Isolation HTTP : validée pour le périmètre ci-dessous. Parcours photo Safari : retour utilisateur positif et conservation serveur vérifiée.** La coupure et la reprise sur appareil reposent sur le retour de l’utilisateur ; la présence de la réponse et du JPEG a été contrôlée indépendamment côté serveur. Le scénario avec remarque textuelle n’a pas été testé.
 
 Contrôle HTTP terminé à 08:18:25 UTC. Référence de l’exécution : `5a95df68-527f-48bf-a6da-fa12c8a09dcf`. Dépôt VPS : `b6604a4f5da7ed1e74fe0382a13ce2b054b229ad`. Image applicative : `sha256:ceaf76a7e786e99dda843cc2945d8b7b9855a577a55c2c918f9d0f8e3fa5d323` (application du lot 31 ; lot 32 documentaire et outils).
 
@@ -36,7 +36,7 @@ Les données de ces deux entreprises, leurs comptes Auth et leurs fichiers ont �
 
 **Limites :** ce contrôle connecté couvre deux administrateurs de sociétés fictives, les quatre tables mentionnées, les documents du bucket `rapports` et une API de consultation. Il ne remplace pas la matrice SQL existante des rôles inspecteur/invité, des autres tables et des RPC. Il ne valide pas à lui seul les pièces correctives, tous les écrans, le changement de compte sur appareil physique ou la résistance à toutes les attaques.
 
-## Parcours physique à réaliser
+## Parcours physique et résultats
 
 Une visite en brouillon a été préparée dans le chantier **RECETTE MOBILE — 15 septembre 2026**, avec le point **Test1**, dans l’entreprise de l’utilisateur. Elle est distincte des fixtures HTTP supprimées. L’utilisateur a indiqué disposer d’un iPhone ou d’un iPad ; le modèle, la version iOS/iPadOS et le mode Safari/application installée ne sont pas encore confirmés.
 
@@ -50,19 +50,25 @@ Une seconde visite a été créée à 08:45:30 UTC dans ce même chantier de rec
 
 La page du rapport, relue après clôture, annonce des sources archivées à 08:46:15 UTC et une première génération du PDF à 08:46:31 UTC. Aucun email n’a été envoyé selon cette page ; le chantier n’a pas de destinataire. L’aperçu PDF dans le navigateur de contrôle n’a pas permis de vérifier visuellement la photo : la présence du fichier et du rapport ne vaut pas validation de leur rendu.
 
-**Acquis :** conservation serveur de la seconde réponse et de sa référence de photo, existence du JPEG, clôture et génération du rapport. **À confirmer par l’utilisateur :** photo ajoutée avec mode avion actif et Wi-Fi désactivé, puis retrouvée après reconnexion et rechargement de Safari. Aucune remarque n’est enregistrée dans les deux visites ; la conservation d’un texte saisi hors ligne reste donc non démontrée. Ne pas requalifier cette observation partielle en réussite de l’ensemble du scénario hors ligne. Aucune troisième visite n’a été créée par l’agent.
+Après la question portant précisément sur l’ajout de la photo avec mode avion actif et Wi-Fi désactivé, puis sa conservation après reconnexion et rechargement de Safari, l’utilisateur a répondu **« ca fonctionne »**. Ce retour est retenu comme une confirmation positive du parcours photo demandé. Il ne constitue pas une observation directe des réglages réseau par l’agent, ni un relevé du modèle ou de la version du système.
+
+**Acquis :** retour utilisateur positif sur le parcours photo Safari, conservation serveur de la seconde réponse et de sa référence de photo, existence du JPEG, clôture et génération du rapport. Aucune remarque n’est enregistrée dans les deux visites ; la conservation d’un texte saisi hors ligne reste donc non démontrée. Cette validation porte sur le parcours photo décrit, sans l’étendre à tous les scénarios hors ligne. Aucune troisième visite n’a été créée par l’agent.
 
 | Étape | Action et preuve attendue | État |
 | --- | --- | --- |
 | Préchargement | Ouvrir la visite avec le réseau, sélectionner Test1 et commencer le contrôle ; vérifier la lisibilité et les commandes tactiles | Manipulation déclarée dans Safari ; détails tactiles non précisés |
-| Coupure | Activer le mode avion et désactiver explicitement le Wi-Fi ; conserver la page chargée | Confirmation explicite attendue |
-| Saisie locale | Choisir « Remarques », saisir un texte de recette unique et prendre une photo d’un objet neutre ; attendre la confirmation d’enregistrement local | Photo présente côté serveur ; saisie hors ligne non confirmée, remarque absente |
-| Contrôle hors ligne | Vérifier que la saisie reste visible et que la réponse n’a pas encore atteint le serveur | À réaliser |
-| Reprise | Réactiver le réseau ; attendre la synchronisation, contrôler côté serveur une seule réponse avec le texte exact et une photo lisible | Une réponse et un JPEG présents dans la seconde visite ; séquence réseau et rendu à confirmer |
-| Réouverture | Recharger avec le réseau puis vérifier la conservation de la réponse et de la photo, sans doublon | Rechargement sur Safari physique à confirmer |
+| Coupure | Activer le mode avion et désactiver explicitement le Wi-Fi ; conserver la page chargée | Retour utilisateur positif au scénario demandé ; réglages non observés directement |
+| Saisie locale | Choisir « Remarques », saisir un texte de recette unique et prendre une photo d’un objet neutre ; attendre la confirmation d’enregistrement local | Parcours photo confirmé par l’utilisateur et JPEG présent ; texte non testé |
+| Contrôle hors ligne | Vérifier que la saisie reste visible et que la réponse n’a pas encore atteint le serveur | Absence de transmission pendant la coupure non observée directement |
+| Reprise | Réactiver le réseau ; attendre la synchronisation, contrôler côté serveur une seule réponse avec le texte exact et une photo lisible | Retour utilisateur positif pour la photo ; une réponse et un JPEG vérifiés côté serveur, texte absent |
+| Réouverture | Recharger avec le réseau puis vérifier la conservation de la réponse et de la photo, sans doublon | Retour utilisateur positif au scénario photo demandé ; une seule réponse constatée côté serveur |
 | Tablette / second contexte | Répéter sur l’autre appareil si disponible ; tester séparément le mode installé si utilisé sur le terrain | À réaliser selon disponibilité |
 
-Ne pas clôturer cette visite ni envoyer un rapport pendant la recette. Relever l’heure, le navigateur, les messages affichés et toute anomalie. Les observations rapportées par l’utilisateur et les vérifications serveur doivent être identifiées séparément dans le procès-verbal final. Après la recette, archiver le chantier fictif selon le parcours normal.
+Pour toute recette ultérieure, relever l’heure, le navigateur, les messages affichés et toute anomalie. Les observations rapportées par l’utilisateur et les vérifications serveur doivent être identifiées séparément.
+
+### Retrait du chantier fictif
+
+À la demande de l’utilisateur de supprimer le chantier fictif, le chantier **RECETTE MOBILE — 15 septembre 2026** a été archivé par le parcours normal de l’application. L’interface confirme **Archivé** et propose **Restaurer**. Il est retiré des chantiers actifs et du tableau de bord, dont les requêtes filtrent `archived = false`. Il s’agit d’un archivage réversible, pas d’une purge définitive : les deux visites clôturées, leurs rapports, leurs sources et l’historique des NC sont conservés. Les protections d’immutabilité n’ont pas été désactivées.
 
 Le démarrage à froid sans réseau n’est pas promis par le lot 31. La fermeture hors ligne, la reprise d’un brouillon correctif avec fichier et les conflits doivent faire l’objet de scénarios distincts si ces parcours sont utilisés sur le terrain ; ne pas les déclarer couverts par la seule synchronisation d’une réponse de visite.
 
