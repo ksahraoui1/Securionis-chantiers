@@ -64,7 +64,11 @@ Après la question portant précisément sur l’ajout de la photo avec mode avi
 | Réouverture | Recharger avec le réseau puis vérifier la conservation de la réponse et de la photo, sans doublon | Retour utilisateur positif au scénario photo demandé ; une seule réponse constatée côté serveur |
 | Tablette / second contexte | Répéter sur l’autre appareil si disponible ; tester séparément le mode installé si utilisé sur le terrain | À réaliser selon disponibilité |
 
-Ne pas clôturer cette visite ni envoyer un rapport pendant la recette. Relever l’heure, le navigateur, les messages affichés et toute anomalie. Les observations rapportées par l’utilisateur et les vérifications serveur doivent être identifiées séparément dans le procès-verbal final. Après la recette, archiver le chantier fictif selon le parcours normal.
+Pour toute recette ultérieure, relever l’heure, le navigateur, les messages affichés et toute anomalie. Les observations rapportées par l’utilisateur et les vérifications serveur doivent être identifiées séparément.
+
+### Retrait du chantier fictif
+
+À la demande de l’utilisateur de supprimer le chantier fictif, le chantier **RECETTE MOBILE — 15 septembre 2026** a été archivé par le parcours normal de l’application. L’interface confirme **Archivé** et propose **Restaurer**. Il est retiré des chantiers actifs et du tableau de bord, dont les requêtes filtrent `archived = false`. Il s’agit d’un archivage réversible, pas d’une purge définitive : les deux visites clôturées, leurs rapports, leurs sources et l’historique des NC sont conservés. Les protections d’immutabilité n’ont pas été désactivées.
 
 Le démarrage à froid sans réseau n’est pas promis par le lot 31. La fermeture hors ligne, la reprise d’un brouillon correctif avec fichier et les conflits doivent faire l’objet de scénarios distincts si ces parcours sont utilisés sur le terrain ; ne pas les déclarer couverts par la seule synchronisation d’une réponse de visite.
 

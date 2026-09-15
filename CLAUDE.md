@@ -2946,4 +2946,6 @@ Deux entreprises fictives temporaires ont passé 30 contrôles GoTrue/TOTP, Post
 
 Les deux visites du chantier « RECETTE MOBILE — 15 septembre 2026 » sont clôturées. La seconde contient une réponse et une photo JPEG vérifiée par HEAD ; son rapport est généré sans email. Conserver les sources clôturées ; ne pas les rouvrir ou les réécrire pour compléter la recette.
 
+Le chantier fictif est désormais archivé à la demande de l’utilisateur : absent des listes actives et du tableau de bord, historique conservé. Ne pas présenter cet archivage réversible comme une purge définitive.
+
 Confirmation ultérieure « ca fonctionne » reçue à la question sur la photo hors ligne puis retrouvée après reconnexion/rechargement Safari : retour utilisateur positif retenu pour ce parcours photo, avec conservation serveur vérifiée indépendamment. Ne plus présenter cette confirmation comme attendue. Le texte de remarque reste non testé, le modèle/version du système non renseignés et les réglages réseau non observés directement par l’agent.
