@@ -2962,4 +2962,4 @@ Maintenance du 22 septembre 2026 : les deux visites de « AA - Chantier Test » 
 
 ### Correction rapide des NC (2026-09-22)
 
-Bouton « C’est corrigé » avec photo facultative sur la page de détail d’une NC (`ecart-cycle.tsx`). Il enchaîne planifier → pièces → soumettre → valider par `avancer_cycle_ecart_v2`, avec textes préremplis ; il ne doit jamais devenir un changement direct de statut. `executer()` porte l’envoi d’une demande conservée, `televerserPiece()` (`ecart-pieces.tsx`) l’envoi idempotent d’une pièce ; la reprise se fait à partir du statut relu. Spécification §38.
+Bouton « C’est corrigé » avec photo facultative sur la page de détail d’une NC (`ecart-cycle.tsx`). Il enchaîne planifier → pièces → soumettre → valider par `avancer_cycle_ecart_v2`, avec textes préremplis ; il ne doit jamais devenir un changement direct de statut. `executer()` porte l’envoi d’une demande conservée, `televerserPiece()` (`ecart-pieces.tsx`) l’envoi idempotent d’une pièce ; la reprise se fait à partir du statut relu. Déployé (PR #88) et confirmé en usage réel le 22 septembre 2026. Spécification §38.
