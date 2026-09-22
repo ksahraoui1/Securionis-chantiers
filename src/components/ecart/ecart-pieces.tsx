@@ -4,6 +4,25 @@ import { assertOfflineScope, type OfflineScope } from "@/lib/offline/scope";
 import type { PieceBrouillon } from "@/lib/offline/cycle";
 export type { PieceBrouillon } from "@/lib/offline/cycle";
 import { MAX_PIECES_PREUVE, validerFichierPreuve, type PieceEcart } from "@/lib/ecarts/pieces";
+/** Refus confirmé par le serveur : réessayer le même fichier ne changerait rien. */
+export class RefusPiece extends Error {}
+/**
+ * Envoie une pièce déjà conservée dans le brouillon. Même identifiant et même
+ * révision au rejeu : l’enregistrement côté serveur est idempotent.
+ */
+export async function televerserPiece({ecartId,auteurId,entrepriseId,scope,piece:p}:{ecartId:string;auteurId:string;entrepriseId:string;scope:OfflineScope;piece:PieceBrouillon}):Promise<PieceEcart> {
+ assertOfflineScope(scope);
+ const response=await fetch(`/api/ecarts/${ecartId}/pieces`,{method:"POST",signal:scope.signal,headers:{"Content-Type":"application/octet-stream","X-Piece-Id":p.id,"X-Auteur-Id":auteurId,"X-Entreprise-Id":entrepriseId,"X-Revision":String(p.revision),"X-Nom-Fichier":encodeURIComponent(p.file.name)},body:p.file});
+ let data;
+ try {data=await response.json();} catch {throw new Error("Réponse non confirmée. Réessayez le même fichier.");}
+ assertOfflineScope(scope);
+ if(!response.ok) {
+  const message=data.error||"Envoi non confirmé.";
+  throw data.refusConfirme===true?new RefusPiece(message):new Error(message);
+ }
+ if(data.id!==p.id || data.revision_preparation!==p.revision || data.taille!==p.file.size) throw new Error("Enregistrement non confirmé. Réessayez le même fichier.");
+ return data as PieceEcart;
+}
 export function LiensPieces({pieces,ecartId}:{pieces:PieceEcart[];ecartId:string}) {
   if (!pieces.length) return null;
   return <ul className="space-y-2 mt-2" aria-label="Pièces de preuve">{pieces.map(p=><li key={p.id} className="rounded-lg border border-gray-200 p-2">
@@ -27,17 +46,10 @@ export function EcartPieces({ecartId,auteurId,entrepriseId,revision,pieces,setPi
  async function envoyer(p:PieceBrouillon) {
   onActivite(true);setErreur("");
   try {
-   await avantEnvoi();assertOfflineScope(scope);
-   const response=await fetch(`/api/ecarts/${ecartId}/pieces`,{method:"POST",signal:scope.signal,headers:{"Content-Type":"application/octet-stream","X-Piece-Id":p.id,"X-Auteur-Id":auteurId,"X-Entreprise-Id":entrepriseId,"X-Revision":String(p.revision),"X-Nom-Fichier":encodeURIComponent(p.file.name)},body:p.file});
-   let data;
-   try {data=await response.json();} catch {throw new Error("Réponse non confirmée. Réessayez le même fichier.");}
-   assertOfflineScope(scope);
-   if(!response.ok) {
-    setPieces(old=>old.map(x=>x.id===p.id?{...x,erreur:data.error||"Envoi non confirmé.",refuse:data.refusConfirme===true}:x));return;
-   }
-   if(data.id!==p.id || data.revision_preparation!==p.revision || data.taille!==p.file.size) throw new Error("Enregistrement non confirmé. Réessayez le même fichier.");
-   setPieces(old=>old.map(x=>x.id===p.id?{...x,piece:data,erreur:undefined,refuse:false}:x));
-  } catch(e) {if(!scope.signal.aborted)setPieces(old=>old.map(x=>x.id===p.id?{...x,erreur:(e as Error).message}:x));}
+   await avantEnvoi();
+   const piece=await televerserPiece({ecartId,auteurId,entrepriseId,scope,piece:p});
+   setPieces(old=>old.map(x=>x.id===p.id?{...x,piece,erreur:undefined,refuse:false}:x));
+  } catch(e) {if(!scope.signal.aborted)setPieces(old=>old.map(x=>x.id===p.id?{...x,erreur:(e as Error).message,refuse:e instanceof RefusPiece}:x));}
   finally {onActivite(false);}
  }
  return <fieldset disabled={disabled} className="space-y-3 rounded-lg border border-gray-300 p-3">

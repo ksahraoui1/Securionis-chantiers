@@ -21,3 +21,23 @@ export function validerDemandeCycle(value: unknown): DemandeCycle {
 }
 export function jourSuisse(date = new Date()): string { return new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Zurich",year:"numeric",month:"2-digit",day:"2-digit"}).format(date); }
 export function estEnRetard(statut: string, echeance: string | null | undefined, aujourdHui = jourSuisse()): boolean { return statut !== "corrige" && !!echeance && echeance < aujourdHui; }
+/**
+ * Correction rapide (« C'est corrigé ») : enchaîne les actions du cycle sans
+ * en contourner aucune. Chaque étape reste une demande complète, contrôlée
+ * par la base (révision, rejeu, journal) ; seuls les textes sont préremplis.
+ */
+export function etapeCorrectionRapide(statut: string): ActionCycle | null {
+  if (statut === "ouvert") return "planifier";
+  if (statut === "en_cours_correction") return "soumettre";
+  if (statut === "a_verifier") return "valider";
+  return null;
+}
+export function textesCorrectionRapide(jour: string, note: string, nbPhotos: number): { preuve: string; conclusion: string } {
+  const date = jour.split("-").reverse().join(".");
+  const precision = note.trim();
+  const photos = nbPhotos === 0 ? "" : nbPhotos === 1 ? " (photo jointe)" : ` (${nbPhotos} photos jointes)`;
+  return {
+    preuve: `Correction constatée sur place le ${date}${photos}.${precision ? `\n${precision}` : ""}`.slice(0, 5000),
+    conclusion: `Correction vérifiée sur place le ${date}.`,
+  };
+}

@@ -827,3 +827,22 @@ Déployé le 22 septembre 2026 (PR #85), confirmé en usage réel par l’utilis
 ## 37. Suppression des visites du chantier de test (maintenance du 22 septembre 2026)
 
 À la demande explicite du propriétaire, les deux visites de « AA - Chantier Test » ont été supprimées, y compris la visite terminée du 23 juillet 2026 dont le rapport avait été envoyé, ce que l’application refuse par conception. Script ponctuel `scripts/maintenance/20260922-supprimer-visites-chantier-test.sql` : sélection et dépendances vérifiées sous verrou exclusif, lignes sauvegardées dans `maintenance_privee.visites_chantier_test_20260922` (2 visites, 1 réponse, 1 version de rapport ; aucun accès API), protections désactivées puis rétablies avant la validation, 2 entrées `delete_visite` au journal d’audit, refus d’un second passage. Les deux fichiers (PDF du rapport, une photo) ont été supprimés par l’API Storage. Vérifié : 0 visite restante sur le chantier, 0 fichier restant, 4 protections actives. Le chantier lui-même est conservé. Exception de maintenance à ne pas généraliser.
+
+## 38. Correction rapide d’une NC : « C’est corrigé »
+
+Demandé en usage réel : corriger une NC demandait trois validations et environ quatre champs (responsable, échéance, preuve écrite ≥ 20 caractères, conclusion ≥ 10 caractères). La page de détail d’une NC affiche désormais en tête un encadré **Correction rapide** : une photo facultative (appareil photo ou galerie, recompressée en JPEG), une précision facultative, et un bouton **« C’est corrigé »**. Le suivi complet reste disponible, replié, sous « Suivi détaillé ».
+
+Le bouton **ne contourne rien** : il enchaîne les actions existantes d’`avancer_cycle_ecart_v2` (§29–30), chacune étant une demande complète contrôlée par la base (révision, rejeu du même identifiant, journal atomique). Aucune migration, aucune route nouvelle, aucun changement direct de statut.
+
+| Statut de départ | Étapes enchaînées |
+|---|---|
+| ouvert | planifier (responsable = inspecteur connecté, échéance = aujourd’hui) → envoi des photos → soumettre → valider |
+| en cours de correction | plan existant conservé → envoi des photos → soumettre → valider |
+| à vérifier | valider |
+
+Textes préremplis et vrais : preuve « Correction constatée sur place le JJ.MM.AAAA (photo jointe). » suivie de la précision éventuelle ; conclusion « Correction vérifiée sur place le JJ.MM.AAAA. ». L’historique affiche donc qui a déclaré et validé, quand, et avec quelles photos. Une photo choisie avant la planification reçoit un nouvel identifiant à la révision courante avant l’envoi.
+
+Interruption (réseau, conflit) : la demande en cours reste conservée comme dans le suivi détaillé, et un nouvel appui sur « C’est corrigé » reprend à l’étape où se trouve la NC ; les étapes déjà enregistrées ne sont pas refaites. Logique pure (`etapeCorrectionRapide`, `textesCorrectionRapide`) dans `src/lib/ecarts/cycle.ts`, testée dans `tests/ecart-cycle.test.cjs`.
+
+⚠️ Comme avant ce changement (§29), la même personne peut soumettre et valider : le raccourci rend ce cas courant. Imposer un second valideur demanderait une évolution de la procédure en base.
+

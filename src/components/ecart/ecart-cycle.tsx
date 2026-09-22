@@ -4,16 +4,18 @@ import { useOfflineScope } from "@/components/ui/offline-provider";
 import { assertOfflineScope, type OfflineScope } from "@/lib/offline/scope";
 import { useCycleDraft } from "./use-cycle-draft";
 import { useRouter } from "next/navigation";
-import { ACTIONS_CYCLE, estEnRetard, validerDemandeCycle, type ActionCycle, type DemandeCycle, type EvenementEcart, type SuiviEcart } from "@/lib/ecarts/cycle";
+import { ACTIONS_CYCLE, estEnRetard, etapeCorrectionRapide, jourSuisse, textesCorrectionRapide, validerDemandeCycle, type ActionCycle, type DemandeCycle, type EvenementEcart, type SuiviEcart } from "@/lib/ecarts/cycle";
 import { EcartStatusBadge } from "./ecart-status-badge";
-import { EcartPieces, LiensPieces, type PieceBrouillon } from "./ecart-pieces";
+import { EcartPieces, LiensPieces, televerserPiece, type PieceBrouillon } from "./ecart-pieces";
+import { compressPhoto } from "@/lib/utils/photo-compress";
+import { MAX_PIECES_PREUVE, MAX_TAILLE_PREUVE } from "@/lib/ecarts/pieces";
 import type { PieceEcart } from "@/lib/ecarts/pieces";
 interface Etat { ecart: {id:string;statut:string}; suivi:SuiviEcart|null; historique:EvenementEcart[]; piecesActuelles?:PieceEcart[]; peutModifier:boolean; auteurId:string;entrepriseId:string }
-export function EcartCycle({ecartId,auteurId}:{ecartId:string;auteurId:string}) {
+export function EcartCycle({ecartId,auteurId,nomAuteur}:{ecartId:string;auteurId:string;nomAuteur:string}) {
  const scope=useOfflineScope();
- return <CycleLocal key={`${scope.database}:${ecartId}`} ecartId={ecartId} auteurId={auteurId} scope={scope}/>;
+ return <CycleLocal key={`${scope.database}:${ecartId}`} ecartId={ecartId} auteurId={auteurId} nomAuteur={nomAuteur} scope={scope}/>;
 }
-function CycleLocal({ecartId,auteurId,scope}:{ecartId:string;auteurId:string;scope:OfflineScope}) {
+function CycleLocal({ecartId,auteurId,nomAuteur,scope}:{ecartId:string;auteurId:string;nomAuteur:string;scope:OfflineScope}) {
  const router=useRouter();
  const local=useCycleDraft(scope,ecartId);
  const {draft}=local;
@@ -27,7 +29,7 @@ function CycleLocal({ecartId,auteurId,scope}:{ecartId:string;auteurId:string;sco
  const [envoiPiece,setEnvoiPiece]=useState(false);
  const [etat,setEtat]=useState<Etat|null>(null);
  const [busy,setBusy]=useState(false); const [conflit,setConflit]=useState(false); const [message,setMessage]=useState("");
- async function charger(initial=false) {
+ async function charger(initial=false):Promise<Etat> {
   const response=await fetch(`/api/ecarts/${ecartId}/statut`,{cache:"no-store",signal:scope.signal});
   const data=await response.json();
   if(!response.ok) throw new Error(data.error || "Suivi indisponible.");
@@ -36,6 +38,7 @@ function CycleLocal({ecartId,auteurId,scope}:{ecartId:string;auteurId:string;sco
   setEtat(data);
   local.initialiser(data.suivi?.responsable??"",data.suivi?.echeance??"",data.suivi?.revision??0);
   if(initial) await local.update({responsable:data.suivi?.responsable??"",echeance:data.suivi?.echeance??"",baseRevision:data.suivi?.revision??0});
+  return data;
  }
  useEffect(()=>{ let active=true;
   fetch(`/api/ecarts/${ecartId}/statut`,{cache:"no-store",signal:scope.signal}).then(async r=>{const d=await r.json();if(!r.ok) throw new Error(d.error||"Suivi indisponible.");assertOfflineScope(scope);if(d.auteurId!==auteurId || d.entrepriseId!==scope.entrepriseId) throw new Error("Rechargez la page pour le compte actuel.");return d;}).then(d=>{if(active){setEtat(d);local.initialiser(d.suivi?.responsable??"",d.suivi?.echeance??"",d.suivi?.revision??0);}}).catch(e=>{if(active)setMessage(e.message);});
@@ -44,22 +47,79 @@ function CycleLocal({ecartId,auteurId,scope}:{ecartId:string;auteurId:string;sco
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[ecartId,auteurId,scope]);
  useEffect(()=>{const handler=(e:BeforeUnloadEvent)=>{if(local.unsaved)e.preventDefault();};window.addEventListener("beforeunload",handler);return()=>window.removeEventListener("beforeunload",handler);},[local.unsaved]);
+/** Envoie une demande déjà conservée et relit le suivi. La demande reste en attente si le résultat est incertain. */
+ async function executer(demande:DemandeCycle):Promise<Etat> {
+  await local.update({pending:demande});assertOfflineScope(scope);
+  const response=await fetch(`/api/ecarts/${ecartId}/statut`,{method:"PATCH",signal:scope.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify(demande)});
+  const data=await response.json();assertOfflineScope(scope);
+  if(!response.ok) {if(data.refusConfirme===true){await local.update({pending:null});if(response.status===409)setConflit(true);}throw new Error(data.error||"Résultat non confirmé.");}
+  if(data.operation_id!==demande.operationId || data.revision!==demande.revision+1) throw new Error("Résultat non confirmé. Réessayez la même demande.");
+  const courant=local.current.current;
+  await local.update({pending:null,baseRevision:data.revision,pieces:demande.action==="soumettre"?[]:courant?.pieces??[],commentaire:demande.action!=="planifier"?"":courant?.commentaire??"",termine:demande.action==="valider"});
+  try {const relu=await charger(true);router.refresh();return relu;}
+  catch {setConflit(true);throw new Error("Action enregistrée. La relecture est indisponible ; actualisez le suivi avant de continuer.");}
+ }
  async function envoyer(action:ActionCycle, retry=false) {
   if(!etat || !draft || busy || envoiPiece || (!retry && (pending || conflit || draft.baseRevision!==(etat.suivi?.revision??0)))) return;
   if(action==="soumettre" && !retry && pieces.some(p=>!p.piece || p.revision!==etat.suivi?.revision)) {setMessage("Envoyez chaque pièce sélectionnée pour la révision actuelle, ou retirez-la avant de soumettre.");return;}
   let demande:DemandeCycle;
   try { demande=retry && pending ? pending : validerDemandeCycle({operationId:crypto.randomUUID(),auteurId,entrepriseId:etat.entrepriseId,revision:etat.suivi?.revision??0,action,responsable:action==="planifier"?responsable:etat.suivi?.responsable,echeance:action==="planifier"?echeance:etat.suivi?.echeance,commentaire:action==="planifier"?null:commentaire,pieces:action==="soumettre"?pieces.map(p=>p.id):[]}); } catch(e) {setMessage((e as Error).message);return;}
   setBusy(true);setMessage("");
+  try {await executer(demande);setMessage("Action enregistrée dans l’historique.");}
+  catch(e) {if(!scope.signal.aborted)setMessage((e as Error).message);} finally {if(!scope.signal.aborted)setBusy(false);}
+ }
+ /**
+  * « C'est corrigé » : planifier si besoin, envoyer la photo, soumettre puis
+  * valider — les mêmes demandes que le suivi détaillé, textes préremplis.
+  * Interrompu (réseau, conflit), il reprend à l'étape où en est la NC.
+  */
+ async function corrigeRapide() {
+  if(!etat || !draft || busy || envoiPiece || pending || conflit || draft.baseRevision!==(etat.suivi?.revision??0)) return;
+  setBusy(true);setMessage("");
   try {
-   await local.update({pending:demande});assertOfflineScope(scope);
-   const response=await fetch(`/api/ecarts/${ecartId}/statut`,{method:"PATCH",signal:scope.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify(demande)});
-   const data=await response.json();assertOfflineScope(scope);
-   if(!response.ok) {if(data.refusConfirme===true){await local.update({pending:null});if(response.status===409)setConflit(true);}throw new Error(data.error||"Résultat non confirmé.");}
-   if(data.operation_id!==demande.operationId || data.revision!==demande.revision+1) throw new Error("Résultat non confirmé. Réessayez la même demande.");
-   await local.update({pending:null,baseRevision:data.revision,pieces:demande.action==="soumettre"?[]:pieces,commentaire:demande.action!=="planifier"?"":commentaire,termine:demande.action==="valider"});
-   setMessage("Action enregistrée dans l’historique.");
-   try {await charger(true);router.refresh();} catch {setConflit(true);setMessage("Action enregistrée. La relecture est indisponible ; actualisez le suivi avant de continuer.");}
-  } catch(e) {if(!scope.signal.aborted)setMessage((e as Error).message);} finally {if(!scope.signal.aborted)setBusy(false);}
+   let e=etat;
+   const jour=jourSuisse();
+   for(let garde=0;garde<3;garde++) {
+    const action=etapeCorrectionRapide(e.ecart.statut);
+    if(!action) break;
+    const revision=e.suivi?.revision??0;
+    let idsPieces:string[]=[];
+    if(action==="soumettre") {
+     // Une photo choisie avant la planification change de révision : nouvel identifiant.
+     const aEnvoyer=(local.current.current?.pieces??[]).map(p=>p.revision===revision?p:{id:crypto.randomUUID(),file:p.file,revision});
+     await local.update({pieces:aEnvoyer});
+     for(const p of aEnvoyer) {
+      if(p.piece) continue;
+      setMessage("Envoi de la photo…");
+      const piece=await televerserPiece({ecartId,auteurId,entrepriseId:e.entrepriseId,scope,piece:p});
+      await local.update({pieces:(local.current.current?.pieces??[]).map(x=>x.id===p.id?{...x,piece,erreur:undefined}:x)});
+     }
+     idsPieces=aEnvoyer.map(p=>p.id);
+    }
+    const textes=textesCorrectionRapide(jour,local.current.current?.commentaire??"",idsPieces.length);
+    const demande=validerDemandeCycle({operationId:crypto.randomUUID(),auteurId,entrepriseId:e.entrepriseId,revision,action,
+     responsable:action==="planifier"?(e.suivi?.responsable||nomAuteur):e.suivi?.responsable,
+     echeance:action==="planifier"?(e.suivi?.echeance||jour):e.suivi?.echeance,
+     commentaire:action==="planifier"?null:action==="soumettre"?textes.preuve:textes.conclusion,
+     pieces:idsPieces});
+    setMessage(action==="planifier"?"Ouverture du suivi…":action==="soumettre"?"Enregistrement de la correction…":"Validation…");
+    e=await executer(demande);
+   }
+   setMessage(e.ecart.statut==="corrige"?"NC marquée corrigée. Le détail est dans l’historique ci-dessous.":"Correction interrompue. Relancez « C’est corrigé » : les étapes déjà enregistrées ne sont pas refaites.");
+  } catch(err) {
+   if(!scope.signal.aborted)setMessage(`${(err as Error).message}\nLes étapes déjà enregistrées sont conservées : relancez « C’est corrigé » pour terminer.`);
+  } finally {if(!scope.signal.aborted)setBusy(false);}
+ }
+ async function ajouterPhoto(fichier:File|undefined) {
+  if(!fichier || !etat) return;
+  try {
+   if((local.current.current?.pieces.length??0)>=MAX_PIECES_PREUVE) throw new Error("Cinq pièces au maximum.");
+   // Recompressée en JPEG : les photos d’appareil dépassent souvent 5 Mo.
+   const blob=await compressPhoto(fichier);
+   if(blob.size>MAX_TAILLE_PREUVE) throw new Error("Photo trop volumineuse, même compressée (5 Mo maximum).");
+   const file=new File([blob],`photo-correction-${Date.now()}.jpg`,{type:"image/jpeg"});
+   await local.update({pieces:[...(local.current.current?.pieces??[]),{id:crypto.randomUUID(),file,revision:etat.suivi?.revision??0}]});
+  } catch(err) {setMessage((err as Error).message);}
  }
  async function relire() {setBusy(true);try{await charger(!etat);setConflit(false);setMessage("État actualisé. Vos textes sont conservés : comparez-les au suivi avant une nouvelle action.");}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}
  async function historiqueAncien() {
@@ -92,6 +152,27 @@ function CycleLocal({ecartId,auteurId,scope}:{ecartId:string;auteurId:string;sco
    {statut==="corrige" && !etat.suivi && <p className="text-sm text-gray-600">Correction historique : aucune validation issue du nouveau cycle n’est enregistrée.</p>}
    {!etat.peutModifier && <p className="text-sm text-gray-600">Consultation seule. Un inspecteur affecté au chantier ou un administrateur peut agir.</p>}
    {etat.peutModifier && statut!=="corrige" && <>
+    <div className="rounded-xl border-2 border-green-600 bg-green-50 p-4 space-y-3">
+     <h3 className="font-semibold text-green-900">Correction rapide</h3>
+     <p className="text-sm text-green-900">{statut==="a_verifier"?"Une correction a été soumise : confirmez-la si elle est constatée sur place.":"Ajoutez une photo si vous le souhaitez, puis confirmez. Le suivi (responsable, preuve, validation) est rempli et journalisé automatiquement."}</p>
+     {statut!=="a_verifier" && <div className="flex flex-wrap items-center gap-2">
+      <label className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-green-700 bg-white px-4 text-sm font-medium text-green-800 ${verrouille||pieces.length>=MAX_PIECES_PREUVE?"opacity-50 pointer-events-none":"cursor-pointer"}`}>
+       <span translate="no" className="material-symbols-outlined text-lg">photo_camera</span>
+       {pieces.length?"Ajouter une autre photo":"Ajouter une photo (facultatif)"}
+       <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={verrouille||pieces.length>=MAX_PIECES_PREUVE} onChange={ev=>{void ajouterPhoto(ev.target.files?.[0]);ev.target.value="";}}/>
+      </label>
+      {pieces.length>0 && <span className="text-sm text-green-900">{pieces.length} photo{pieces.length>1?"s":""} prête{pieces.length>1?"s":""}</span>}
+     </div>}
+     {pieces.length>0 && statut!=="a_verifier" && <ul className="flex flex-wrap gap-2">{pieces.map(p=><li key={p.id}><button type="button" disabled={verrouille||!!p.piece} onClick={()=>setPieces(old=>old.filter(x=>x.id!==p.id))} className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 text-xs disabled:opacity-50" title="Retirer cette photo">{p.piece?"Envoyée":"Retirer"} · {p.file.name.slice(0,24)}</button></li>)}</ul>}
+     {statut!=="a_verifier" && <label className="block text-sm text-green-900">Précision (facultatif)<textarea rows={2} maxLength={4900} disabled={verrouille} placeholder="Ex. : garde-corps reposé, lisse intermédiaire ajoutée" className="mt-1 block w-full rounded-lg border border-gray-400 bg-white p-2" value={commentaire} onChange={e=>setCommentaire(e.target.value)}/></label>}
+     <button type="button" disabled={verrouille} onClick={corrigeRapide} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-lg bg-green-700 px-5 text-base font-semibold text-white hover:bg-green-800 disabled:opacity-50 sm:w-auto">
+      <span translate="no" className="material-symbols-outlined">check_circle</span>
+      {busy?"Enregistrement…":"C’est corrigé"}
+     </button>
+    </div>
+    <details className="rounded-lg border border-gray-300 p-3 space-y-4">
+    <summary className="min-h-[44px] cursor-pointer text-sm font-medium text-[#002855] flex items-center">Suivi détaillé : responsable, échéance, pièces, vérification ou reprise</summary>
+    <div className="space-y-4 mt-3">
     <p className="text-xs text-gray-500">Textes et fichiers sont conservés sur cet appareil après confirmation de la sauvegarde. Retrouvez les copies depuis cette NC avec le même compte. Connexion requise pour charger le suivi et transmettre ; aucun envoi automatique. L’effacement des données du navigateur supprime les copies locales.</p>
     {planifiable && <fieldset disabled={verrouille} className="space-y-3">
      <legend className="font-medium text-sm">Planification</legend>
@@ -105,6 +186,8 @@ function CycleLocal({ecartId,auteurId,scope}:{ecartId:string;auteurId:string;sco
      <div className="flex flex-wrap gap-2">{statut==="a_verifier"?<><button disabled={verrouille} className={bouton} onClick={()=>envoyer("valider")}>Valider la correction</button><button disabled={verrouille} className={bouton} onClick={()=>envoyer("reprendre")}>Demander une reprise</button></>:<button disabled={verrouille || pieces.some(p=>!p.piece || p.revision!==etat.suivi?.revision) || responsable!==etat.suivi?.responsable || echeance!==etat.suivi?.echeance} className={bouton} onClick={()=>envoyer("soumettre")}>Soumettre à vérification</button>}</div>
      {statut==="en_cours_correction" && (responsable!==etat.suivi?.responsable || echeance!==etat.suivi?.echeance) && <p className="text-sm text-amber-800">Enregistrez la planification modifiée avant de soumettre la preuve.</p>}
     </fieldset>}
+    </div>
+    </details>
    </>}
    {pending && <div className="space-y-2"><p className="text-sm text-amber-800">Le résultat reste à confirmer. La demande conservée permet de réessayer après réouverture avec le même identifiant et le même contenu.</p><button className={bouton} disabled={busy} onClick={()=>envoyer(pending.action,true)}>Vérifier / réessayer la même demande</button></div>}
    {baseChangee && !pending && <div className="space-y-2"><p className="text-sm text-amber-800">Cette copie vient d’une autre révision. Comparez vos textes au responsable, à l’échéance et aux preuves enregistrées ci-dessus. Les pièces d’une ancienne révision devront être sélectionnées à nouveau.</p><button className={bouton} disabled={busy||envoiPiece} onClick={()=>{void local.update({baseRevision:etat.suivi?.revision??0}).then(()=>setConflit(false)).catch(()=>{});}}>J’ai comparé : travailler sur cette révision</button></div>}

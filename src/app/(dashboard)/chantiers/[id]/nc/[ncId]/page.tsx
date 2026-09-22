@@ -43,6 +43,13 @@ export default async function NCDetailPage({
     notFound();
   }
 
+  // Responsable proposé par « C'est corrigé » quand aucune planification n'existe.
+  const { data: profil } = await supabase
+    .from("profiles")
+    .select("nom")
+    .eq("id", user.id)
+    .maybeSingle();
+
   const { data: chantier } = await supabase
     .from("chantiers")
     .select("nom, adresse")
@@ -148,7 +155,7 @@ export default async function NCDetailPage({
         </dl>
       </Card>
 
-      <EcartCycle key={`${user.id}:${nc.id}`} ecartId={nc.id} auteurId={user.id} />
+      <EcartCycle key={`${user.id}:${nc.id}`} ecartId={nc.id} auteurId={user.id} nomAuteur={profil?.nom?.trim() || user.email || "Inspecteur"} />
 
       {/* Plan comparé */}
       {comparaison && (
