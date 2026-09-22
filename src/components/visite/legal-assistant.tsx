@@ -62,7 +62,10 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      inputRef.current.focus();
+      // Sur tablette, le panneau déborde souvent sous l'écran : amener le
+      // champ de saisie en vue, sinon rien n'indique qu'il existe.
+      inputRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      inputRef.current.focus({ preventScroll: true });
     }
   }, [isOpen]);
 
@@ -177,7 +180,9 @@ export function LegalAssistant({ context, onInsertRemarque }: LegalAssistantProp
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="max-h-80 overflow-y-auto p-4 space-y-3"
+            /* L'accueil (avertissement + suggestions) n'est pas borné : borné à
+               320 px, il remplissait la zone et repoussait le champ hors écran. */
+            className={`p-4 space-y-3 ${messages.length > 0 || loading ? "max-h-80 overflow-y-auto" : ""}`}
           >
             {messages.length === 0 && !loading && (
               <div className="text-center py-4 space-y-3">
