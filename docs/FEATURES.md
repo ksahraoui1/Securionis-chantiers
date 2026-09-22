@@ -844,5 +844,7 @@ Textes préremplis et vrais : preuve « Correction constatée sur place le JJ.MM
 
 Interruption (réseau, conflit) : la demande en cours reste conservée comme dans le suivi détaillé, et un nouvel appui sur « C’est corrigé » reprend à l’étape où se trouve la NC ; les étapes déjà enregistrées ne sont pas refaites. Logique pure (`etapeCorrectionRapide`, `textesCorrectionRapide`) dans `src/lib/ecarts/cycle.ts`, testée dans `tests/ecart-cycle.test.cjs`.
 
+Déployé le 22 septembre 2026 (PR #88) et confirmé en usage réel par l’utilisateur : « C’est corrigé » fait passer la NC à corrigée. Non vérifié par l’agent dans le navigateur, la page étant derrière le second facteur.
+
 ⚠️ Comme avant ce changement (§29), la même personne peut soumettre et valider : le raccourci rend ce cas courant. Imposer un second valideur demanderait une évolution de la procédure en base.
 
