@@ -816,6 +816,10 @@ L’analyse IA d’une photo échouait systématiquement (« Impossible de charg
 
 Livraison sans migration : reconstruire et déployer l’image applicative après CI en conservant une image de retour arrière.
 
+Déployé le 22 septembre 2026 (PR #84). Symptôme reproduit avant correction : l’URL publique d’une photo réelle répond 400. Confirmé en usage réel par l’utilisateur après déploiement : l’analyse IA d’une photo de visite fonctionne.
+
 ## 36. Champ de saisie de l’assistant juridique visible
 
 Signalé sur tablette : le champ pour poser une question n’apparaissait pas. Il existait, sous la zone des messages bornée à 320 px ; l’accueil (avertissement IA-01 et quatre suggestions) remplissait cette hauteur et repoussait le champ sous le bord de l’écran, sans indice qu’il fallait défiler. L’accueil n’est plus borné (la limite et le défilement interne ne s’appliquent qu’une fois la conversation commencée), et l’ouverture du panneau amène le champ en vue avant de lui donner le focus. Sans migration.
+
+Déployé le 22 septembre 2026 (PR #85), confirmé en usage réel par l’utilisateur sur tablette : le champ de question est visible et l’assistant répond. Non vérifié par l’agent dans le navigateur, la page étant derrière le second facteur.

@@ -2953,3 +2953,7 @@ Confirmation ultérieure « ca fonctionne » reçue à la question sur la photo 
 ### Retrait du bandeau de stockage ancien (2026-09-15)
 
 À la demande de l’utilisateur, `OfflineProvider` n’affiche plus le bandeau permanent sur l’ancien stockage local et ne lance plus la détection réservée à ce bandeau. Les anciennes bases IndexedDB restent conservées séparément ; aucun effacement ou rattachement automatique. Garder l’isolation et le verrouillage de session existants. Spécification §34. Cette modification cliente nécessite une nouvelle image VPS et le rechargement des pages ouvertes, sans migration Supabase.
+
+### Analyse IA des photos et champ de l’assistant juridique (2026-09-22)
+
+`/api/photos/analyze` ne fait plus de `fetch` de l’URL canonique : le bucket `visite-photos` étant privé, elle répondait 400 et l’analyse échouait toujours. La photo est téléchargée par `supabase.storage.download()` avec le client utilisateur (RLS), doit être dans `visite-photos` avec l’identifiant de la visite en 2ᵉ segment, et son type est déduit des octets. Ne jamais télécharger côté serveur une URL de stockage issue du client ou de la base : passer par `referenceStockage()` puis le SDK. Dans `legal-assistant.tsx`, l’écran d’accueil n’est plus borné à 320 px (il repoussait le champ de saisie hors écran sur tablette) et le champ est amené en vue à l’ouverture. PR #84 et #85, déployées et confirmées en usage réel. Spécification §35–36.
