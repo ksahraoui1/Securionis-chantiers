@@ -809,3 +809,9 @@ Ce contrôle complète la recette GoTrue/Storage annoncée au §31, pour deux ad
 Le bandeau permanent signalant un ancien stockage local sans propriétaire n’est plus affiché, sur aucun format d’écran. Le fournisseur de session ne lance plus la détection destinée uniquement à cet affichage. Les anciennes bases locales restent conservées séparément : aucune suppression, migration ou attribution automatique à un compte n’est effectuée. L’isolation compte/entreprise, le verrouillage de session et les messages de sauvegarde/synchronisation restent actifs. Le lien **Saisies conservées** demeure disponible.
 
 Livraison sans migration de base : reconstruire et déployer l’image applicative après CI en conservant une image de retour arrière. Recharger les pages déjà ouvertes pour supprimer le bandeau dans ces onglets.
+
+## 35. Analyse IA des photos avec le stockage privé
+
+L’analyse IA d’une photo échouait systématiquement (« Impossible de charger l’image pour l’analyse ») : la route téléchargeait l’URL canonique publique de la photo, qui répond 400 depuis le passage du bucket `visite-photos` en privé (SEC-03). La route retraduit désormais l’URL en chemin de stockage, exige le bucket `visite-photos` et l’identifiant de la visite en deuxième segment (`<chantier>/<visite>/…`, vérifié sur les 114 photos en base), puis télécharge avec le client de l’utilisateur : la RLS du stockage s’applique, aucune URL signée n’est produite ni transmise. Le type est déduit des octets (JPEG ou PNG), la taille reste limitée à 10 Mo, et un échec de chargement est journalisé côté serveur.
+
+Livraison sans migration : reconstruire et déployer l’image applicative après CI en conservant une image de retour arrière.
