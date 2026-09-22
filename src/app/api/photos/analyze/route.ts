@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicApiKey } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isAllowedSupabaseUrl } from "@/lib/utils/security";
+import { referenceStockage } from "@/lib/utils/storage-reference";
 
 /**
  * POST /api/photos/analyze
@@ -57,6 +58,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "URL non autorisée" }, { status: 400 });
   }
 
+  // Le bucket est privé (SEC-03) : l'URL canonique n'est qu'un identifiant.
+  // On la retraduit en chemin, lié à la visite (<chantier>/<visite>/…), puis
+  // on télécharge avec le client de l'utilisateur — la RLS s'applique.
+  const reference = referenceStockage(imageUrl);
+  if (
+    !reference ||
+    reference.bucket !== "visite-photos" ||
+    reference.chemin.split("/")[1] !== visiteId
+  ) {
+    return NextResponse.json({ error: "Photo hors de cette visite" }, { status: 400 });
+  }
+
   // Vérifier l'accès à la visite (obligatoire)
   const { canAccessVisite } = await import("@/lib/utils/security");
   if (!(await canAccessVisite(supabase, user.id, visiteId))) {
@@ -70,35 +83,28 @@ export async function POST(request: Request) {
   const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 Mo
 
   try {
-    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
-    if (!imgRes.ok) throw new Error("Impossible de charger l'image");
+    const parametres = { signal: AbortSignal.timeout(15_000), redirect: "error" as const };
+    const { data: fichier, error: erreurFichier } = await supabase.storage
+      .from("visite-photos")
+      .download(reference.chemin, {}, parametres);
+    if (erreurFichier || !fichier) throw new Error(erreurFichier?.message ?? "Photo inaccessible");
 
-    // Vérifier la taille avant de lire le body
-    const contentLength = parseInt(imgRes.headers.get("content-length") ?? "0", 10);
-    if (contentLength > MAX_IMAGE_SIZE) {
+    if (fichier.size > MAX_IMAGE_SIZE) {
       return NextResponse.json({ error: "Image trop volumineuse (max 10 Mo)" }, { status: 400 });
     }
 
-    const contentType = imgRes.headers.get("content-type") ?? "image/jpeg";
-    // Vérifier que c'est bien une image
-    if (!contentType.startsWith("image/")) {
+    const octets = Buffer.from(await fichier.arrayBuffer());
+    // Type déduit des octets : le bucket n'accepte que JPEG et PNG.
+    if (octets.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+      mediaType = "image/png";
+    } else if (octets[0] === 0xff && octets[1] === 0xd8 && octets[2] === 0xff) {
+      mediaType = "image/jpeg";
+    } else {
       return NextResponse.json({ error: "Le fichier n'est pas une image" }, { status: 400 });
     }
-
-    if (contentType.includes("png")) {
-      mediaType = "image/png";
-    } else if (contentType.includes("webp")) {
-      mediaType = "image/webp";
-    } else {
-      mediaType = "image/jpeg";
-    }
-
-    const buffer = await imgRes.arrayBuffer();
-    if (buffer.byteLength > MAX_IMAGE_SIZE) {
-      return NextResponse.json({ error: "Image trop volumineuse (max 10 Mo)" }, { status: 400 });
-    }
-    imageBase64 = Buffer.from(buffer).toString("base64");
-  } catch {
+    imageBase64 = octets.toString("base64");
+  } catch (err) {
+    console.error("[photos/analyze] Chargement de la photo impossible :", err instanceof Error ? err.message : err);
     return NextResponse.json(
       { error: "Impossible de charger l'image pour l'analyse" },
       { status: 400 }
