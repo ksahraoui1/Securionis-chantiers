@@ -815,3 +815,7 @@ Livraison sans migration de base : reconstruire et déployer l’image applicati
 L’analyse IA d’une photo échouait systématiquement (« Impossible de charger l’image pour l’analyse ») : la route téléchargeait l’URL canonique publique de la photo, qui répond 400 depuis le passage du bucket `visite-photos` en privé (SEC-03). La route retraduit désormais l’URL en chemin de stockage, exige le bucket `visite-photos` et l’identifiant de la visite en deuxième segment (`<chantier>/<visite>/…`, vérifié sur les 114 photos en base), puis télécharge avec le client de l’utilisateur : la RLS du stockage s’applique, aucune URL signée n’est produite ni transmise. Le type est déduit des octets (JPEG ou PNG), la taille reste limitée à 10 Mo, et un échec de chargement est journalisé côté serveur.
 
 Livraison sans migration : reconstruire et déployer l’image applicative après CI en conservant une image de retour arrière.
+
+## 36. Champ de saisie de l’assistant juridique visible
+
+Signalé sur tablette : le champ pour poser une question n’apparaissait pas. Il existait, sous la zone des messages bornée à 320 px ; l’accueil (avertissement IA-01 et quatre suggestions) remplissait cette hauteur et repoussait le champ sous le bord de l’écran, sans indice qu’il fallait défiler. L’accueil n’est plus borné (la limite et le défilement interne ne s’appliquent qu’une fois la conversation commencée), et l’ouverture du panneau amène le champ en vue avant de lui donner le focus. Sans migration.
