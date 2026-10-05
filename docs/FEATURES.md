@@ -873,3 +873,7 @@ La CI de la PR #92 a échoué sur des vulnérabilités publiées depuis le derni
 `npm audit` n’a pas d’option d’exemption, et la seule autre issue aurait été d’abaisser le seuil de la CI pour toutes les dépendances. La CI exécute donc `tests/npm-audit.cjs` au lieu de `npm audit --audit-level=moderate`. Une vulnérabilité de gravité modérée ou plus n’est tolérée que si **toutes** ses causes racines sont dans `EXEMPTIONS`, chaque entrée étant justifiée et datée. Le script signale l’exemption à retirer dès que l’avis n’est plus rapporté. Vérifié dans les deux sens : 0 avec l’exemption, 1 sans elle, avec les cinq paquets de la chaîne listés.
 
 Vérifié après mise à jour : `tsc`, ESLint (0 erreur), 104 tests de sécurité, contrôle OpenCV sans `eval`, `npm run build`.
+
+**Déployé le 5 octobre 2026** (PR #92, `main` `a1f0088`). La CI de la PR est verte. Image reconstruite et basculée en 3,1 s, sans `docker compose down`. Conteneur sain, exécuté par `node`, Next.js 16.3.8. Script de contrôle réinstallé dans `/usr/local/sbin/`. Relevé exécuté : 17 contrôles OK, la ligne « Sessions expirées refusées (normal) » est présente. Tableau de bord et liste des chantiers vérifiés dans le navigateur, sans erreur console. Image précédente conservée sous `securionis-app:rollback-da2eb41-20261005`.
+
+⚠️ Le relevé ne lit que le journal du conteneur **en cours** : les deux compteurs repartent de zéro à chaque déploiement.
