@@ -848,3 +848,28 @@ Déployé le 22 septembre 2026 (PR #88) et confirmé en usage réel par l’util
 
 ⚠️ Comme avant ce changement (§29), la même personne peut soumettre et valider : le raccourci rend ce cas courant. Imposer un second valideur demanderait une évolution de la procédure en base.
 
+
+## 39. Relevé quotidien : sessions expirées comptées à part (5 octobre 2026)
+
+Le contrôle quotidien du serveur (§ INFRA-03) affichait chaque matin une quinzaine d’« erreurs applicatives » de la forme `AuthApiError: Invalid Refresh Token: Refresh Token Not Found` ou `… Session Expired`, et envoyait donc une alerte email chaque jour. Ce ne sont pas des pannes : un navigateur présente un jeton de renouvellement expiré (sessions bornées, §28), révoqué ou déjà consommé par un autre onglet, Supabase le refuse, les cookies sont effacés et l’utilisateur revient à la connexion.
+
+⚠️ **Ces lignes ne viennent pas du code de l’application.** C’est auth-js 2.99 qui appelle lui-même `console.error` dans `_emitInitialSession`, déclenché par l’`onAuthStateChange` que pose `createServerClient`. Le middleware ne peut pas l’intercepter. Les versions récentes (2.117) les écrivent en `console.warn`, mais le texte contient toujours « Error » et resterait capté par le relevé : la mise à jour de la bibliothèque n’aurait pas suffi.
+
+`scripts/controle-durcissement.sh` écarte désormais les lignes `Invalid Refresh Token` et la ligne de détail `__isAuthError: true,`, puis les compte sur une ligne séparée « Sessions expirées refusées (normal) : N ». Une vraie erreur d’authentification garde sa propre ligne « AuthXxxError: … » et reste relevée. Ce compteur seul ne déclenche pas d’alerte. Un nombre anormalement élevé (centaines par jour) mériterait toutefois d’être regardé : ce serait le signe de jetons rejoués.
+
+## 40. Dépendances : Next.js 16.3.8 et exemption nominative de `braces` (5 octobre 2026)
+
+La CI de la PR #92 a échoué sur des vulnérabilités publiées depuis le dernier passage, sans lien avec le changement :
+
+| Paquet | Gravité | Traitement |
+|---|---|---|
+| `next` < 16.3.6 | **critique**, exécution de code à distance dans `next/og` (`ImageResponse`) | `next` et `eslint-config-next` passés à **16.3.8**. L’application n’importe pas `next/og`, mais la mise à jour est faite. |
+| `fast-uri` < 3.1.8 | haute | corrigé par `npm audit fix` |
+| `brace-expansion` | haute | override `minimatch@3` relevé à `^1.1.21` |
+| `braces` ≤ 3.0.3 | haute, déni de service | **aucune version corrigée publiée** : exemption nominative |
+
+`braces` n’arrive que par `eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch`. C’est donc de l’outillage de lint, absent de l’image de production (`output: "standalone"`), et les motifs qu’il traite viennent du dépôt.
+
+`npm audit` n’a pas d’option d’exemption, et la seule autre issue aurait été d’abaisser le seuil de la CI pour toutes les dépendances. La CI exécute donc `tests/npm-audit.cjs` au lieu de `npm audit --audit-level=moderate`. Une vulnérabilité de gravité modérée ou plus n’est tolérée que si **toutes** ses causes racines sont dans `EXEMPTIONS`, chaque entrée étant justifiée et datée. Le script signale l’exemption à retirer dès que l’avis n’est plus rapporté. Vérifié dans les deux sens : 0 avec l’exemption, 1 sans elle, avec les cinq paquets de la chaîne listés.
+
+Vérifié après mise à jour : `tsc`, ESLint (0 erreur), 104 tests de sécurité, contrôle OpenCV sans `eval`, `npm run build`.

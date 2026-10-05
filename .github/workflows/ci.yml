@@ -40,7 +40,7 @@ jobs:
           run: |
             npm run test:security
             node tests/opencv-no-eval.cjs
-            npm audit --audit-level=moderate
+            node tests/npm-audit.cjs
 
         - name: Database security regression tests
           env:

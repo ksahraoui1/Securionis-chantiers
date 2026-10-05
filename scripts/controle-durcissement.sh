@@ -117,16 +117,30 @@ fi
 # --- Erreurs applicatives des dernières 24 h (OBS-01) ------------------------
 # Palliatif tant qu'aucun DSN Sentry n'est configuré : sans cela, aucune erreur
 # de l'application ne laisse de trace consultée par qui que ce soit.
-erreurs=$(cd "$DOSSIER_APP" 2>/dev/null && docker compose logs --since 24h app 2>&1 \
+#
+# Les sessions mortes sont comptées à part. Quand un navigateur présente un
+# jeton de renouvellement expiré, révoqué ou déjà consommé, auth-js écrit
+# lui-même l'erreur (`console.error` dans `_emitInitialSession`, version 2.99) —
+# aucun code de l'application ne peut l'intercepter, et les cookies sont déjà
+# effacés correctement. C'est le fonctionnement normal des sessions bornées,
+# pas une panne : mélangées aux vraies erreurs, ces lignes les noyaient et
+# déclenchaient une alerte chaque matin. `__isAuthError: true,` est la ligne de
+# détail de l'objet affiché ; la vraie erreur d'authentification garde sa
+# propre ligne « AuthXxxError: … », elle n'est donc pas perdue.
+journal=$(cd "$DOSSIER_APP" 2>/dev/null && docker compose logs --since 24h app 2>&1)
+nb_sessions_expirees=$(printf '%s\n' "$journal" | grep -c 'Invalid Refresh Token')
+erreurs=$(printf '%s\n' "$journal" \
           | grep -iE '\[audit\]|\[rate-limit\]|\[stockage\]|Error|Exception|ECONNREFUSED' \
-          | grep -viE 'favicon|/_next/' | head -40)
+          | grep -viE 'favicon|/_next/' \
+          | grep -vE 'Invalid Refresh Token|__isAuthError: true' | head -40)
 nb_erreurs=$(printf '%s' "$erreurs" | grep -c . )
 
 rapport="Contrôle du $(date '+%d.%m.%Y à %H:%M') sur $(hostname)
 
 $(printf '%s\n' "${constats[@]}")
 
-Erreurs applicatives sur 24 h : $nb_erreurs"
+Erreurs applicatives sur 24 h : $nb_erreurs
+Sessions expirées refusées (normal) : $nb_sessions_expirees"
 [ "$nb_erreurs" -gt 0 ] && rapport="$rapport
 
 $erreurs"
