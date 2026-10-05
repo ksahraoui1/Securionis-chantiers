@@ -848,3 +848,11 @@ Déployé le 22 septembre 2026 (PR #88) et confirmé en usage réel par l’util
 
 ⚠️ Comme avant ce changement (§29), la même personne peut soumettre et valider : le raccourci rend ce cas courant. Imposer un second valideur demanderait une évolution de la procédure en base.
 
+
+## 39. Relevé quotidien : sessions expirées comptées à part (5 octobre 2026)
+
+Le contrôle quotidien du serveur (§ INFRA-03) affichait chaque matin une quinzaine d’« erreurs applicatives » de la forme `AuthApiError: Invalid Refresh Token: Refresh Token Not Found` ou `… Session Expired`, et envoyait donc une alerte email chaque jour. Ce ne sont pas des pannes : un navigateur présente un jeton de renouvellement expiré (sessions bornées, §28), révoqué ou déjà consommé par un autre onglet, Supabase le refuse, les cookies sont effacés et l’utilisateur revient à la connexion.
+
+⚠️ **Ces lignes ne viennent pas du code de l’application.** C’est auth-js 2.99 qui appelle lui-même `console.error` dans `_emitInitialSession`, déclenché par l’`onAuthStateChange` que pose `createServerClient`. Le middleware ne peut pas l’intercepter. Les versions récentes (2.117) les écrivent en `console.warn`, mais le texte contient toujours « Error » et resterait capté par le relevé : la mise à jour de la bibliothèque n’aurait pas suffi.
+
+`scripts/controle-durcissement.sh` écarte désormais les lignes `Invalid Refresh Token` et la ligne de détail `__isAuthError: true,`, puis les compte sur une ligne séparée « Sessions expirées refusées (normal) : N ». Une vraie erreur d’authentification garde sa propre ligne « AuthXxxError: … » et reste relevée. Ce compteur seul ne déclenche pas d’alerte. Un nombre anormalement élevé (centaines par jour) mériterait toutefois d’être regardé : ce serait le signe de jetons rejoués.
