@@ -874,6 +874,8 @@ La CI de la PR #92 a échoué sur des vulnérabilités publiées depuis le derni
 
 Vérifié après mise à jour : `tsc`, ESLint (0 erreur), 104 tests de sécurité, contrôle OpenCV sans `eval`, `npm run build`.
 
+6 octobre 2026 : nouvel avis `source-map-js` < 1.2.2 (haute, déni de service, GHSA-68fv-2mgg-jv7q), arrivé par `postcss` et `@tailwindcss/node`, donc pendant le build seulement. Corrigé par `npm audit fix` (1.2.2), sans exemption ; l’audit et le build passent.
+
 **Déployé le 5 octobre 2026** (PR #92, `main` `a1f0088`). La CI de la PR est verte. Image reconstruite et basculée en 3,1 s, sans `docker compose down`. Conteneur sain, exécuté par `node`, Next.js 16.3.8. Script de contrôle réinstallé dans `/usr/local/sbin/`. Relevé exécuté : 17 contrôles OK, la ligne « Sessions expirées refusées (normal) » est présente. Tableau de bord et liste des chantiers vérifiés dans le navigateur, sans erreur console. Image précédente conservée sous `securionis-app:rollback-da2eb41-20261005`.
 
 ⚠️ Le relevé ne lit que le journal du conteneur **en cours** : les deux compteurs repartent de zéro à chaque déploiement.
