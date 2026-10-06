@@ -874,6 +874,18 @@ La CI de la PR #92 a échoué sur des vulnérabilités publiées depuis le derni
 
 Vérifié après mise à jour : `tsc`, ESLint (0 erreur), 104 tests de sécurité, contrôle OpenCV sans `eval`, `npm run build`.
 
+6 octobre 2026 : nouvel avis `source-map-js` < 1.2.2 (haute, déni de service, GHSA-68fv-2mgg-jv7q), arrivé par `postcss` et `@tailwindcss/node`, donc pendant le build seulement. Corrigé par `npm audit fix` (1.2.2), sans exemption ; l’audit et le build passent.
+
 **Déployé le 5 octobre 2026** (PR #92, `main` `a1f0088`). La CI de la PR est verte. Image reconstruite et basculée en 3,1 s, sans `docker compose down`. Conteneur sain, exécuté par `node`, Next.js 16.3.8. Script de contrôle réinstallé dans `/usr/local/sbin/`. Relevé exécuté : 17 contrôles OK, la ligne « Sessions expirées refusées (normal) » est présente. Tableau de bord et liste des chantiers vérifiés dans le navigateur, sans erreur console. Image précédente conservée sous `securionis-app:rollback-da2eb41-20261005`.
 
 ⚠️ Le relevé ne lit que le journal du conteneur **en cours** : les deux compteurs repartent de zéro à chaque déploiement.
+
+## 41. Suppression de la visite du 6 octobre 2026 de « CAMAC 249'045 - Rue des Remparts 27 » (maintenance du 6 octobre 2026)
+
+À la demande explicite du propriétaire, la visite du 6 octobre 2026 de ce chantier a été supprimée. Elle était terminée et son rapport avait été envoyé le jour même à deux destinataires externes. Le propriétaire a été averti avant de confirmer que **l’email n’est pas rappelé** et que l’avenant permettait de corriger le rapport sans l’effacer.
+
+Script ponctuel `scripts/maintenance/20261006-supprimer-visite-camac-249045.sql`, sur le modèle du §37, avec deux dépendances que ce dernier n’avait pas : **la NC de la visite et son archive de clôture**. Les tables liées ont été inventoriées par leurs clés étrangères. La NC n’avait ni événement, ni pièce, ni suivi, ni lien de comparaison ; la visite n’avait pas d’avenant.
+
+Sous verrou exclusif, le script vérifie la sélection et l’absence de dépendance inattendue, puis sauvegarde **7 lignes** dans `maintenance_privee.visite_camac_249045_20261006` (sans accès API) : 1 visite, 2 réponses, 1 NC, 1 version de rapport, 1 archive, 1 préparation d’archive. Il désactive les **7 protections** concernées, supprime, puis les rétablit avant la validation. La suppression est inscrite au journal (`delete_visite`), et un second passage est refusé.
+
+Joué une première fois avec `rollback` à la place de `commit`, puis exécuté pour de bon. Les 2 fichiers (PDF du rapport, image source copiée par l’archive) ont été supprimés par l’API Storage depuis le conteneur. Vérifié : 0 visite sur le chantier, 0 fichier restant, 7 protections actives, chantier conservé. Exception de maintenance à ne pas généraliser.
