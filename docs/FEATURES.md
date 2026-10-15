@@ -901,3 +901,5 @@ Le script sauvegarde **17 lignes** dans `maintenance_privee.visites_chantier_tes
 > `ecart_suivis` n’a pas de colonne `id` : sa clé est `ecart_id`. Le premier essai a échoué sur ce point pendant la sauvegarde. La transaction a été annulée sans aucun effet, ce qui a été vérifié : pas de table de sauvegarde, 2 visites présentes, toutes les protections actives.
 
 Les 9 fichiers ont été supprimés par l’API Storage depuis le conteneur : 2 photos, 2 copies d’archive, 2 sources et 3 PDF. Vérifié : 0 visite sur le chantier. Il ne reste que le document de chantier, conservé avec le chantier. Exception de maintenance à ne pas généraliser.
+
+> **Dépendance, au passage** : la CI de cette PR a échoué sur un avis publié le jour même, GHSA-wq5f-xc86-pv6w. Il porte sur `sharp` < 0.35.5 (faille de la `librsvg` embarquée, gravité haute), une dépendance de Next.js. Contrairement à `source-map-js` (§40), `sharp` **est présent dans l’image de production**, puisqu’il sert à l’optimisation des images. Il est monté en 0.35.5 par `npm audit fix`, sans nouvelle exemption, et l’image du serveur est reconstruite.
