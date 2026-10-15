@@ -889,3 +889,15 @@ Script ponctuel `scripts/maintenance/20261006-supprimer-visite-camac-249045.sql`
 Sous verrou exclusif, le script vérifie la sélection et l’absence de dépendance inattendue, puis sauvegarde **7 lignes** dans `maintenance_privee.visite_camac_249045_20261006` (sans accès API) : 1 visite, 2 réponses, 1 NC, 1 version de rapport, 1 archive, 1 préparation d’archive. Il désactive les **7 protections** concernées, supprime, puis les rétablit avant la validation. La suppression est inscrite au journal (`delete_visite`), et un second passage est refusé.
 
 Joué une première fois avec `rollback` à la place de `commit`, puis exécuté pour de bon. Les 2 fichiers (PDF du rapport, image source copiée par l’archive) ont été supprimés par l’API Storage depuis le conteneur. Vérifié : 0 visite sur le chantier, 0 fichier restant, 7 protections actives, chantier conservé. Exception de maintenance à ne pas généraliser.
+
+## 42. Suppression des visites de « AA - Chantier Test » (maintenance du 15 octobre 2026)
+
+À la demande du propriétaire, les 2 visites recréées sur le chantier de test depuis le §37 ont été supprimées : celles du 29 septembre et du 13 octobre 2026, toutes deux terminées. Le rapport du 13 octobre avait été envoyé par email, et **cet email n’est pas rappelé**.
+
+Script ponctuel `scripts/maintenance/20261015-supprimer-visites-chantier-test.sql`, dérivé de celui du §41. Il ajoute une dépendance nouvelle : **l’historique du cycle correctif des NC**, soit 3 événements (`ecart_evenements`, en ajout seul sous `historique_immuable`) et 1 suivi. Aucune pièce, aucun avenant, aucun lien de comparaison.
+
+Le script sauvegarde **17 lignes** dans `maintenance_privee.visites_chantier_test_20261015` : 2 visites, 2 réponses, 2 NC, 3 versions de rapport, 2 archives, 2 préparations, 3 événements et 1 suivi. Il désactive puis rétablit **8 protections** avant la validation, inscrit 2 entrées `delete_visite` au journal et refuse un second passage.
+
+> `ecart_suivis` n’a pas de colonne `id` : sa clé est `ecart_id`. Le premier essai a échoué sur ce point pendant la sauvegarde. La transaction a été annulée sans aucun effet, ce qui a été vérifié : pas de table de sauvegarde, 2 visites présentes, toutes les protections actives.
+
+Les 9 fichiers ont été supprimés par l’API Storage depuis le conteneur : 2 photos, 2 copies d’archive, 2 sources et 3 PDF. Vérifié : 0 visite sur le chantier. Il ne reste que le document de chantier, conservé avec le chantier. Exception de maintenance à ne pas généraliser.
