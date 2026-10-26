@@ -14,15 +14,10 @@
 
 const { execFileSync } = require("node:child_process");
 
-const EXEMPTIONS = {
-  // braces ≤ 3.0.3, déni de service par motif profondément imbriqué.
-  // Aucune version corrigée publiée (3.0.3 est la dernière). Chaîne :
-  // eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch →
-  // braces, donc outillage de lint uniquement : absent de l'image de
-  // production (`output: "standalone"`), et les motifs ne viennent que du
-  // dépôt. Exempté le 5 octobre 2026.
-  "GHSA-vfj7-8cjw-p6xm": "braces — aucun correctif, lint seulement",
-};
+// Aucune exemption en cours. La dernière, braces (GHSA-vfj7-8cjw-p6xm, lint
+// seulement), a été retirée le 26 octobre 2026 : l'avis n'est plus rapporté
+// depuis la montée d'eslint-config-next en 16.4.3.
+const EXEMPTIONS = {};
 
 const NIVEAUX = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
 
