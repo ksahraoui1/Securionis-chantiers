@@ -6,9 +6,9 @@ import { useOfflineScope } from "@/components/ui/offline-provider";
 import { offlinePreferenceKey, assertOfflineScope } from "@/lib/offline/scope";
 import { getUnsyncedResponses } from "@/lib/offline/db";
 import { ChecklistItem } from "./checklist-item";
-import { ThemeAdder } from "./theme-adder";
-import { QuickAddPoint } from "./quick-add-point";
 import { PointSelector } from "./point-selector";
+import { SelecteurPoints } from "./selecteur-points";
+import { deduireRattachements, type PointSelectionnable } from "@/lib/visites/selection-points";
 import { useAutosave } from "@/hooks/use-autosave";
 import type { Tables } from "@/types/database";
 import { signerUrls } from "@/lib/utils/url-signee";
@@ -22,6 +22,45 @@ type PointWithDocs = Tables<"points_controle"> & {
   point_controle_doc_liens?: LinkedDoc[];
 };
 
+const SELECT_POINT_CHECKLIST =
+  "*, themes(libelle), point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))";
+
+// Bucket privé (SEC-03) : les fiches jointes aux points de contrôle
+// (documents propres et base documentaire) se servent par URL signée.
+// Un seul appel pour tous les points fournis.
+async function signerDocuments(
+  supabase: ReturnType<typeof createClient>,
+  brut: PointWithDocs[],
+): Promise<PointWithDocs[]> {
+  const aSigner: string[] = [];
+  brut.forEach((p) => {
+    (p.point_controle_documents ?? []).forEach((d) => aSigner.push(d.fichier_url));
+    (p.point_controle_doc_liens ?? []).forEach((l) => {
+      if (l.base_documentaire) aSigner.push(l.base_documentaire.fichier_url);
+    });
+  });
+  const signees = await signerUrls(supabase, aSigner);
+  let k = 0;
+  return brut.map((p) => ({
+    ...p,
+    point_controle_documents: (p.point_controle_documents ?? []).map((d) => ({
+      ...d,
+      fichier_url: signees[k++] ?? d.fichier_url,
+    })),
+    point_controle_doc_liens: (p.point_controle_doc_liens ?? []).map((l) =>
+      l.base_documentaire
+        ? {
+            ...l,
+            base_documentaire: {
+              ...l.base_documentaire,
+              fichier_url: signees[k++] ?? l.base_documentaire.fichier_url,
+            },
+          }
+        : l,
+    ),
+  }));
+}
+
 interface ChecklistFormProps {
   visiteId: string;
   chantierId: string;
@@ -33,6 +72,7 @@ interface ChecklistFormProps {
   onValidate: () => void;
   validating: boolean;
   editingDisabled?: boolean;
+  peutCreerPoint?: boolean;
 }
 
 export function ChecklistForm({
@@ -43,6 +83,7 @@ export function ChecklistForm({
   onValidate,
   validating,
   editingDisabled = false,
+  peutCreerPoint = false,
 }: ChecklistFormProps) {
   const scope = useOfflineScope();
   const [restoredResponses, setRestoredResponses] = useState(existingReponses);
@@ -50,7 +91,9 @@ export function ChecklistForm({
   const [allPoints, setAllPoints] = useState<PointWithDocs[]>([]);
   const [points, setPoints] = useState<PointWithDocs[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showThemeAdder, setShowThemeAdder] = useState(false);
+  const [showAjout, setShowAjout] = useState(false);
+  const [ajoutEnCours, setAjoutEnCours] = useState(false);
+  const [ajoutErreur, setAjoutErreur] = useState<string | null>(null);
   const [themeIds, setThemeIds] = useState<string[]>([]);
   const [selectionDone, setSelectionDone] = useState(false);
   const { save, saveStatus } = useAutosave(visiteId);
@@ -67,7 +110,7 @@ export function ChecklistForm({
 
     let query = supabase
       .from("points_controle")
-      .select("*, themes(libelle), point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
+      .select(SELECT_POINT_CHECKLIST)
       .eq("actif", true)
       .order("intitule");
 
@@ -79,37 +122,7 @@ export function ChecklistForm({
 
     const { data } = await query;
     if (data) {
-      // Bucket privé (SEC-03) : les fiches jointes aux points de contrôle
-      // (documents propres et base documentaire) se servent par URL signée.
-      // Un seul appel pour toute la checklist.
-      const brut = data as PointWithDocs[];
-      const aSigner: string[] = [];
-      brut.forEach((p) => {
-        (p.point_controle_documents ?? []).forEach((d) => aSigner.push(d.fichier_url));
-        (p.point_controle_doc_liens ?? []).forEach((l) => {
-          if (l.base_documentaire) aSigner.push(l.base_documentaire.fichier_url);
-        });
-      });
-      const signees = await signerUrls(supabase, aSigner);
-      let k = 0;
-      const loaded = brut.map((p) => ({
-        ...p,
-        point_controle_documents: (p.point_controle_documents ?? []).map((d) => ({
-          ...d,
-          fichier_url: signees[k++] ?? d.fichier_url,
-        })),
-        point_controle_doc_liens: (p.point_controle_doc_liens ?? []).map((l) =>
-          l.base_documentaire
-            ? {
-                ...l,
-                base_documentaire: {
-                  ...l.base_documentaire,
-                  fichier_url: signees[k++] ?? l.base_documentaire.fichier_url,
-                },
-              }
-            : l,
-        ),
-      })) as PointWithDocs[];
+      const loaded = await signerDocuments(supabase, data as PointWithDocs[]);
       setAllPoints(loaded);
 
       // Si des réponses existent déjà, on saute la sélection (visite reprise)
@@ -149,43 +162,43 @@ export function ChecklistForm({
     loadPoints(initialThemeIds);
   }, [scope, categorieIds, visiteId, loadPoints]);
 
-  // Handle adding new themes — append new points without losing existing ones
-  async function handleThemesAdded(newThemeIds: string[]) {
-    const onlyNew = newThemeIds.filter((id) => !themeIds.includes(id));
-    if (onlyNew.length === 0) {
-      setShowThemeAdder(false);
+  // Ajout de points en cours de visite — les points existants et leurs
+  // réponses restent en place, seuls les nouveaux sont chargés.
+  async function handlePointsAdded(choisis: PointSelectionnable[]) {
+    const existingIds = new Set(points.map((p) => p.id));
+    const nouveaux = choisis.filter((p) => !existingIds.has(p.id));
+    if (nouveaux.length === 0) {
+      setShowAjout(false);
       return;
     }
+    setAjoutEnCours(true);
+    setAjoutErreur(null);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("points_controle")
+        .select(SELECT_POINT_CHECKLIST)
+        .in("id", nouveaux.map((p) => p.id))
+        .order("intitule");
+      if (error || !data) throw error ?? new Error("lecture");
+      const toAdd = await signerDocuments(supabase, data as PointWithDocs[]);
 
-    const merged = [...new Set([...themeIds, ...onlyNew])];
-    setThemeIds(merged);
-    localStorage.setItem(offlinePreferenceKey(scope, `visite-themes-${visiteId}`), JSON.stringify(merged));
-    setShowThemeAdder(false);
-
-    // Load only the new points
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("points_controle")
-      .select("*, themes(libelle), point_controle_documents(*), point_controle_doc_liens(base_documentaire(id, titre, fichier_url, type_fichier))")
-      .eq("actif", true)
-      .in("theme_id", onlyNew)
-      .order("intitule");
-
-    if (data) {
-      const newPoints = data as PointWithDocs[];
-      const existingIds = new Set(points.map((p) => p.id));
-      const toAdd = newPoints.filter((p) => !existingIds.has(p.id));
-
-      setAllPoints((prev) => [...prev, ...toAdd]);
-      setPoints((prev) => {
-        const updated = [...prev, ...toAdd];
-        // Mettre à jour la sélection sauvegardée
-        localStorage.setItem(
-          offlinePreferenceKey(scope, `visite-selected-points-${visiteId}`),
-          JSON.stringify(updated.map((p) => p.id))
-        );
-        return updated;
-      });
+      const merged = [...new Set([...themeIds, ...deduireRattachements(nouveaux).themeIds])];
+      setThemeIds(merged);
+      localStorage.setItem(offlinePreferenceKey(scope, `visite-themes-${visiteId}`), JSON.stringify(merged));
+      setAllPoints((prev) => [...prev.filter((p) => !toAdd.some((n) => n.id === p.id)), ...toAdd]);
+      const updated = [...points, ...toAdd];
+      setPoints(updated);
+      // Mettre à jour la sélection sauvegardée
+      localStorage.setItem(
+        offlinePreferenceKey(scope, `visite-selected-points-${visiteId}`),
+        JSON.stringify(updated.map((p) => p.id)),
+      );
+      setShowAjout(false);
+    } catch {
+      setAjoutErreur("Impossible de charger les points choisis. Vérifiez la connexion et réessayez.");
+    } finally {
+      setAjoutEnCours(false);
     }
   }
 
@@ -284,28 +297,39 @@ export function ChecklistForm({
         })
       )}
 
-      {/* Ajout rapide */}
-      <QuickAddPoint
-        themeIds={themeIds}
-        categorieIds={categorieIds}
-        onPointCreated={(newPoint) => setPoints((prev) => [...prev, newPoint])}
-      />
-
-      {/* Ajout catégories / thèmes */}
-      <button
-        type="button"
-        onClick={() => setShowThemeAdder(true)}
-        className="w-full py-3 min-h-touch text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700"
-      >
-        + Catégories / Thèmes
-      </button>
-
-      {showThemeAdder && (
-        <ThemeAdder
-          existingThemeIds={themeIds}
-          onAdd={handleThemesAdded}
-          onCancel={() => setShowThemeAdder(false)}
-        />
+      {/* Ajout de points existants ou nouveaux */}
+      {showAjout ? (
+        <div className="rounded-lg border border-green-300 bg-white p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900">Ajouter des points</h2>
+            <button
+              type="button"
+              onClick={() => setShowAjout(false)}
+              aria-label="Fermer"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-500 hover:text-gray-700"
+            >
+              <span translate="no" className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          {ajoutErreur && <p role="alert" className="text-sm text-red-700">{ajoutErreur}</p>}
+          <SelecteurPoints
+            peutCreer={peutCreerPoint}
+            dejaPresents={points.map((p) => p.id)}
+            enCours={ajoutEnCours}
+            libelleAction={(n) => (n === 0 ? "Cochez au moins un point" : `Ajouter ${n} point${n > 1 ? "s" : ""}`)}
+            onConfirm={handlePointsAdded}
+            onCancel={() => setShowAjout(false)}
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowAjout(true)}
+          className="w-full py-3 min-h-[44px] text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
+        >
+          <span translate="no" className="material-symbols-outlined text-lg">add</span>
+          Ajouter des points{peutCreerPoint ? " (existants ou nouveaux)" : ""}
+        </button>
       )}
 
       </fieldset>

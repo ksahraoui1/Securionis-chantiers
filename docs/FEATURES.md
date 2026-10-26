@@ -905,3 +905,38 @@ Les 9 fichiers ont été supprimés par l’API Storage depuis le conteneur : 2 
 > **Dépendance, au passage** : la CI de cette PR a échoué sur un avis publié le jour même, GHSA-wq5f-xc86-pv6w. Il porte sur `sharp` < 0.35.5 (faille de la `librsvg` embarquée, gravité haute), une dépendance de Next.js. Contrairement à `source-map-js` (§40), `sharp` **est présent dans l’image de production**, puisqu’il sert à l’optimisation des images. Il est monté en 0.35.5 par `npm audit fix`, sans nouvelle exemption, et l’image du serveur est reconstruite.
 
 **Déploiement (15 octobre 2026)** : `main` à `50dd5fb`, image reconstruite pour `sharp` 0.35.5 (version vérifiée dans le conteneur), conteneur sain sans redémarrage, contrôle quotidien sans dérive. Image de retour arrière : `securionis-app:rollback-bea5386-20261015`. ⚠️ Les images `rollback-da2eb41-20261005` et `rollback-668119c-20261006` mentionnées aux §40 et §41 n'existaient plus sur le serveur au moment du déploiement, sans suppression faite pendant cette maintenance. Une seule image de retour arrière subsiste.
+
+## 43. Sélection des points d'une visite et création de points sur le terrain (26 octobre 2026)
+
+Retour d'expérience terrain : choisir les catégories, puis les thèmes, puis encore les points n'était pas pratique. Mesuré en base : **450 thèmes pour 499 points**, presque un thème par point. Les trois étapes revenaient donc à choisir les mêmes points jusqu'à trois fois, et la famille, le regroupement le plus parlant, n'apparaissait pas sur cet écran.
+
+### Un seul écran : familles → points
+
+`SelecteurPoints` (`src/components/visite/selecteur-points.tsx`) réunit tout sur un écran :
+- une recherche sur tout le référentiel (intitulé, base légale, thème, catégorie, mots-clés). Elle ignore les accents et lit chaque mot comme un début de mot, tous les mots étant exigés (« garde echaf ») ;
+- les 12 familles en pastilles, avec leur nombre de points et le nombre de points cochés ;
+- les points directement, groupés par catégorie, avec « Tout cocher » par catégorie ;
+- une pastille « Ma sélection », et une pastille « Dernière visite » quand on vient de la préparation, qui transmet `?categories=`.
+
+La logique est pure et testée à part (`src/lib/visites/selection-points.ts`, `tests/selection-points.test.cjs`). Les thèmes et catégories de la visite **se déduisent** de la sélection (`deduireRattachements`). À la création, l'écran écrit `visite-themes-<id>` **et** `visite-selected-points-<id>` : la checklist charge par thème puis filtre sur la sélection, et ne réaffiche donc pas l'ancien `PointSelector`. Celui-ci reste pour les visites sans sélection mémorisée (autre appareil, visite antérieure).
+
+En cours de visite, « Ajouter des points » ouvre le même sélecteur, les points déjà présents grisés. Il remplace « + Catégories / Thèmes » (`theme-adder.tsx`) et « Ajouter un point personnalisé » (`quick-add-point.tsx`), supprimés. Les documents des points ajoutés sont maintenant signés comme ceux du chargement initial, ce que l'ancien ajout par thème ne faisait pas.
+
+### Créer un point qui n'existe pas — migration 068, appliquée
+
+Constat préalable : l'insertion dans `points_controle` était **réservée à l'administrateur** (`pc_insert_admin`). Le bouton « Ajouter un point personnalisé » échouait donc pour un inspecteur, et rangeait le point dans le **premier thème sélectionné**, quel qu'il soit. Sur les 52 points personnalisés existants, aucun n'a d'auteur.
+
+`creer_point_controle_terrain(p_id, p_categorie_id, p_intitule, p_base_legale, p_mots_cles)`, en `SECURITY DEFINER` :
+- elle exige un rôle `administrateur` ou `inspecteur`, une session MFA valide, et une catégorie active **de la même entreprise** ;
+- elle range le point dans le thème « **Ajouts terrain** » de sa catégorie, créé au besoin sous un verrou consultatif (un seul par catégorie, même en création concurrente) ;
+- elle enregistre `is_custom`, `created_by` et les mots-clés. La famille est posée par le trigger existant ;
+- elle limite la création à 50 points par jour et par compte, via `consommer_quota` ;
+- elle écrit `create_point_controle_terrain` au journal dans la même transaction.
+
+**Rejeu** : `p_id` est l'identifiant du point, choisi par le client et conservé tant que le contenu ne change pas (`CreerPointForm`). Après une réponse incertaine, réessayer rend le point déjà créé. Réutiliser un identifiant pour un autre contenu est refusé en `40001`. L'insertion directe reste réservée à l'administrateur. Exécution révoquée à `public`, `anon` et `service_role`.
+
+Le formulaire propose les points **proches déjà existants**, au moins deux mots significatifs en commun, pour éviter les doublons. Il refuse de partir hors ligne, et le point créé est coché aussitôt.
+
+**Vérifié en production dans une transaction annulée** : création, rejeu, réutilisation refusée en 40001, intitulé trop court en 22023, deux points rangés dans un même thème, contenu (auteur, famille, mots-clés, thème), 2 entrées au journal, insertion directe par l'inspecteur refusée en 42501, invité refusé en 42501, `anon` refusé en 42501. Rien n'est resté en base.
+
+> Un point créé sur le terrain rejoint le **référentiel commun** de l'entreprise (décision du propriétaire, 26 octobre 2026). L'administrateur le corrige ou le désactive depuis `/admin/points-controle`, où le thème « Ajouts terrain » sert de file de revue.

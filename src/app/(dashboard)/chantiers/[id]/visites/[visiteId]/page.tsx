@@ -75,6 +75,13 @@ export default async function VisitePage({
   // Get categorieIds from the visite record
   const categorieIds: string[] = visite.categorie_ids ?? [];
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const peutCreerPoint = profile?.role === "administrateur" || profile?.role === "inspecteur";
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">
@@ -88,6 +95,7 @@ export default async function VisitePage({
         chantierId={chantierId}
         categorieIds={categorieIds}
         existingReponses={existingReponses}
+        peutCreerPoint={peutCreerPoint}
       />
     </div>
   );
