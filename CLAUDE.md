@@ -150,7 +150,7 @@ Copier `.env.example` → `.env.local` et renseigner :
 
 ### Migrations
 
-Les migrations sont dans `supabase/migrations/`. Numérotées `001` → `034`. Appliquer via :
+Les migrations sont dans `supabase/migrations/`. Numérotées `001` → `068`. Appliquer via :
 ```bash
 npx supabase db push --linked
 # ou pour une migration spécifique :
