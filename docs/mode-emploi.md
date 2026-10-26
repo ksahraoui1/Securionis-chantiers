@@ -173,9 +173,12 @@ Pour remplacer un fichier sans supprimer l'historique, cliquez sur **Nouvelle ve
 ### 6.1 Créer une nouvelle visite
 
 1. Sur la page détail d'un chantier, cliquez sur **Nouvelle visite**
-2. **Étape 1 — Catégories** : cochez les domaines à contrôler (ex. Accès & Sols, Échafaudages, Électricité...). Utilisez la barre de recherche pour trouver rapidement une catégorie.
-3. **Étape 2 — Thèmes** : affinez en sélectionnant les thèmes spécifiques au sein des catégories choisies. Vous pouvez utiliser **Tout cocher** / **Tout décocher**.
-4. Cliquez sur **Démarrer la visite**
+2. Touchez une **famille** (ex. Protections antichute, Électricité & Énergies, Engins & Levage…) ou tapez quelques lettres dans la **recherche** : elle porte sur tout le référentiel, sans tenir compte des accents (« echaf » trouve « échafaudage »).
+3. Les points s'affichent directement, groupés par catégorie. **Cochez** ceux à contrôler ; **Tout cocher** sélectionne une catégorie entière. La pastille **Ma sélection** récapitule vos choix.
+4. **Un point manque ?** Touchez **Créer un point qui n'existe pas encore** : intitulé, catégorie et, si besoin, base légale. Les points proches déjà existants sont proposés pour éviter les doublons. Le point créé est coché et rejoint le référentiel de l'entreprise (réservé aux inspecteurs et administrateurs ; la création demande le réseau).
+5. Cliquez sur **Démarrer la visite**
+
+En cours de visite, le bouton **Ajouter des points** ouvre le même écran : les points déjà présents y sont grisés.
 
 ### 6.2 Remplir la checklist
 
@@ -392,7 +395,7 @@ Contient 4 feuilles :
 | Action | Astuce |
 |--------|--------|
 | Rechercher un chantier | Barre de recherche sur la page Chantiers |
-| Rechercher une catégorie | Barre de recherche lors de la création de visite |
+| Trouver un point de contrôle | Recherche ou pastille de famille lors de la création de visite |
 | Annoter une photo existante | Survolez la photo → icône crayon |
 | Copier une réponse IA | Bouton "Copier dans la remarque" |
 | Voir l'historique d'un écart | Comparaison N/N-1 sur la page chantier |

@@ -17,6 +17,7 @@ interface VisiteEnCoursProps {
     string,
     { id: string; valeur: string; remarque: string | null; photos: string[]; base_revision?: string | null; local_revision?: string }
   >;
+  peutCreerPoint: boolean;
 }
 
 interface EcartDraft {
@@ -30,6 +31,7 @@ export function VisiteEnCours({
   chantierId,
   categorieIds,
   existingReponses,
+  peutCreerPoint,
 }: VisiteEnCoursProps) {
   const scope = useOfflineScope();
   const router = useRouter();
@@ -168,6 +170,7 @@ export function VisiteEnCours({
         onValidate={handleValidate}
         validating={validating}
         editingDisabled={validating || showDelaiModal || confirmationIncertaine}
+        peutCreerPoint={peutCreerPoint}
       />
 
       {confirmationIncertaine && !validating && <p className="mt-4 text-sm text-amber-800">La demande est conservée. Le bouton de validation réessaie la même opération sans modifier les constats.</p>}

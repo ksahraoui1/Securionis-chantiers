@@ -31,12 +31,19 @@ export default async function NouvelleVisitePage({
     redirect(`/chantiers/${chantierId}/visites/${existingVisite.id}`);
   }
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const peutCreerPoint = profile?.role === "administrateur" || profile?.role === "inspecteur";
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
         Nouvelle visite
       </h1>
-      <NouvelleVisiteForm chantierId={chantierId} inspecteurId={user.id} />
+      <NouvelleVisiteForm chantierId={chantierId} inspecteurId={user.id} peutCreerPoint={peutCreerPoint} />
     </div>
   );
 }
